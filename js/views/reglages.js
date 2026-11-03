@@ -96,8 +96,13 @@ export async function render(el) {
       <div class="actions"><button class="btn${PROFIL.nom ? '' : ' primary'}" id="impProfil">Importer le profil entreprise</button></div>
     </section>
 
-    <section class="settings"><h2 class="h2">Sauvegarde et autre appareil</h2>
-      <p>Pour retrouver tes données sur ton téléphone (ou ton PC) : exporte ici, puis importe le fichier sur l'autre appareil.</p>
+    <section class="settings"><h2 class="h2">Compte et synchronisation</h2>
+      <p id="etatCompte" class="muted">…</p>
+      <div class="actions"><a class="btn primary" href="#/compte">Compte et synchronisation</a></div>
+    </section>
+
+    <section class="settings"><h2 class="h2">Sauvegarde manuelle</h2>
+      <p>Copie de secours, ou transfert vers un autre appareil sans compte : exporte ici, puis importe le fichier sur l'autre appareil.</p>
       <div class="actions"><button class="btn" id="expAll">Exporter mes données</button><button class="btn" id="impAll">Importer une sauvegarde</button></div>
     </section>
 
@@ -190,6 +195,10 @@ export async function render(el) {
     render(el);
   });
 
+  import('../services/nuage.js').then(async n => {
+    await n.lireConfig(); const s = await n.session(); const x = $('#etatCompte'); if (!x) return;
+    x.textContent = !n.configure() ? 'Pas encore configuré : tes données ne sont que sur cet appareil.' : s ? `Connecté (${s.email || 'compte'}) : synchronisation automatique et chiffrée entre tes appareils.` : 'Configuré, mais pas connecté sur cet appareil.';
+  });
   $('#expAll').onclick = async () => downloadBlob(await exporter('complet'), `Cap Secteur sauvegarde ${today()}.json`);
   $('#expCat').onclick = async () => downloadBlob(await exporter('catalogue'), `Cap Secteur catalogue ${today()}.json`);
   const imp = async () => {

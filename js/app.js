@@ -20,11 +20,16 @@ const ROUTES = [
   [/^\/produit\/([^/]+)$/, 'catalogue', () => import('./views/produit.js'), ['id']],
   [/^\/presenter\/([^/]+)$/, 'catalogue', () => import('./views/presenter.js'), ['id']],
   [/^\/reglages$/, 'reglages', () => import('./views/reglages.js')],
+  [/^\/compte$/, 'reglages', () => import('./views/compte.js')],
 ];
 
 let current = null;
 
-async function route() {
+async function route(_, { garder = false } = {}) {
+  if (/[#&](access_token|error_description)=/.test(location.hash)) {   // lien reçu par mail ouvert dans un onglet déjà ouvert
+    const n = await import('./services/nuage.js'); await n.lireConfig();
+    window.__retourMail = await n.lireRetourMail().catch(() => null);
+  }
   const path = decodeURIComponent(location.hash.replace(/^#/, '').split('?')[0]);
   const query = Object.fromEntries(new URLSearchParams(location.hash.split('?')[1] || ''));
   const main = $('#main');
@@ -42,7 +47,7 @@ async function route() {
     current = await loader();
     main.innerHTML = '';
     await current.render(main, params);
-    if (!params.keepScroll) window.scrollTo(0, 0);
+    if (!params.keepScroll && !garder) window.scrollTo(0, 0);
   } catch (e) {
     console.error(e);
     main.innerHTML = `<div class="page"><h1>Cet écran n'a pas pu s'afficher</h1><p class="muted">${esc(e.message)}</p><p><a href="#/">Revenir à l'accueil</a></p></div>`;
@@ -57,7 +62,19 @@ window.addEventListener('offline', netStatus);
 netStatus();
 persistStorage();
 await chargerProfil();   // enseignes, campagne, messages… propres à l'entreprise (stockés sur l'appareil)
+// retour d'un lien reçu par mail (confirmation de compte, mot de passe oublié)
+const nuage = await import('./services/nuage.js');
+await nuage.lireConfig();
+window.__retourMail = await nuage.lireRetourMail().catch(() => null);
 route();
+// synchronisation automatique entre appareils (si un compte est configuré)
+import('./services/synchro.js').then(({ demarrer }) => demarrer());
+addEventListener('cap-synchro', async () => {
+  // données reçues d'un autre appareil : on rafraîchit l'écran, sauf pendant une saisie
+  const actif = document.activeElement;
+  if (document.querySelector('dialog[open]') || (actif && /INPUT|TEXTAREA|SELECT/.test(actif.tagName))) return;
+  const y = scrollY; await chargerProfil(); await route(null, { garder: true }); scrollTo(0, y);
+});
 // positions : affinage à l'adresse en arrière-plan (quelques secondes après l'ouverture, puis au retour du réseau)
 import('./services/affinage.js').then(({ affinerPositions }) => {
   setTimeout(() => affinerPositions(), 8000);

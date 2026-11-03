@@ -5,7 +5,7 @@
 import { DEFAULT_SETTINGS, appliquerProfil } from './config.js';
 
 const DB_NAME = 'cap-secteur';
-const DB_VERSION = 3;
+const DB_VERSION = 4;
 export const STORES = {
   magasins: { keyPath: 'id' },
   contacts: { keyPath: 'id', index: 'magasinId' },
@@ -21,7 +21,22 @@ export const STORES = {
   frais: { keyPath: 'id' },        // notes de frais
   objectifs: { keyPath: 'id' },    // objectifs (en unités / nombres, jamais en prix)
   reglages: { keyPath: 'cle' },
+  sync: { keyPath: 'k' },          // synchronisation : modifications en attente d'envoi, session, état
 };
+// Ce qui se synchronise entre appareils (les réglages : seulement « settings » et « profil »)
+export const SYNCHRO = new Set(['magasins', 'contacts', 'notes', 'sav', 'commandes', 'implantations', 'produits', 'images',
+  'tournees', 'rdv', 'concurrence', 'frais', 'objectifs', 'reglages']);
+const cleDe = (store, obj) => obj?.[STORES[store].keyPath];
+const aSynchroniser = (store, id) => SYNCHRO.has(store) && (store !== 'reglages' || id === 'settings' || id === 'profil');
+let ecouteur = null;                       // prévenu à chaque modification (pour lancer la synchro)
+export const surModification = f => { ecouteur = f; };
+async function marquer(store, ids, supprime = false) {
+  ids = ids.filter(id => id != null && aSynchroniser(store, id));
+  if (!ids.length) return;
+  const t = Date.now();
+  await tx('sync', 'readwrite', os => { for (const id of ids) os.put({ k: `d:${store}:${id}`, store, id, t, supprime }); });
+  ecouteur?.();
+}
 
 let dbPromise;
 function open() {
@@ -59,9 +74,10 @@ export const db = {
   all: store => tx(store, 'readonly', os => wrap(os.getAll())),
   get: (store, id) => tx(store, 'readonly', os => wrap(os.get(id))),
   byMagasin: (store, magasinId) => tx(store, 'readonly', os => wrap(os.index('magasinId').getAll(magasinId))),
-  put: (store, obj) => tx(store, 'readwrite', os => wrap(os.put(obj))),
-  putMany: (store, list) => tx(store, 'readwrite', os => { list.forEach(o => os.put(o)); }),
-  del: (store, id) => tx(store, 'readwrite', os => wrap(os.delete(id))),
+  // { sync: false } : écriture venant de la synchronisation elle-même (ne repart pas en ligne)
+  put: async (store, obj, { sync = true } = {}) => { const r = await tx(store, 'readwrite', os => wrap(os.put(obj))); if (sync) await marquer(store, [cleDe(store, obj)]); return r; },
+  putMany: async (store, list, { sync = true } = {}) => { await tx(store, 'readwrite', os => { list.forEach(o => os.put(o)); }); if (sync) await marquer(store, list.map(o => cleDe(store, o))); },
+  del: async (store, id, { sync = true } = {}) => { const r = await tx(store, 'readwrite', os => wrap(os.delete(id))); if (sync) await marquer(store, [id], true); return r; },
   clear: store => tx(store, 'readwrite', os => wrap(os.clear())),
   count: store => tx(store, 'readonly', os => wrap(os.count())),
 };
@@ -82,6 +98,7 @@ export async function saveSettings(patch) {
   await db.put('reglages', { cle: 'settings', valeur: s });
   return s;
 }
+export const oublierReglages = () => { cache = null; };
 
 // ── Profil entreprise (jamais dans le code : importé sur chaque appareil) ───────
 export async function chargerProfil() {

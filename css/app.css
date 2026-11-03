@@ -583,3 +583,10 @@ p.wleg.fin { margin-bottom: .25rem; }
 .seg .seg-r span { padding: .45rem 1rem; font: 600 .9rem var(--sans); color: var(--gris); cursor: pointer; min-height: 40px; display: flex; align-items: center; background: var(--surface); }
 .seg .seg-r input:checked + span { background: var(--bleu); color: #fff; }
 .seg .seg-r input:focus-visible + span { outline: 3px solid var(--focus); outline-offset: -3px; }
+
+/* compte et synchronisation */
+.compte .seg { margin: .5rem 0 1rem; }
+.auth { max-width: 420px; }
+.auth .btn { margin-top: .5rem; }
+.cle-secours { font: 700 1.5rem/1.3 var(--cond); letter-spacing: .08em; text-align: center; padding: .8rem; border: 2px dashed var(--bleu); border-radius: var(--r); background: var(--bleu-pale); user-select: all; word-break: break-all; }
+.sync-sum { grid-template-columns: repeat(2, 1fr); margin-bottom: 1rem; }
