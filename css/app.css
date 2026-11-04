@@ -604,3 +604,28 @@ p.wleg.fin { margin-bottom: .25rem; }
 .w-btn strong { font-family: var(--cond); font-size: 1.3rem; }
 .w-btn span { color: var(--gris); }
 .w-btn[data-c=compte] { border-left-color: var(--vert); }
+
+/* Accueil : alerte retard et GPS */
+.alerte-retard { background: var(--surface); border: 1.5px solid var(--trait); border-left: 6px solid var(--orange); border-radius: var(--r); padding: .8rem 1rem; margin: 0 0 1rem; }
+.alerte-retard .h2 { margin-top: 0; color: var(--orange); }
+.alerte-retard ul { margin: .3rem 0 .7rem; }
+.gps-prochain { display: flex; flex-direction: column; align-items: flex-start; justify-content: center; gap: .1rem; width: 100%; white-space: normal; padding: .8rem 1rem; margin: 0 0 1rem; text-align: left; min-height: 0; }
+.gps-prochain span { font-size: .85rem; opacity: .85; font-weight: 500; }
+.gps-prochain strong { font-family: var(--cond); font-size: 1.35rem; line-height: 1.1; }
+.gps-prochain small { color: #fff; opacity: .9; }
+/* Planning : onglets Jour / Semaine / Secteur */
+.onglets-planning { margin: 0 0 .9rem; }
+.onglets-planning a { padding: .45rem 1.1rem; font: 600 .95rem var(--sans); color: var(--gris); background: var(--surface); text-decoration: none; min-height: 40px; display: flex; align-items: center; }
+.onglets-planning a + a { border-left: 1.5px solid var(--trait); }
+.onglets-planning a[aria-selected="true"] { background: var(--bleu); color: #fff; }
+.onglets-planning a:focus-visible { outline: 3px solid var(--focus); outline-offset: -3px; }
+.suite-cmd { width: 100%; margin-bottom: .6rem; white-space: normal; }
+.agenda-btns { flex-wrap: wrap; }
+/* Réglages : sections repliables */
+.sect-avance > summary { list-style: none; cursor: pointer; display: grid; gap: .1rem; padding: .2rem 0; }
+.sect-avance > summary::-webkit-details-marker { display: none; }
+.sect-avance > summary .h2 { margin: 0; display: inline-flex; align-items: center; gap: .4rem; }
+.sect-avance > summary .h2::after { content: '▸'; font-size: .9em; color: var(--gris); transition: transform .15s; }
+.sect-avance[open] > summary .h2::after { transform: rotate(90deg); }
+.sect-avance > section { margin-top: 1rem; }
+.compte-equipe details { margin-top: .6rem; }

@@ -15,6 +15,16 @@ export async function render(el) {
 
   el.innerHTML = `<div class="page">
     <h1>Réglages</h1>
+    <section class="settings compte-equipe"><h2 class="h2">Compte et équipe</h2>
+      <p id="etatCompte" class="muted">…</p>
+      <p id="etatKit" class="muted"></p>
+      <div class="actions"><a class="btn primary" href="#/compte">Compte, synchronisation et kit entreprise</a></div>
+      <details><summary>Sauvegarde manuelle (fichier)</summary>
+      <p>Copie de secours, ou transfert vers un autre appareil sans compte : exporte ici, puis importe le fichier sur l'autre appareil.</p>
+      <div class="actions"><button class="btn" id="expAll">Exporter mes données</button><button class="btn" id="impAll">Importer une sauvegarde</button></div>
+      </details>
+
+    </section>
     <form id="f" class="settings">
       <section><h2 class="h2">Toi</h2>
         <label>Ton nom (bons de commande et colonne « Chef de secteur » du planning)<input name="commercial" value="${esc(s.commercial)}" autocomplete="name"></label></section>
@@ -59,7 +69,7 @@ export async function render(el) {
         <label>Application GPS<select name="gps"><option value="waze" ${s.gps === 'waze' ? 'selected' : ''}>Waze</option><option value="google" ${s.gps === 'google' ? 'selected' : ''}>Google Maps</option></select></label>
       </section>
 
-      <section><h2 class="h2">Calcul des trajets</h2>
+      <details class="sect-avance"${s.cleTomTom ? '' : ''}><summary><h2 class="h2">Calcul des trajets (TomTom)</h2><small class="muted">${s.cleTomTom ? 'Clé TomTom enregistrée : temps de trajet réels' : 'Sans clé : temps estimés, ça marche quand même'}</small></summary>
         <label>Service d'itinéraire<select name="itineraire">
           <option value="tomtom" ${s.itineraire === 'tomtom' ? 'selected' : ''}>TomTom (temps de trajet réels)</option>
           <option value="aucun" ${s.itineraire === 'aucun' ? 'selected' : ''}>Aucun (estimation à vol d'oiseau)</option></select></label>
@@ -72,7 +82,7 @@ export async function render(el) {
         <details><summary>Estimation sans service</summary><div class="row">
           <label>Coefficient route / vol d'oiseau<input type="number" name="coefRoute" min="1" max="2" step="0.05" value="${s.coefRoute}"></label>
           <label>Vitesse moyenne (km/h)<input type="number" name="vitesseMoyenne" min="20" max="130" value="${s.vitesseMoyenne}"></label></div></details>
-      </section>
+      </details>
 
       <section><h2 class="h2">Secteur</h2>
         <label>Départements (séparés par des virgules)<input name="departements" value="${esc(s.departements.join(', '))}"></label></section>
@@ -80,37 +90,30 @@ export async function render(el) {
       <div class="sticky-save"><button class="btn primary" type="submit">Enregistrer les réglages</button></div>
     </form>
 
-    <section class="settings"><h2 class="h2">Base magasins</h2>
+    <details class="settings sect-avance"><summary><h2 class="h2">Avancé</h2><small class="muted">Import de fichiers à la main : inutile si tu as rejoint ton équipe avec le kit entreprise</small></summary>
+    <section><h2 class="h2">Base magasins</h2>
       <p>${nbMag} magasin${nbMag > 1 ? 's' : ''} enregistré${nbMag > 1 ? 's' : ''}${nbMag ? ` · ${nonLoc} non localisé${nonLoc > 1 ? 's' : ''}` : ''}.</p>
       <div class="actions">
-        <button class="btn primary" id="impBase">Importer la base magasins (Excel)</button>
+        <button class="btn" id="impBase">Importer la base magasins (Excel)</button>
         ${nonLoc ? `<button class="btn" id="geoAll">Localiser les ${nonLoc} magasins</button>` : ''}
       </div>
       <p class="hint">Réimporter le fichier met à jour les adresses et contacts sans effacer tes notes, commandes ni SAV.</p>
       <div id="geoProg" hidden><progress max="1" value="0"></progress> <span></span></div>
     </section>
 
-    <section class="settings"><h2 class="h2">Profil entreprise</h2>
+    <section><h2 class="h2">Profil entreprise</h2>
       <p>${PROFIL.nom ? `Profil chargé : <strong>${esc(PROFIL.nom)}</strong>.` : '<strong>Aucun profil chargé.</strong> L\'appli fonctionne, mais sans tes enseignes, ta campagne de commande, tes messages ni ton modèle de note de frais.'}</p>
       <p class="hint">Le profil (enseignes, campagne, messages, modèle de note de frais…) reste sur cet appareil. Il n'est jamais dans le code de l'appli : importe le fichier « Profil entreprise.json » de ton dossier de données. Il est aussi inclus dans tes sauvegardes.</p>
       <div class="actions"><button class="btn${PROFIL.nom ? '' : ' primary'}" id="impProfil">Importer le profil entreprise</button></div>
     </section>
 
-    <section class="settings"><h2 class="h2">Compte et synchronisation</h2>
-      <p id="etatCompte" class="muted">…</p>
-      <div class="actions"><a class="btn primary" href="#/compte">Compte et synchronisation</a></div>
-    </section>
-
-    <section class="settings"><h2 class="h2">Sauvegarde manuelle</h2>
-      <p>Copie de secours, ou transfert vers un autre appareil sans compte : exporte ici, puis importe le fichier sur l'autre appareil.</p>
-      <div class="actions"><button class="btn" id="expAll">Exporter mes données</button><button class="btn" id="impAll">Importer une sauvegarde</button></div>
-    </section>
-
-    <section class="settings"><h2 class="h2">Partager le catalogue</h2>
+    <section><h2 class="h2">Partager le catalogue</h2>
       <p>Le pack catalogue contient uniquement les produits, leurs photos et leur référencement par enseigne — sans aucun prix, sans tes magasins ni tes notes. Il peut être envoyé aux collègues.</p>
       <p class="hint">Pour démarrer : importe le pack catalogue fourni avec tes données.</p>
       <div class="actions"><button class="btn" id="expCat">Exporter le pack catalogue</button><button class="btn" id="impCat">Importer un pack catalogue</button></div>
     </section>
+
+    </details>
 
     <section class="settings danger-zone"><h2 class="h2">Zone sensible</h2>
       <button class="btn danger" id="wipe">Effacer toutes les données de cet appareil</button></section>
@@ -197,6 +200,7 @@ export async function render(el) {
 
   import('../services/nuage.js').then(async n => {
     await n.lireConfig(); const s = await n.session(); const x = $('#etatCompte'); if (!x) return;
+    import('../services/kit.js').then(async k => { const a = await k.adhesion(); const y = $('#etatKit'); if (y) y.textContent = a ? `Équipe : ${a.secteurs.join(', ')}${a.departements?.length ? ` (dép. ${a.departements.join(', ')})` : ''}, mis à jour automatiquement.` : 'Pas encore dans une équipe (kit entreprise).'; }).catch(() => {});
     x.textContent = !n.configure() ? 'Pas encore configuré : tes données ne sont que sur cet appareil.' : s ? `Connecté (${s.email || 'compte'}) : synchronisation automatique et chiffrée entre tes appareils.` : 'Configuré, mais pas connecté sur cet appareil.';
   });
   $('#expAll').onclick = async () => downloadBlob(await exporter('complet'), `Cap Secteur sauvegarde ${today()}.json`);

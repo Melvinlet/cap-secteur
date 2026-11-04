@@ -1,4 +1,5 @@
 // Écran « Tournée » : choix des magasins du jour, ordre optimisé, horaires, carte, GPS.
+import { ongletsPlanning } from './onglets-planning.js';
 import { db, getSettings, saveSettings } from '../db.js';
 import { magasinsEnrichis, dureeVisite, numeroVisite } from '../data.js';
 import { OBJETS_VISITE, ENSEIGNES_LISTE, PRIORITES, PROFIL } from '../config.js';
@@ -95,6 +96,7 @@ export async function render(el, { date = today() }) {
   const dernier = t.etapes.length ? mags.get(t.etapes[t.etapes.length - 1].magasinId) : null;
 
   el.innerHTML = `<div class="page wide tour">
+    ${ongletsPlanning('jour', date)}
     <header class="page-head">
       <div class="day-nav">
         <a class="btn-icon" href="#/tournee/${decale(date, -1)}" aria-label="Jour précédent">‹</a>
@@ -102,8 +104,6 @@ export async function render(el, { date = today() }) {
         <a class="btn-icon" href="#/tournee/${decale(date, 1)}" aria-label="Jour suivant">›</a>
         <input type="date" id="pickDate" value="${date}" aria-label="Choisir une date">
       </div>
-      <a class="btn" href="#/semaine/${lundiDe(date)}">Vue semaine</a>
-      <a class="btn" href="#/plan">Plan de secteur</a>
       <a class="btn ghost" href="#/rdv?du=${lundiDe(date)}&au=${vendrediDe(date)}">Demander les RDV de la semaine</a>
       <button class="btn ghost" id="expPlanning">Exporter le ${esc(PROFIL.planning.nom || 'planning')}</button>
     </header>

@@ -1,5 +1,6 @@
 // Écran « Semaine » : les tournées de la semaine côte à côte, à ajuster à la main ou à
 // remplir automatiquement selon les priorités (avec détour pour les magasins en retard).
+import { ongletsPlanning } from './onglets-planning.js';
 import { db, getSettings, saveSettings } from '../db.js';
 import { DEFAULT_SETTINGS, PRIORITES, PROFIL } from '../config.js';
 import { magasinsEnrichis, prioriteDe } from '../data.js';
@@ -34,6 +35,7 @@ export async function render(el, params) {
   const departOk = s.depart.lat != null;
 
   el.innerHTML = `<div class="page wide">
+    ${ongletsPlanning('semaine', lundi)}
     <header class="page-head">
       <div class="day-nav">
         <a class="btn-icon" href="#/semaine/${decale(lundi, -7)}" aria-label="Semaine précédente">‹</a>
@@ -41,7 +43,6 @@ export async function render(el, params) {
         <a class="btn-icon" href="#/semaine/${decale(lundi, 7)}" aria-label="Semaine suivante">›</a>
         <input type="date" id="pick" value="${lundi}" aria-label="Choisir une semaine">
       </div>
-      <a class="btn ghost" href="#/tournee/${lundi}">Vue jour</a>
     </header>
     ${departOk ? '' : '<div class="banner">Indique ton point de départ dans les <a href="#/reglages">Réglages</a> pour préparer la semaine.</div>'}
     <div class="tour-sum week-sum">

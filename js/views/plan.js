@@ -1,4 +1,5 @@
 // Écran « Plan de secteur » : visites programmées sur plusieurs semaines selon les priorités.
+import { ongletsPlanning } from './onglets-planning.js';
 import { db, getSettings } from '../db.js';
 import { magasinsEnrichis } from '../data.js';
 import { $, $$, esc, borne, fmtKm, fmtDuree, fmtHeure, fmtDate, toast, confirmer } from '../ui.js';
@@ -25,7 +26,7 @@ export async function render(el) {
   const freqP = n => (s.frequencesPriorite || {})[n] ?? PRIORITES[n].freq;
 
   el.innerHTML = `<div class="page wide">
-    <a class="back" href="#/tournee">Tournée</a>
+    ${ongletsPlanning('secteur')}
     <header class="page-head"><h1>Plan de secteur</h1></header>
     <p class="muted">Les visites sont programmées selon la priorité de chaque magasin :
       ${[1, 2, 3].map(n => `<b>${PRIORITES[n].label}</b> tous les ${freqP(n)} j (${nbP(n)})`).join(' · ')}${[0, 5, 4].filter(nbP).map(n => ` · ${nbP(n)} ${PRIORITES[n].label.toLowerCase()}`).join('')} (hors tournées).

@@ -4,6 +4,7 @@ import { magasinsEnrichis } from '../data.js';
 import { esc, borne, fmtDateLong, fmtDate, today, fmtHeure } from '../ui.js';
 import { getTournee, planning } from './tournee.js';
 import { aRelancer, dateEnLettres } from '../services/rdv.js';
+import { lienGps } from '../services/routing.js';
 
 export async function render(el) {
   const s = await getSettings();
@@ -13,12 +14,8 @@ export async function render(el) {
       <img src="icons/icon.svg" alt="" width="72" height="72">
       <h1>Bienvenue dans Cap Secteur</h1>
       <p>Tes tournées, tes fiches magasins, ton catalogue et tes commandes, au même endroit, même sans réseau.</p>
-      <ol class="steps">
-        <li><strong>Importe ta base magasins</strong> : le fichier Excel « Magasins secteur.xlsx ».</li>
-        <li><strong>Indique ton point de départ</strong> pour le calcul des trajets.</li>
-        <li><strong>Colle ta clé TomTom</strong> (facultatif) pour des temps de trajet précis.</li>
-      </ol>
-      <a class="btn primary" href="#/reglages">Commencer</a></div>`;
+      <p>Pas encore de magasins : rejoins ton équipe avec le lien et le code entreprise de ton responsable, ou connecte-toi à ton compte.</p>
+      <a class="btn primary" href="#/bienvenue">Commencer</a></div>`;
     return;
   }
   const byId = new Map(mags.map(m => [m.id, m]));
@@ -29,6 +26,13 @@ export async function render(el) {
   const retard = mags.filter(m => m.enRetard).sort((a, b) => b.joursDepuisVisite - a.joursDepuisVisite);
   const jamais = mags.filter(m => !m.derniereVisite).length;
   const prenom = (s.commercial || '').split(' ')[0];
+  // magasins en retard déjà placés dans une tournée des 14 prochains jours
+  const fin = new Date(Date.now() + 14 * 864e5).toISOString().slice(0, 10);
+  const prevus = new Map();
+  for (const x of await db.all('tournees')) if (x.id >= today() && x.id <= fin) for (const e of x.etapes || []) if (!prevus.has(e.magasinId)) prevus.set(e.magasinId, x.id);
+  const aPlacer = retard.filter(m => !prevus.has(m.id));
+  const prochain = p.etapes.find(e => !e.fait && byId.get(e.magasinId)?.lat != null);
+  const mProchain = prochain && byId.get(prochain.magasinId);
   const rdvs = await db.all('rdv');
   const relances = rdvs.filter(r => aRelancer(r, s.relanceApres));
   const prochainsRdv = rdvs.filter(r => ['acceptee', 'autreDate'].includes(r.statut)).map(r => ({ ...r, j: r.statut === 'autreDate' ? r.dateRetenue : r.date, h: r.statut === 'autreDate' ? r.heureRetenue : r.heure }))
@@ -36,6 +40,12 @@ export async function render(el) {
 
   el.innerHTML = `<div class="page">
     <header class="hello"><a class="btn-icon settings-link" href="#/reglages" aria-label="Réglages" style="float:right">⚙</a><p class="muted">${fmtDateLong(today())}</p><h1>${prenom ? `Bonjour ${esc(prenom)}` : 'Bonjour'}</h1></header>
+    ${aPlacer.length ? `<section class="alerte-retard" role="status">
+      <h2 class="h2">${aPlacer.length} magasin${aPlacer.length > 1 ? 's' : ''} en retard de visite, pas encore planifié${aPlacer.length > 1 ? 's' : ''}</h2>
+      <ul class="plain">${aPlacer.slice(0, 3).map(m => `<li><a href="#/magasin/${encodeURIComponent(m.id)}">${esc(m.nom)}</a> <span class="muted">dernière visite il y a ${m.joursDepuisVisite} j (tous les ${m.frequenceEff} j prévu)</span></li>`).join('')}</ul>
+      <a class="btn" href="#/semaine">Préparer ma semaine</a></section>` : ''}
+    ${mProchain ? `<a class="btn primary gps-prochain" href="${lienGps(s.gps, mProchain)}" target="_blank" rel="noopener">
+      <span>Aller au prochain magasin</span><strong>${esc(mProchain.nom)}</strong><small>avec ${s.gps === 'google' ? 'Google Maps' : 'Waze'}</small></a>` : ''}
     <section class="today-tour">
       <h2 class="h2">Tournée du jour <a class="btn small" href="#/tournee">${t.etapes.length ? 'Ouvrir' : 'Préparer'}</a></h2>
       ${t.etapes.length ? `<ol class="mini-stops">${p.etapes.map((e, i) => { const m = byId.get(e.magasinId); return m ? `<li class="${e.fait ? 'done' : ''}"><span class="n">${i + 1}</span>
@@ -56,7 +66,7 @@ export async function render(el) {
     </div>
     <section><h2 class="h2">À revoir en priorité</h2>
       <p class="muted">${retard.length} magasin${retard.length > 1 ? 's' : ''} en retard de visite · ${jamais} jamais visité${jamais > 1 ? 's' : ''}</p>
-      ${retard.length ? '' : ''}<ul class="store-list compact" ${retard.length ? '' : 'hidden'}>${retard.slice(0, 6).map(m => `<li><a class="store" href="#/magasin/${encodeURIComponent(m.id)}">${borne(m.departement)}<span class="store-main"><span class="store-name">${esc(m.nom)}</span><span class="store-sub">Dernière visite il y a ${m.joursDepuisVisite} jours</span></span></a></li>`).join('')}</ul>
+      ${retard.length ? '' : ''}<ul class="store-list compact" ${retard.length ? '' : 'hidden'}>${retard.slice(0, 6).map(m => `<li><a class="store" href="#/magasin/${encodeURIComponent(m.id)}">${borne(m.departement)}<span class="store-main"><span class="store-name">${esc(m.nom)}</span><span class="store-sub">Dernière visite il y a ${m.joursDepuisVisite} jours${prevus.has(m.id) ? ` · prévu le ${fmtDate(prevus.get(m.id))}` : ''}</span></span></a></li>`).join('')}</ul>
       ${jamais ? `<a class="btn ghost" href="#/magasins">Voir les magasins jamais visités</a>` : ''}
     </section></div>`;
 }

@@ -60,8 +60,8 @@ export async function render(el) {
   $('#au', el)?.addEventListener('change', e => { f.au = e.target.value; render(el); });
   $('#fst', el).onchange = e => { f.statut = e.target.value; render(el); };
   $('#fcat', el).onchange = e => { f.cat = e.target.value; render(el); };
-  $('#add', el).onclick = () => editer({}, s, cats).then(ok => ok && render(el));
-  $$('[data-ed]', el).forEach(b => b.onclick = () => editer(tous.find(x => x.id === b.dataset.ed), s, cats).then(ok => ok && render(el)));
+  $('#add', el).onclick = () => editer({}, s, base).then(ok => ok && render(el));
+  $$('[data-ed]', el).forEach(b => b.onclick = () => editer(tous.find(x => x.id === b.dataset.ed), s, base).then(ok => ok && render(el)));
   $$('[data-st]', el).forEach(sel => sel.onchange = async () => {
     const x = tous.find(y => y.id === sel.dataset.st);
     await db.put('frais', { ...x, statut: sel.value, maj: new Date().toISOString(), ...(sel.value === 'remboursee' ? { rembourseLe: today() } : {}) });
@@ -92,13 +92,16 @@ export async function render(el) {
   };
 }
 
-async function editer(x, s, cats) {
+async function editer(x, s, base) {
+  const cats = (base.length ? base : DEFAULT_SETTINGS.categoriesFrais).filter(c => !/^autres?$/i.test(c));
+  const autre = !!x.categorie && !cats.includes(x.categorie);   // catégorie hors liste : « Autre » + le texte saisi
   const just = x.justificatif ? await imageURL(db, x.justificatif) : '';
   let nouveauJust = null;
   const p = modal({ titre: x.id ? 'Modifier la dépense' : 'Nouvelle dépense', corps: `
     <div class="row"><label>Date<input type="date" name="date" value="${esc(x.date || today())}" required></label>
-    <label>Catégorie<input name="categorie" list="catsF" value="${esc(x.categorie || cats[0] || '')}" required><small class="hint" id="colNdf"></small></label></div>
-    <datalist id="catsF">${cats.map(c => `<option value="${esc(c)}">`).join('')}</datalist>
+    <label>Catégorie<select name="categorie" required>${cats.map(c => `<option ${!autre && (x.categorie || cats[0]) === c ? 'selected' : ''}>${esc(c)}</option>`).join('')}
+      <option value="__autre" ${autre ? 'selected' : ''}>Autre (à préciser)…</option></select><small class="hint" id="colNdf"></small></label></div>
+    <label id="autreL" ${autre ? '' : 'hidden'}>Précise la catégorie<input name="categorieAutre" value="${esc(autre ? x.categorie : '')}" placeholder="ex. Lavage voiture, Matériel PLV…"></label>
     <label>Libellé (commerce, ou destination pour les km)<input name="libelle" value="${esc(x.libelle || '')}" placeholder="ex. INDIGO, SANEF, IBIS BUDGET, Boulangerie…"></label>
     <div class="row"><label>Montant TTC (€)<input type="number" step="0.01" min="0" name="montant" value="${esc(x.montant ?? '')}"></label>
     <label>dont TVA (€, facultatif)<input type="number" step="0.01" min="0" name="tva" value="${esc(x.tva ?? '')}"></label>
@@ -111,8 +114,13 @@ async function editer(x, s, cats) {
       <input type="file" id="just" accept="image/*" capture="environment"></fieldset>
     ${x.id ? '<button type="button" class="btn danger small" id="delF">Supprimer cette dépense</button>' : ''}` });
   $('#just').onchange = e => { nouveauJust = e.target.files[0] || null; };
-  const majCol = () => { const f = $('#colNdf').closest('form'); $('#colNdf').textContent = estIkm({ categorie: f.categorie.value, km: f.km.value || 1 }) ? `→ onglet « ${PROFIL.ndf.ongletIk || 'Indemnités km'} » de la note de frais` : `→ colonne « ${colonneNdf(f.categorie.value)} » de la note de frais`; };
-  $('#colNdf').closest('form').categorie.addEventListener('input', majCol); majCol();
+  const catDe = f => f.categorie.value === '__autre' ? (f.categorieAutre.value.trim() || 'Autre') : f.categorie.value;
+  const majCol = () => { const f = $('#colNdf').closest('form');
+    const estAutre = f.categorie.value === '__autre';
+    $('#autreL').hidden = !estAutre; f.categorieAutre.required = estAutre;
+    $('#colNdf').textContent = estIkm({ categorie: catDe(f), km: f.km.value || 1 }) ? `→ onglet « ${PROFIL.ndf.ongletIk || 'Indemnités km'} » de la note de frais` : `→ colonne « ${colonneNdf(catDe(f))} » de la note de frais`; };
+  const fo = $('#colNdf').closest('form');
+  fo.categorie.addEventListener('change', () => { majCol(); if (fo.categorie.value === '__autre') fo.categorieAutre.focus(); }); fo.categorieAutre.addEventListener('input', majCol); majCol();
   let supprime = false;
   $('#delF')?.addEventListener('click', async () => {
     $('#delF').closest('dialog').close();
@@ -125,7 +133,7 @@ async function editer(x, s, cats) {
   if (nouveauJust) { justificatif = uid('jf'); await db.put('images', { id: justificatif, blob: await reduireImage(nouveauJust, 1800, 0.8), type: 'justificatif' }); }
   const km = Number(r.km) || 0;
   const montant = r.montant === '' && km && Number(s.tauxKm) ? km * Number(s.tauxKm) : Number(r.montant) || 0;
-  await db.put('frais', { ...x, id: x.id || uid('f'), date: r.date, categorie: r.categorie.trim(), libelle: r.libelle, montant, tva: r.tva === '' ? '' : Number(r.tva), km: km || '',
+  await db.put('frais', { ...x, id: x.id || uid('f'), date: r.date, categorie: (r.categorie === '__autre' ? r.categorieAutre : r.categorie).trim() || 'Autre', libelle: r.libelle, montant, tva: r.tva === '' ? '' : Number(r.tva), km: km || '',
     payeur: r.payeur, remboursable: r.remboursable === 'on', statut: r.statut, justificatif, maj: new Date().toISOString() });
   toast('Dépense enregistrée');
   return true;

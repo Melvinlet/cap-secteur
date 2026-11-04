@@ -6,6 +6,7 @@ import { $, $$, esc, borne, prioTag, fmtDate, fmtHeure, toast, modal, norm, toda
 import { STATUTS_RDV, OBJETS_VISITE } from '../config.js';
 import { getRdv, tousLesRdv, genererMessage, lienMail, lienSms, estMobile, changerStatut, aRelancer, modeles, dateEnLettres } from '../services/rdv.js';
 import { planning } from './tournee.js';
+import { evenementRdv, proposerAgenda } from '../services/agenda.js';
 
 let etat = { mode: 'semaine', du: null, au: null, q: '', dep: '', statut: '' };
 
@@ -88,6 +89,7 @@ export async function render(el, params = {}) {
   $$('.rdv-sel').forEach(c => c.onchange = majLot);
   $('#lot')?.addEventListener('click', () => rediger($$('.rdv-sel:checked').map(c => visibles[+c.dataset.i]), s, () => render(el)));
   $$('[data-ecrire]').forEach(b => b.onclick = () => rediger([visibles[+b.dataset.ecrire]], s, () => render(el)));
+  $$('[data-agenda]').forEach(b => b.onclick = () => agenda(visibles[+b.dataset.agenda], visibles[+b.dataset.agenda].rdv, s));
   $$('[data-statut]').forEach(sel => sel.onchange = async () => {
     const l = visibles[+sel.dataset.statut];
     await reponse(l, sel.value, s);
@@ -111,6 +113,7 @@ function ligneHTML(l, i) {
     </div>
     <div class="rdv-act">
       <select data-statut="${i}" aria-label="Réponse du magasin" class="st-sel">${Object.entries(STATUTS_RDV).map(([k, v]) => `<option value="${k}" ${k === r.statut ? 'selected' : ''}>${v.label}</option>`).join('')}</select>
+      ${['acceptee', 'autreDate'].includes(r.statut) && date ? `<button class="btn small" data-agenda="${i}" title="Ajouter à mon agenda">Agenda</button>` : ''}
       <button class="btn small ${r.statut === 'aFaire' || l.relance ? 'primary' : ''}" data-ecrire="${i}">${r.statut === 'aFaire' ? 'Rédiger' : l.relance ? 'Relancer' : ['acceptee', 'autreDate'].includes(r.statut) ? 'Confirmer' : 'Écrire'}</button>
     </div></li>`;
 }
@@ -129,8 +132,14 @@ async function reponse(l, statut, s) {
     if (!f) return;
     Object.assign(extra, autre ? { dateRetenue: f.date, heureRetenue: f.heure } : { date: f.date, heure: f.heure });
   }
-  const { ajoute } = await changerStatut(r, statut, extra);
+  const { ajoute, rdv } = await changerStatut(r, statut, extra);
   toast(ajoute ? `Rendez-vous ajouté à ta tournée du ${dateEnLettres(ajoute)}` : `${STATUTS_RDV[statut].label}`);
+  if (statut === 'acceptee' || statut === 'autreDate') await agenda(l, rdv, s, 'Rendez-vous confirmé : l\'ajouter à ton agenda ?');
+}
+function agenda(l, r, s, titre) {
+  const c = l.contacts.find(x => x.id === r.contactId) || l.contacts[0];
+  const objet = OBJETS_VISITE.find(o => (o.id || o) === r.objet);
+  return proposerAgenda(evenementRdv(l.m, r, s, c, objet?.label || objet || r.objet || ''), titre ? { titre } : {});
 }
 
 // Rédaction (une ou plusieurs demandes à la suite)

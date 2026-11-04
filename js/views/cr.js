@@ -1,8 +1,10 @@
 // Compte rendu de visite : horaires, interlocuteurs, actions réalisées, photos de rayon,
 // relevé de stock, relevé concurrence et suite à donner. Enregistré dans l'historique des visites.
 import { db, uid, getSettings } from '../db.js';
-import { magasinComplet, produitsPour, numeroVisite, roleDe, trierContacts } from '../data.js';
-import { $, $$, esc, toast, today, confirmer, dictee } from '../ui.js';
+import { magasinComplet, produitsPour, numeroVisite, roleDe, trierContacts, frequenceDe } from '../data.js';
+import { $, $$, esc, toast, today, confirmer, dictee, modal } from '../ui.js';
+import { getRdv, changerStatut, dateEnLettres } from '../services/rdv.js';
+import { evenementRdv, proposerAgenda } from '../services/agenda.js';
 import { STATUTS_VISITE, OBJETS_VISITE, ACTIONS_VISITE, ETIQUETTES_PHOTO, MARQUES_CONCURRENTES, TYPES_CONCURRENCE } from '../config.js';
 import { reduireImage, imageURL, oublierImage } from '../services/images.js';
 
@@ -77,7 +79,6 @@ export async function render(el, { magasin, note }) {
       <div class="sticky-save cr-save">
         ${neuf ? '' : '<button type="button" class="btn danger" id="del">Supprimer</button>'}
         <a class="btn ghost" href="#/magasin/${encodeURIComponent(m.id)}/suivi" id="annuler">Annuler</a>
-        <button class="btn" type="submit" name="suite" value="commande">Enregistrer + préparer une commande</button>
         <button class="btn primary" type="submit" name="suite" value="">Enregistrer le compte rendu</button>
       </div>
     </form></div>`;
@@ -156,6 +157,35 @@ export async function render(el, { magasin, note }) {
       if (et) { et.fait = true; await db.put('tournees', t); }
     }
     toast('Compte rendu enregistré');
-    location.hash = e.submitter?.value === 'commande' ? `#/magasin/${encodeURIComponent(m.id)}/commandes?nouvelle=1` : `#/magasin/${encodeURIComponent(m.id)}/suivi`;
+    const suite = neuf ? await etMaintenant(m, rec, contacts) : null;
+    location.hash = suite === 'commande' ? `#/magasin/${encodeURIComponent(m.id)}/commandes?nouvelle=1` : `#/magasin/${encodeURIComponent(m.id)}/suivi`;
   };
+}
+
+// Après un nouveau compte rendu : fixer le prochain rendez-vous et/ou préparer une commande, sans changer d'écran
+async function etMaintenant(m, rec, contacts) {
+  const s = await getSettings();
+  const freq = frequenceDe(m, s) || 30;
+  const d = new Date((rec.date || today()) + 'T12:00'); d.setDate(d.getDate() + freq);
+  while ([0, 6].includes(d.getDay())) d.setDate(d.getDate() + 1);
+  const proposee = d.toISOString().slice(0, 10);
+  let choix = null;
+  const p = modal({ titre: 'Et maintenant ?', valider: 'Fixer ce rendez-vous', corps: `
+    <button type="button" class="btn suite-cmd" id="suiteCmd">Préparer une commande</button>
+    <h3 class="h2">Prochain rendez-vous</h3>
+    <div class="row"><label>Date<input type="date" name="date" value="${proposee}" required></label>
+    <label>Heure <small class="muted">(si convenue)</small><input type="time" name="heure"></label></div>
+    <label>Objet<select name="objet">${OBJETS_VISITE.map(o => `<option ${o === rec.objet ? 'selected' : ''}>${esc(o)}</option>`).join('')}</select></label>
+    <label class="check"><input type="checkbox" name="agenda" checked> L'ajouter à mon agenda</label>
+    <p class="hint">Proposé dans ${freq} jours (fréquence de visite du magasin). Le rendez-vous est ajouté à ta tournée de ce jour-là.</p>` });
+  const dlg = document.querySelector('dialog[open]');
+  const annuler = dlg.querySelector('footer [data-close]'); if (annuler) annuler.textContent = 'Plus tard';
+  dlg.querySelector('#suiteCmd').onclick = () => { choix = 'commande'; dlg.close(); };
+  const r = await p;
+  if (choix) return choix;
+  if (!r) return null;
+  const { rdv, ajoute } = await changerStatut(await getRdv(m.id), 'acceptee', { date: r.date, heure: r.heure, objet: r.objet });
+  toast(`Prochain rendez-vous le ${dateEnLettres(ajoute || r.date)}${r.heure ? ' à ' + r.heure : ''}`);
+  if (r.agenda === 'on') await proposerAgenda(evenementRdv(m, rdv, s, contacts.find(c => c.principal) || contacts[0], r.objet));
+  return null;
 }
