@@ -27,7 +27,7 @@ export const STORES = {
 export const SYNCHRO = new Set(['magasins', 'contacts', 'notes', 'sav', 'commandes', 'implantations', 'produits', 'images',
   'tournees', 'rdv', 'concurrence', 'frais', 'objectifs', 'reglages']);
 const cleDe = (store, obj) => obj?.[STORES[store].keyPath];
-const aSynchroniser = (store, id) => SYNCHRO.has(store) && (store !== 'reglages' || id === 'settings' || id === 'profil');
+const aSynchroniser = (store, id) => SYNCHRO.has(store) && (store !== 'reglages' || ['settings', 'profil', 'kit'].includes(id));
 let ecouteur = null;                       // prévenu à chaque modification (pour lancer la synchro)
 export const surModification = f => { ecouteur = f; };
 async function marquer(store, ids, supprime = false) {

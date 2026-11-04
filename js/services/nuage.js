@@ -123,3 +123,8 @@ export async function recevoir(depuis, limite = 300) {
   const filtre = depuis ? `&modifie=gt.${encodeURIComponent(depuis)}` : '';
   return appel(`/rest/v1/cap_donnees?select=k,t,supprime,iv,data,modifie&order=modifie.asc${filtre}&limit=${limite}`, { jeton: await jeton() });
 }
+
+// Appel authentifié générique (tables du kit entreprise…)
+export async function appelRest(chemin, { methode = 'GET', corps, entetes } = {}) {
+  return appel(chemin, { methode, corps, entetes, jeton: await jeton() });
+}

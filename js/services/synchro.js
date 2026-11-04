@@ -73,7 +73,7 @@ export async function toutMarquer() {
   for (const store of SYNCHRO) {
     const rows = await db.all(store);
     const kp = STORES[store].keyPath;
-    const lignes = rows.filter(r => store !== 'reglages' || ['settings', 'profil'].includes(r[kp]))
+    const lignes = rows.filter(r => store !== 'reglages' || ['settings', 'profil', 'kit'].includes(r[kp]))
       .map(r => ({ k: `d:${store}:${r[kp]}`, store, id: r[kp], t: Date.parse(r.maj || r.majImport || '') || 1, supprime: false }));
     for (let i = 0; i < lignes.length; i += 500) await Promise.all(lignes.slice(i, i + 500).map(l => db.put('sync', l, { sync: false })));
   }
@@ -101,13 +101,23 @@ async function appliquer(store, id, rec, supprime) {
   return true;
 }
 
+// Kit entreprise : nouvelle version publiée ? (simple vérification, téléchargement seulement si besoin)
+async function verifierKit() {
+  try {
+    const k = await (await import('./kit.js')).mettreAJour();
+    if (k?.erreur) etat.erreur = k.erreur;
+    else if (k?.version) { etat.kit = k.version; dispatchEvent(new CustomEvent('cap-synchro', { detail: { kit: k.version } })); (await import('../ui.js')).toast('Kit entreprise mis à jour (base magasins, catalogue, profil)'); }
+  } catch { /* kit indisponible : on réessaiera */ }
+}
+
 // ── Un tour de synchronisation ──────────────────────────────────────────────────
 export function synchroniser() {
   if (enCours) return enCours;
   enCours = (async () => {
     try {
       await nuage.lireConfig();
-      if (!nuage.configure() || !(await nuage.session()) || !(await chargerCles()) || !navigator.onLine) return etat;
+      if (!nuage.configure() || !navigator.onLine) return etat;
+      if (!(await nuage.session()) || !(await chargerCles())) { await verifierKit(); return etat; }
       if (!(await nuage.jeton())) { etat.erreur = 'Session expirée : reconnecte-toi'; return etat; }
       let recus = 0, envoyes = 0;
       // 1. réception
@@ -151,6 +161,7 @@ export function synchroniser() {
       Object.assign(etat, { derniere: new Date().toISOString(), erreur: null, envoyes, recus });
       await ecrire('derniere', etat.derniere);
       if (recus) dispatchEvent(new CustomEvent('cap-synchro', { detail: { recus } }));
+      await verifierKit();
     } catch (e) {
       etat.erreur = e.message;
       if (e.status === 401) etat.erreur = 'Session expirée : reconnecte-toi';

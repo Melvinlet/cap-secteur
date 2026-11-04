@@ -69,7 +69,18 @@ export async function importerBaseMagasins(file) {
     console.error(e);
     throw new Error("Ce fichier Excel n'a pas pu être lu. S'il contient des « tableaux » Excel, convertis-les en plage normale (Création de tableau > Convertir en plage).");
   }
-  const mags = lireOnglet(wb.getWorksheet('Magasins') || wb.worksheets.find(w => /magasin/i.test(w.name)));
+  const feuilles = {
+    Magasins: lireOnglet(wb.getWorksheet('Magasins') || wb.worksheets.find(w => /magasin/i.test(w.name))),
+    Contacts: lireOnglet(wb.getWorksheet('Contacts')), Implantations: lireOnglet(wb.getWorksheet('Implantations')),
+    'Saison précédente': lireOnglet(wb.getWorksheet('Saison précédente')),
+  };
+  return appliquerBase(feuilles);
+}
+
+// Applique une base magasins (onglets lus depuis Excel, ou venant du kit entreprise : mêmes colonnes)
+export async function appliquerBase(feuilles) {
+  const propre = rows => (rows || []).map(r => Object.fromEntries(Object.entries(r).filter(([h]) => !INTERDIT.test(h)).map(([h, v]) => [h, v == null ? '' : String(v)])));
+  const mags = propre(feuilles.Magasins);
   if (!mags.length) throw new Error('Onglet « Magasins » introuvable ou vide');
   const existants = new Map((await db.all('magasins')).map(m => [m.id, m]));
   const now = new Date().toISOString();
@@ -97,7 +108,7 @@ export async function importerBaseMagasins(file) {
     };
   });
   // Saison précédente (commandes passées + plan d'implantation, quantités seulement)
-  const s26 = lireOnglet(wb.getWorksheet('Saison précédente'));
+  const s26 = propre(feuilles['Saison précédente']);
   const parMag = new Map();
   for (const r of s26) {
     const id = r['ID magasin']; if (!id) continue;
@@ -115,7 +126,7 @@ export async function importerBaseMagasins(file) {
     ['contacts', 'Contacts', r => ({ nom: r['Nom'], fonction: r['Fonction'], email: r['E-mail'], tel: r['Téléphone'], tel2: r['Téléphone 2'], note: r['Note'], origine: r['Source'] })],
     ['implantations', 'Implantations', r => ({ produit: r['Produit'], qte: Number(r['Quantité']) || r['Quantité'], engagement: r['Engagement fichier fournisseur'], code: r['Code magasin'], divers: r['Divers'] })],
   ]) {
-    const rows = lireOnglet(wb.getWorksheet(onglet));
+    const rows = propre(feuilles[onglet]);
     const anciens = (await db.all(store)).filter(c => c.source === 'import' && ids.has(c.magasinId));
     for (const c of anciens) await db.del(store, c.id);
     await db.putMany(store, rows.filter(r => ids.has(r['ID magasin'])).map(r => ({

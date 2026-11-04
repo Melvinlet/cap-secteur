@@ -3,7 +3,7 @@
 // IMPORTANT : à chaque mise en ligne d'une nouvelle version, change VERSION
 // (sinon les téléphones garderont l'ancienne version en cache).
 // ─────────────────────────────────────────────────────────────────────────────
-const VERSION = 'cap-secteur-1.1.0';
+const VERSION = 'cap-secteur-1.2.0';
 const TUILES = 'cap-secteur-tuiles';
 const IMAGES_WEB = 'cap-secteur-images-web';
 const MAX_TUILES = 3000;
@@ -34,6 +34,7 @@ const APP = [
   './js/services/excel.js',
   './js/services/geo.js',
   './js/services/images.js',
+  './js/services/kit.js',
   './js/services/ndf.js',
   './js/services/nuage.js',
   './js/services/planificateur.js',
@@ -70,7 +71,7 @@ const APP = [
   './vendor/leaflet/images/marker-icon.png',
   './vendor/leaflet/images/marker-shadow.png',
   './vendor/leaflet/leaflet.css',
-  './vendor/leaflet/leaflet.js',
+  './vendor/leaflet/leaflet.js'
 ];
 
 self.addEventListener('install', e => {
