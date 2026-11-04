@@ -11,11 +11,10 @@ const REGLE = '8 caractères minimum, avec des lettres et des chiffres';
 export async function render(el, params = {}) {
   await nuage.lireConfig();
   // lien d'invitation : l'adresse du service et sa clé publique arrivent dans le lien (rien de secret)
-  let invite = false;
   if (params.projet && params.cle) {
     if (!nuage.configure()) await nuage.ecrireConfig(params.projet, params.cle);
+    if (!(await kitS.adhesion()) && !(await nuage.session())) { location.hash = '#/bienvenue'; return; }   // collègue invité : premier démarrage guidé
     history.replaceState(null, '', location.pathname + '#/compte');
-    invite = !(await kitS.adhesion());
   }
   const session = await nuage.session();
   const ouvert = session && await synchro.coffreOuvert();
@@ -25,8 +24,7 @@ export async function render(el, params = {}) {
   if (retour?.erreur) { toast(`Lien expiré ou déjà utilisé : ${retour.erreur}`, 'warn'); window.__retourMail = null; }
 
   if (!nuage.configure()) return ecranConfig(z, el);
-  if (invite) setTimeout(() => rejoindre(el), 300);   // lien d'invitation : on enchaîne directement sur le code entreprise
-  if (!session) { ecranConnexion(z, el); return equipeSansCompte(el); }
+  if (!session) { ecranConnexion(z, el, params.onglet === 'creer' ? 'creer' : 'connexion'); return equipeSansCompte(el); }
   if (!ouvert) return retour?.type === 'recovery' ? ecranNouveauMdp(z, el) : ecranDeverrouiller(z, el, session);
   return ecranEtat(z, el, session);
 }
@@ -181,7 +179,7 @@ async function ecranEtat(z, el, session) {
   sectionKit(q('#kitZone'), el);
   q('#invit').onclick = async () => {
     const c = await nuage.lireConfig();
-    const lien = `${location.origin}${location.pathname}#/compte?projet=${encodeURIComponent(c.url)}&cle=${encodeURIComponent(c.cle)}`;
+    const lien = `${location.origin}${location.pathname}#/bienvenue?projet=${encodeURIComponent(c.url)}&cle=${encodeURIComponent(c.cle)}`;
     try { await navigator.clipboard.writeText(lien); toast('Lien copié : envoie-le à ton collègue (le code entreprise, lui, se donne à part)'); }
     catch { await modal({ titre: 'Lien d\'invitation', valider: 'Fermer', corps: `<p>Copie ce lien :</p><p class="cle-secours" style="font-size:.85rem">${esc(lien)}</p>` }); }
   };

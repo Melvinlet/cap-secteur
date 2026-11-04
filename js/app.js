@@ -21,6 +21,7 @@ const ROUTES = [
   [/^\/presenter\/([^/]+)$/, 'catalogue', () => import('./views/presenter.js'), ['id']],
   [/^\/reglages$/, 'reglages', () => import('./views/reglages.js')],
   [/^\/compte$/, 'reglages', () => import('./views/compte.js')],
+  [/^\/bienvenue$/, 'aujourdhui', () => import('./views/bienvenue.js')],
 ];
 
 let current = null;
@@ -66,6 +67,10 @@ await chargerProfil();   // enseignes, campagne, messages… propres à l'entrep
 const nuage = await import('./services/nuage.js');
 await nuage.lireConfig();
 window.__retourMail = await nuage.lireRetourMail().catch(() => null);
+// appareil vierge : écran de premier démarrage
+if (!window.__retourMail && /^#?\/?$/.test(location.hash)) {
+  try { if (await (await import('./views/bienvenue.js')).aMontrer()) history.replaceState(null, '', location.pathname + '#/bienvenue'); } catch { /* accueil normal */ }
+}
 route();
 // synchronisation automatique entre appareils (si un compte est configuré)
 import('./services/synchro.js').then(({ demarrer }) => demarrer());
