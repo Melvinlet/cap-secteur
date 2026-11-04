@@ -629,3 +629,9 @@ p.wleg.fin { margin-bottom: .25rem; }
 .sect-avance[open] > summary .h2::after { transform: rotate(90deg); }
 .sect-avance > section { margin-top: 1rem; }
 .compte-equipe details { margin-top: .6rem; }
+
+/* Remplissage : magasins max par jour */
+.mini-num { width: 4.5rem !important; display: inline-block; margin: 0 .3rem; padding: .3rem .4rem; }
+.max-jours { display: grid; grid-template-columns: repeat(auto-fill, minmax(78px, 1fr)); gap: .5rem; margin: .5rem 0 .2rem; }
+.max-jours label { font-size: .85rem; margin: 0; }
+.max-jours input { text-align: center; }

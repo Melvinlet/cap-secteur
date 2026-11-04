@@ -37,7 +37,8 @@ export function planifier(magasins, s, { debut, semaines = 8, fixes = new Map(),
   const t0 = new Date(debut + 'T12:00').getTime();
   const budgetBase = parseHeure(s.heureFin) - parseHeure(s.heureDebut) - (Number(s.pauseMidi) || 0);
   // options du remplissage : magasins max par jour, jours sans tournée, fin plus tôt le dernier jour
-  const maxJour = Number(cible?.maxParJour) || Infinity;
+  // magasins max : cible.limites[jour] (null = libre), sinon cible.maxParJour pour tous les jours
+  const maxDu = d => { const l = cible?.limites?.[d]; return l != null ? (Number(l) || Infinity) : (cible?.limites ? Infinity : Number(cible?.maxParJour) || Infinity); };
   const joursOff = new Set((cible?.joursOff || []).map(Number));
   const finDernier = cible?.finDernierJour ? parseHeure(cible.finDernierJour) - parseHeure(s.heureDebut) - (Number(s.pauseMidi) || 0) : null;
   const cal = s.calibration || {};
@@ -88,6 +89,7 @@ export function planifier(magasins, s, { debut, semaines = 8, fixes = new Map(),
       for (let j = d + 1; j < nbJours; j++) if (!off(j)) dernierTravaille = false;
       const dernierJour = dernierTravaille || off(d + 1);                 // le soir, retour à la maison
       const budget = dernierTravaille && finDernier != null ? Math.min(budgetBase, finDernier) : budgetBase;
+      const maxJour = maxDu(d);
       // rendez-vous le lendemain : on ne dort sur place que si c'est plus près de ce rendez-vous que la maison
       const pinsDemain = (fixes.get(o + 1) || []).map(id => byId.get(id)).filter(m => m?.lat != null);
       const hDemain = m => heures.has(m.id) ? parseHeure(heures.get(m.id)) : Infinity;

@@ -149,7 +149,21 @@ async function remplir(lundi, dates, tours, all, s, rdvs) {
     .sort((a, b) => all.filter(m => m.enseigne === b).length - all.filter(m => m.enseigne === a).length);
   const deps = [...new Set(all.map(m => String(m.departement)))].sort();
   const nb = e => all.filter(m => m.enseigne === e && PRIORITES[prioriteDe(m)]?.freq != null).length;
+  const modeMax = c.modeMax || (c.maxParJour ? 'fixe' : 'libre');
+  const maxJours = Array.isArray(c.maxJours) ? c.maxJours : [];
   const p = modal({ titre: 'Remplir la semaine automatiquement', valider: 'Remplir la semaine', large: true, corps: `
+    <fieldset><legend>Nombre de magasins par jour</legend>
+      <div class="radio-col">
+        <label class="check"><input type="radio" name="modeMax" value="libre" ${modeMax === 'libre' ? 'checked' : ''}> Pas de limite (autant que les horaires le permettent)</label>
+        <label class="check"><input type="radio" name="modeMax" value="fixe" ${modeMax === 'fixe' ? 'checked' : ''}> Le même maximum chaque jour :
+          <input type="number" name="maxParJour" min="1" max="15" value="${c.maxParJour || 4}" class="mini-num" aria-label="Magasins maximum par jour"> magasins max</label>
+        <label class="check"><input type="radio" name="modeMax" value="variable" ${modeMax === 'variable' ? 'checked' : ''}> Variable selon le jour</label>
+      </div>
+      <div class="max-jours" id="maxJours" ${modeMax === 'variable' ? '' : 'hidden'}>${dates.map((d, i) => `<label>${JOURS[i]} ${new Date(d + 'T12:00').getDate()}<input type="number" name="maxJ:${i}" min="0" max="15" value="${maxJours[i] ?? ''}" placeholder="libre"></label>`).join('')}</div>
+      <p class="hint" id="maxHint" ${modeMax === 'variable' ? '' : 'hidden'}>Vide = sans limite · 0 = pas de tournée ce jour-là (les RDV restent).</p>
+      <div class="row"><label>Fin du dernier jour <small class="muted">(vide = ${s.heureFin})</small><input type="time" name="finDernierJour" value="${esc(c.finDernierJour || '')}"></label></div>
+      <p class="small">Jours sans tournée cette semaine <span class="muted">(bureau, réunion, congé… les RDV de ce jour restent)</span></p>
+      <div class="chips">${dates.map((d, i) => `<label class="chip-check"><input type="checkbox" name="off:${i}"><span>${JOURS[i]} ${new Date(d + 'T12:00').getDate()}</span></label>`).join('')}</div></fieldset>
     <fieldset><legend>Enseignes prioritaires</legend>
       <div class="chips">${enseignes.map(e => `<label class="chip-check"><input type="checkbox" name="ens:${esc(e)}" ${c.enseignes.includes(e) ? 'checked' : ''}><span>${esc(e)} <small>${nb(e)}</small></span></label>`).join('')}</div>
       <p class="hint">Les journées sont construites autour de ces magasins. Rien de coché = toutes les enseignes à égalité.</p>
@@ -165,27 +179,30 @@ async function remplir(lundi, dates, tours, all, s, rdvs) {
       <div class="chips">${[1, 2, 3].map(k => `<label class="chip-check"><input type="checkbox" name="prio:${k}" ${c.priorites.includes(k) ? 'checked' : ''}><span>${PRIORITES[k].label}</span></label>`).join('')}</div>
       <p class="small">Départements <span class="muted">(aucun coché = tous)</span></p>
       <div class="chips">${deps.map(d => `<label class="chip-check"><input type="checkbox" name="dep:${d}" ${c.departements.map(String).includes(d) ? 'checked' : ''}><span>${d}</span></label>`).join('')}</div></fieldset>
-    <fieldset><legend>Rythme</legend>
-      <div class="row"><label>Magasins maximum par jour <small class="muted">(0 = pas de limite)</small><input type="number" name="maxParJour" min="0" max="15" value="${c.maxParJour || 0}"></label>
-      <label>Fin du dernier jour <small class="muted">(vide = ${s.heureFin})</small><input type="time" name="finDernierJour" value="${esc(c.finDernierJour || '')}"></label></div>
-      <p class="small">Jours sans tournée cette semaine <span class="muted">(bureau, réunion, congé… les RDV de ce jour restent)</span></p>
-      <div class="chips">${dates.map((d, i) => `<label class="chip-check"><input type="checkbox" name="off:${i}"><span>${JOURS[i]} ${new Date(d + 'T12:00').getDate()}</span></label>`).join('')}</div></fieldset>
     <fieldset><legend>Organisation</legend>
       ${deja ? `<label class="check"><input type="checkbox" name="garder" checked> Garder les magasins déjà prévus cette semaine</label>` : ''}
       <label class="check"><input type="checkbox" name="nuits" ${s.decoucher ? 'checked' : ''}> Autoriser les nuits sur place (retour le ${['lundi', 'mardi', 'mercredi', 'jeudi', 'vendredi', 'samedi'][dates.length - 1]})</label>
       <label>Détour accepté pour un magasin en retard de visite (minutes)<input type="number" name="detour" min="0" step="5" value="${s.detourRetard ?? 40}"></label>
       <p class="hint">Les rendez-vous (confirmés ou demandés pour un jour précis) sont toujours gardés, à leur jour et à leur heure : la journée s'organise autour, et si un RDV est tôt et loin, la veille se termine dans sa direction avec une nuit sur place. Horaires : ${s.heureDebut}–${s.heureFin}.</p>
       <label class="check"><input type="checkbox" name="memo" checked> Mémoriser ces choix pour les prochaines semaines</label></fieldset>` });
+  const dlg = document.querySelector('dialog[open]');
+  dlg.querySelectorAll('input[name=modeMax]').forEach(x => x.onchange = () => { const v = dlg.querySelector('input[name=modeMax]:checked').value === 'variable'; dlg.querySelector('#maxJours').hidden = !v; dlg.querySelector('#maxHint').hidden = !v; });
+  dlg.querySelector('input[name=maxParJour]').onfocus = () => { dlg.querySelector('input[name=modeMax][value=fixe]').checked = true; dlg.querySelector('#maxJours').hidden = true; dlg.querySelector('#maxHint').hidden = true; };
   const r = await p;
   if (!r) return false;
+  const mode = r.modeMax || 'libre';
+  const parJour = dates.map((_, i) => r['maxJ:' + i] === '' || r['maxJ:' + i] == null ? null : Math.max(0, Number(r['maxJ:' + i])));
   const cible = {
     enseignes: enseignes.filter(e => r['ens:' + e] === 'on'), autres: r.autres || 'detour', detourPetit: Number(r.detourPetit) || 0,
     completer: r.completer === 'on', priorites: [1, 2, 3].filter(k => r['prio:' + k] === 'on'), departements: deps.filter(d => r['dep:' + d] === 'on'),
-    maxParJour: Math.max(0, Number(r.maxParJour) || 0), finDernierJour: r.finDernierJour || '',
+    modeMax: mode, maxParJour: Math.max(1, Number(r.maxParJour) || 4), maxJours: parJour, finDernierJour: r.finDernierJour || '',
   };
   if (!cible.priorites.length) { toast('Coche au moins une priorité', 'warn'); return false; }
-  if (r.memo === 'on') await saveSettings({ ciblage: cible });   // les jours sans tournée ne valent que pour cette semaine
-  cible.joursOff = dates.map((_, i) => i).filter(i => r['off:' + i] === 'on');
+  if (r.memo === 'on') await saveSettings({ ciblage: { ...cible } });   // les jours sans tournée ne valent que pour cette semaine
+  cible.joursOff = dates.map((_, i) => i).filter(i => r['off:' + i] === 'on' || (mode === 'variable' && parJour[i] === 0));
+  // limite effective par jour (null = sans limite), transmise au planificateur
+  cible.limites = dates.map((_, i) => mode === 'fixe' ? cible.maxParJour : mode === 'variable' ? parJour[i] : null);
+  const limite = off => cible.limites[off] || 0;
   const garder = !deja || r.garder === 'on';
   const fixes = new Map(), exclus = new Set(), heures = new Map();
   tours.forEach((t, i) => {
@@ -216,7 +233,7 @@ async function remplir(lundi, dates, tours, all, s, rdvs) {
   const pool = loc.filter(m => !prevus.has(m.id) && m.urgence >= 0.5 && cible.priorites.includes(m.prio)
     && (!cible.departements.length || cible.departements.includes(String(m.departement)))
     && (cible.autres !== 'aucun' || !cible.enseignes.length || cible.enseignes.includes(m.enseigne)));
-  for (const t of tours) if (!cible.maxParJour || t.etapes.length < cible.maxParJour) combles += comblerAttente(t, magsMap, sDu(t.offset), rdvs, pool, prevus, cible.maxParJour);
+  for (const t of tours) if (!limite(t.offset) || t.etapes.length < limite(t.offset)) combles += comblerAttente(t, magsMap, sDu(t.offset), rdvs, pool, prevus, limite(t.offset));
   for (const t of tours) { delete t.offset; if (t.etapes.length) await db.put('tournees', t); else await db.del('tournees', t.id); }
   const n = plan.jours.reduce((a, j) => a + j.etapes.length, 0), d = plan.jours.reduce((a, j) => a + j.detours.length, 0);
   const pc = plan.jours.reduce((a, j) => a + Object.keys(j.ajouts || {}).length, 0);
