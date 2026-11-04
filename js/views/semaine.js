@@ -9,7 +9,7 @@ import { getTournee, heureRdv, choisirMagasins, exporterVersPlanning, lundiDe, e
 import { planifier } from '../services/planificateur.js';
 import { dateEnLettres, tousLesRdv } from '../services/rdv.js';
 import { haversine } from '../services/geo.js';
-import { estimate } from '../services/routing.js';
+import { estimate, optimiserOrdre } from '../services/routing.js';
 import { carte, repere, repereDepart } from '../carte.js';
 
 const COULEURS = ['#1E4FA0', '#C8371D', '#2E8540', '#6B4BA1', '#B25E09', '#0E7C86'];
@@ -53,6 +53,7 @@ export async function render(el, params) {
     </div>
     <div class="actions">
       <button class="btn primary" id="auto" ${departOk ? '' : 'disabled'}>Remplir automatiquement</button>
+      <button class="btn" id="optSem" ${departOk && tot.n > 1 ? '' : 'disabled'}>Optimiser la semaine</button>
       <a class="btn" href="#/rdv?du=${lundi}&au=${dates[dates.length - 1]}">Demander les RDV</a>
       <button class="btn" id="exp">Exporter le ${esc(PROFIL.planning.nom || 'planning')}</button>
       <button class="btn ghost" id="vider" ${tot.n ? '' : 'disabled'}>Vider la semaine</button>
@@ -71,6 +72,7 @@ export async function render(el, params) {
     for (const t of tours) { t.etapes = t.etapes.filter(e => e.rdv); t.depart = null; t.retour = true; await save(t); }
     render(el, { lundi });
   };
+  $('#optSem').onclick = () => optimiserSemaineUI(tours, mags, s, rdvs).then(ok => ok && render(el, { lundi }));
   $('#auto').onclick = () => remplir(lundi, dates, tours, all, s, rdvs).then(ok => ok && render(el, { lundi }));
   $$('[data-add]').forEach(b => b.onclick = async () => {
     const t = tours[+b.dataset.add];
@@ -163,6 +165,11 @@ async function remplir(lundi, dates, tours, all, s, rdvs) {
       <div class="chips">${[1, 2, 3].map(k => `<label class="chip-check"><input type="checkbox" name="prio:${k}" ${c.priorites.includes(k) ? 'checked' : ''}><span>${PRIORITES[k].label}</span></label>`).join('')}</div>
       <p class="small">Départements <span class="muted">(aucun coché = tous)</span></p>
       <div class="chips">${deps.map(d => `<label class="chip-check"><input type="checkbox" name="dep:${d}" ${c.departements.map(String).includes(d) ? 'checked' : ''}><span>${d}</span></label>`).join('')}</div></fieldset>
+    <fieldset><legend>Rythme</legend>
+      <div class="row"><label>Magasins maximum par jour <small class="muted">(0 = pas de limite)</small><input type="number" name="maxParJour" min="0" max="15" value="${c.maxParJour || 0}"></label>
+      <label>Fin du dernier jour <small class="muted">(vide = ${s.heureFin})</small><input type="time" name="finDernierJour" value="${esc(c.finDernierJour || '')}"></label></div>
+      <p class="small">Jours sans tournée cette semaine <span class="muted">(bureau, réunion, congé… les RDV de ce jour restent)</span></p>
+      <div class="chips">${dates.map((d, i) => `<label class="chip-check"><input type="checkbox" name="off:${i}"><span>${JOURS[i]} ${new Date(d + 'T12:00').getDate()}</span></label>`).join('')}</div></fieldset>
     <fieldset><legend>Organisation</legend>
       ${deja ? `<label class="check"><input type="checkbox" name="garder" checked> Garder les magasins déjà prévus cette semaine</label>` : ''}
       <label class="check"><input type="checkbox" name="nuits" ${s.decoucher ? 'checked' : ''}> Autoriser les nuits sur place (retour le ${['lundi', 'mardi', 'mercredi', 'jeudi', 'vendredi', 'samedi'][dates.length - 1]})</label>
@@ -174,9 +181,11 @@ async function remplir(lundi, dates, tours, all, s, rdvs) {
   const cible = {
     enseignes: enseignes.filter(e => r['ens:' + e] === 'on'), autres: r.autres || 'detour', detourPetit: Number(r.detourPetit) || 0,
     completer: r.completer === 'on', priorites: [1, 2, 3].filter(k => r['prio:' + k] === 'on'), departements: deps.filter(d => r['dep:' + d] === 'on'),
+    maxParJour: Math.max(0, Number(r.maxParJour) || 0), finDernierJour: r.finDernierJour || '',
   };
   if (!cible.priorites.length) { toast('Coche au moins une priorité', 'warn'); return false; }
-  if (r.memo === 'on') await saveSettings({ ciblage: cible });
+  if (r.memo === 'on') await saveSettings({ ciblage: cible });   // les jours sans tournée ne valent que pour cette semaine
+  cible.joursOff = dates.map((_, i) => i).filter(i => r['off:' + i] === 'on');
   const garder = !deja || r.garder === 'on';
   const fixes = new Map(), exclus = new Set(), heures = new Map();
   tours.forEach((t, i) => {
@@ -191,32 +200,129 @@ async function remplir(lundi, dates, tours, all, s, rdvs) {
     { debut: lundi, semaines: 1, fixes, exclus, cible, heures });
   const magsMap = new Map(all.map(m => [m.id, m]));
   let combles = 0;
+  const travailles = plan.jours.filter(j => j.etapes.length).map(j => j.offset);
+  const sDu = o => cible.finDernierJour && o === Math.max(...travailles) ? { ...s, heureFin: cible.finDernierJour } : s;
   for (const j of plan.jours) {
     const t = tours[j.offset];
     if (!t) continue;
     const anciens = new Map(t.etapes.map(e => [e.magasinId, e]));
     t.etapes = j.etapes.map(id => anciens.get(id) || { magasinId: id, fait: false, auto: true, detour: j.detours.includes(id), ...(id in (j.ajouts || {}) ? { surChemin: j.ajouts[id] } : {}) });
     t.retour = j.retour; t.depart = j.depart; t.nuit = j.nuit || null; t.calcul = null;
-    retires += caserRendezVous(t, magsMap, s, rdvs, new Set(fixes.get(j.offset) || []));
+    t.offset = j.offset;
+    retires += caserRendezVous(t, magsMap, sDu(j.offset), rdvs, new Set(fixes.get(j.offset) || []));
   }
   // attente avant un RDV : on la comble avec des magasins à voir proches, sans compromettre les RDV
   const prevus = new Set(tours.flatMap(t => t.etapes.map(e => e.magasinId)));
   const pool = loc.filter(m => !prevus.has(m.id) && m.urgence >= 0.5 && cible.priorites.includes(m.prio)
     && (!cible.departements.length || cible.departements.includes(String(m.departement)))
     && (cible.autres !== 'aucun' || !cible.enseignes.length || cible.enseignes.includes(m.enseigne)));
-  for (const t of tours) combles += comblerAttente(t, magsMap, s, rdvs, pool, prevus);
-  for (const t of tours) { if (t.etapes.length) await db.put('tournees', t); else await db.del('tournees', t.id); }
+  for (const t of tours) if (!cible.maxParJour || t.etapes.length < cible.maxParJour) combles += comblerAttente(t, magsMap, sDu(t.offset), rdvs, pool, prevus, cible.maxParJour);
+  for (const t of tours) { delete t.offset; if (t.etapes.length) await db.put('tournees', t); else await db.del('tournees', t.id); }
   const n = plan.jours.reduce((a, j) => a + j.etapes.length, 0), d = plan.jours.reduce((a, j) => a + j.detours.length, 0);
   const pc = plan.jours.reduce((a, j) => a + Object.keys(j.ajouts || {}).length, 0);
   toast(`Semaine remplie : ${n} visites${pc ? `, dont ${pc} petit${pc > 1 ? 's' : ''} magasin${pc > 1 ? 's' : ''} sur le chemin` : ''}${d ? `, ${d} détour${d > 1 ? 's' : ''} pour retard` : ''}${combles ? `. ${combles} magasin${combles > 1 ? 's' : ''} ajouté${combles > 1 ? 's' : ''} pour remplir l'attente avant un RDV` : ''}${retires ? `. ${retires} magasin${retires > 1 ? 's' : ''} retiré${retires > 1 ? 's' : ''} pour tenir les heures de RDV` : ''}`);
   return true;
 }
 
+// ── Optimiser une semaine faite à la main ─────────────────────────────────────────
+// Réordonne chaque journée (trajet le plus court, RDV à l'heure), recalcule les nuits sur place
+// et, si demandé, déplace des magasins d'un jour à l'autre quand ça fait gagner de la route.
+async function optimiserSemaineUI(tours, mags, s, rdvs) {
+  const r = await modal({ titre: 'Optimiser la semaine', valider: 'Optimiser', corps: `
+    <p>Tes magasins restent ceux que tu as choisis. L'appli :</p>
+    <label class="check"><input type="checkbox" checked disabled> Remet chaque journée dans le meilleur ordre (moins de route, heures de RDV respectées)</label>
+    <label class="check"><input type="checkbox" name="nuits" ${s.decoucher ? 'checked' : 'disabled'}> Recalcule les nuits sur place${s.decoucher ? ` (quand le retour dépasse ${s.seuilDecoucher} min et que le lendemain est plus près)` : ' (désactivées dans les Réglages)'}</label>
+    <label class="check"><input type="checkbox" name="deplacer"> Déplace des magasins d'un jour à l'autre si ça fait gagner de la route</label>
+    <p class="hint">Les magasins avec un RDV restent à leur jour, et les journées passées ne bougent pas.</p>` });
+  if (!r) return false;
+  const avant = bilan(tours, mags, s, rdvs);
+  optimiserSemaine(tours, mags, s, rdvs, { nuits: r.nuits === 'on', deplacer: r.deplacer === 'on' });
+  const apres = bilan(tours, mags, s, rdvs);
+  for (const t of tours) { if (t.etapes.length) await db.put('tournees', t); else await db.del('tournees', t.id); }
+  const gain = Math.round(avant.conduite - apres.conduite);
+  toast(`${gain > 0 ? `${fmtDuree(gain)} de route en moins (${fmtKm(avant.km - apres.km)})` : 'Semaine déjà bien organisée'}`
+    + `${apres.nuits !== avant.nuits ? ` · ${apres.nuits} nuit${apres.nuits > 1 ? 's' : ''} sur place` : ''}${apres.deplaces ? ` · ${apres.deplaces} magasin${apres.deplaces > 1 ? 's' : ''} changé${apres.deplaces > 1 ? 's' : ''} de jour` : ''}`
+    + `${apres.rdvRates ? ` · attention : ${apres.rdvRates} RDV difficile${apres.rdvRates > 1 ? 's' : ''} à tenir` : ''}`, apres.rdvRates ? 'warn' : undefined);
+  return true;
+}
+function bilan(tours, mags, s, rdvs) {
+  const est = tours.map(t => estimer(t, mags, s, rdvs));
+  return { km: est.reduce((a, p) => a + p.km, 0), conduite: est.reduce((a, p) => a + p.conduite, 0), rdvRates: est.reduce((a, p) => a + p.rdvRates, 0),
+    nuits: tours.filter(t => t.etapes.length && !t.retour).length, deplaces: tours.reduce((a, t) => a + t.etapes.filter(e => e.deplace).length, 0) };
+}
+export function optimiserSemaine(tours, mags, s, rdvs, { nuits = true, deplacer = false } = {}) {
+  const H = s.depart, auj = new Date().toISOString().slice(0, 10);
+  const cal = s.calibration || {};
+  const dt = (a, b) => haversine(a, b) * s.coefRoute * (cal.temps || 1) / s.vitesseMoyenne * 60;
+  const pos = t => t.depart?.lat != null ? t.depart : H;
+  const fixe = (t, e) => e.fait || e.rdv || heureRdv(e, rdvs.get(e.magasinId), t.id) || mags.get(e.magasinId)?.lat == null;
+  const ordonner = t => {
+    const loc = t.etapes.filter(e => mags.get(e.magasinId)?.lat != null);
+    const ordre = optimiserOrdre(pos(t), loc.map(e => mags.get(e.magasinId)), t.retour, H);
+    t.etapes = [...ordre.map(i => loc[i]), ...t.etapes.filter(e => !loc.includes(e))];
+    t.calcul = null;
+    placerRendezVous(t, mags, s, rdvs);
+  };
+  const cout = t => { if (!t.etapes.length) return 0; const p = estimer(t, mags, s, rdvs); return p.conduite + (p.depasse ? (p.fin - p.finJour) * 3 : 0) + p.rdvRates * 500; };
+  const modifiables = tours.filter(t => t.id >= auj && !t.etapes.some(e => e.fait));
+  modifiables.forEach(t => { t.calcul = null; t.etapes.forEach(e => delete e.deplace); });
+
+  // 1. déplacer des magasins d'un jour à l'autre (seulement vers des jours déjà prévus)
+  if (deplacer) {
+    for (let passe = 0; passe < 3; passe++) {
+      let bouge = false;
+      for (const a of modifiables) for (const e of [...a.etapes]) {
+        if (fixe(a, e)) continue;
+        const sansE = { ...a, etapes: a.etapes.filter(x => x !== e) };
+        const gainA = cout(a) - cout(sansE);
+        let best = null;
+        for (const b of modifiables) {
+          if (b === a || !b.etapes.length || b.etapes.some(x => x.magasinId === e.magasinId)) continue;
+          const cb = cout(b);
+          for (let k = 0; k <= b.etapes.length; k++) {
+            const essai = { ...b, etapes: [...b.etapes.slice(0, k), e, ...b.etapes.slice(k)] };
+            const p = estimer(essai, mags, s, rdvs);
+            if (p.depasse || p.rdvRates > estimer(b, mags, s, rdvs).rdvRates) continue;
+            const surcout = cout(essai) - cb;
+            if (surcout < gainA - 10 && (!best || surcout < best.surcout)) best = { surcout, b, etapes: essai.etapes };
+          }
+        }
+        if (best) { a.etapes = sansE.etapes; best.b.etapes = best.etapes; e.deplace = true; ordonner(a); ordonner(best.b); bouge = true; }
+      }
+      if (!bouge) break;
+    }
+  }
+  // 2. nuits sur place + ordre de chaque journée, dans l'ordre de la semaine
+  let ici = H;
+  tours.forEach((t, i) => {
+    const modif = modifiables.includes(t);
+    if (!t.etapes.length) { if (modif) { t.depart = null; t.retour = true; t.nuit = null; } ici = H; return; }
+    if (!modif) { const last = mags.get(t.etapes.at(-1).magasinId); ici = t.retour || last?.lat == null ? H : { lat: last.lat, lon: last.lon, adresse: `Nuit près de ${last.ville}` }; return; }
+    t.depart = ici === H ? null : { lat: ici.lat, lon: ici.lon, adresse: ici.adresse };
+    if (nuits) {
+      t.retour = true; ordonner(t);
+      const suivant = tours[i + 1];
+      const pts = (suivant?.etapes || []).map(e => mags.get(e.magasinId)).filter(m => m?.lat != null);
+      const last = mags.get(t.etapes.at(-1).magasinId);
+      if (s.decoucher && pts.length && last?.lat != null && dt(last, H) > (Number(s.seuilDecoucher) || 75)) {
+        // nuit sur place si la journée du lendemain est plus près d'ici que de la maison
+        t.retour = Math.min(...pts.map(m => dt(last, m))) >= Math.min(...pts.map(m => dt(H, m)));
+      }
+    }
+    ordonner(t);
+    const last = mags.get(t.etapes.at(-1).magasinId);
+    t.nuit = t.retour || last?.lat == null ? null : `Nuit près de ${last.ville}`;
+    ici = t.nuit ? { lat: last.lat, lon: last.lon, adresse: t.nuit } : H;
+  });
+  return tours;
+}
+
 // Si la journée déborde (attente avant un RDV, RDV tardif…), retire les magasins ajoutés
 // automatiquement qui libèrent le plus de temps. Renvoie le nombre de magasins retirés.
-function comblerAttente(t, mags, s, rdvs, pool, prevus) {
+function comblerAttente(t, mags, s, rdvs, pool, prevus, max = 0) {
   let n = 0;
   for (let essais = 0; essais < 8; essais++) {
+    if (max && t.etapes.length >= max) return n;
     const p = estimer(t, mags, s, rdvs);
     if (p.attente < 40 || p.depasse) return n;
     const pts = t.etapes.map(e => mags.get(e.magasinId)).filter(m => m?.lat != null);

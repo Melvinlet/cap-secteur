@@ -123,7 +123,7 @@ export async function render(el, { date = today() }) {
         </div>
         <div class="actions">
           <button class="btn primary" id="add">Ajouter des magasins</button>
-          <button class="btn" id="opt" ${t.etapes.length < 2 || !departOk ? 'disabled' : ''}>Optimiser l'ordre</button>
+          <button class="btn" id="opt" ${t.etapes.length < 2 || !departOk ? 'disabled' : ''} title="Meilleur ordre, heures de RDV respectées, nuit sur place si le lendemain est plus près">Optimiser</button>
           <button class="btn ghost" id="calc" ${!t.etapes.length || !departOk ? 'disabled' : ''}>Recalculer</button>
         </div>
         <label class="check"><input type="checkbox" id="retour" ${t.retour ? 'checked' : ''}> Retour au domicile le soir (sinon nuit sur place)</label>
@@ -198,6 +198,17 @@ export async function render(el, { date = today() }) {
     const loc = t.etapes.filter(e => mags.get(e.magasinId).lat != null);
     if (loc.length < t.etapes.length) toast(`${t.etapes.length - loc.length} magasin(s) sans position ignoré(s)`, 'warn');
     const avecRdv = t.etapes.some(e => heureRdv(e, rdvs.get(e.magasinId), t.id));
+    let suivant = null;
+    if (optimiser && s.decoucher && loc.length && !t.etapes.some(e => e.fait)) {
+      // nuit sur place ou retour : selon la distance de la maison et la tournée du lendemain
+      const locM = loc.map(e => mags.get(e.magasinId));
+      const last = locM[optimiserOrdre(dep, locM, true, s.depart).at(-1)];
+      suivant = await getTournee(decale(date, 1));
+      const pts = suivant.etapes.map(e => mags.get(e.magasinId)).filter(m => m?.lat != null);
+      const dtm = (a, b) => haversine(a, b) * s.coefRoute / s.vitesseMoyenne * 60;
+      t.retour = !(pts.length && dtm(last, s.depart) > (Number(s.seuilDecoucher) || 75)
+        && Math.min(...pts.map(m => dtm(last, m))) < Math.min(...pts.map(m => dtm(s.depart, m))));
+    }
     if (optimiser) {
       const ordre = optimiserOrdre(dep, loc.map(e => mags.get(e.magasinId)), t.retour, s.depart);
       t.etapes = [...ordre.map(i => loc[i]), ...t.etapes.filter(e => !loc.includes(e))];
@@ -213,6 +224,12 @@ export async function render(el, { date = today() }) {
       t.etapes = [...reord, ...(t.retour ? [] : etapesLoc.slice(-1)), ...t.etapes.filter(e => !etapesLoc.includes(e))];
     }
     t.calcul = { ...r, ts: new Date().toISOString() };
+    if (suivant) {   // le lendemain part de l'hôtel (ou de la maison)
+      const der = mags.get(t.etapes.at(-1)?.magasinId);
+      t.nuit = t.retour || der?.lat == null ? null : `Nuit près de ${der.ville}`;
+      if (suivant.etapes.length) { suivant.depart = t.nuit ? { lat: der.lat, lon: der.lon, adresse: t.nuit } : null; suivant.calcul = null; await db.put('tournees', suivant); }
+      toast(t.retour ? 'Optimisé : retour à la maison le soir' : `Optimisé : ${t.nuit.toLowerCase()} (le lendemain est plus près)`);
+    }
     await db.put('tournees', t);
     if (r.provider === 'tomtom') await calibrer(pts, r.legs, s);
     if (r.erreur) toast('Service d\'itinéraire indisponible : estimation à vol d\'oiseau', 'warn');

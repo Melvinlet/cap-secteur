@@ -35,7 +35,11 @@ export function planifier(magasins, s, { debut, semaines = 8, fixes = new Map(),
   // heures : Map(id magasin → 'HH:MM') heure de rendez-vous des magasins imposés
   const H = s.depart;
   const t0 = new Date(debut + 'T12:00').getTime();
-  const budget = parseHeure(s.heureFin) - parseHeure(s.heureDebut) - (Number(s.pauseMidi) || 0);
+  const budgetBase = parseHeure(s.heureFin) - parseHeure(s.heureDebut) - (Number(s.pauseMidi) || 0);
+  // options du remplissage : magasins max par jour, jours sans tournée, fin plus tôt le dernier jour
+  const maxJour = Number(cible?.maxParJour) || Infinity;
+  const joursOff = new Set((cible?.joursOff || []).map(Number));
+  const finDernier = cible?.finDernierJour ? parseHeure(cible.finDernierJour) - parseHeure(s.heureDebut) - (Number(s.pauseMidi) || 0) : null;
   const cal = s.calibration || {};
   const kmF = s.coefRoute * (cal.km || 1), tF = s.coefRoute * (cal.temps || 1);
   const km = (a, b) => haversine(a, b) * kmF;
@@ -69,11 +73,21 @@ export function planifier(magasins, s, { debut, semaines = 8, fixes = new Map(),
   const petits = modeAutres === 'detour' ? candidats.filter(m => !estCible(m)) : [];
 
   const jours = [];
+  const rentrer = j => {
+    const der = byId.get(j.etapes[j.etapes.length - 1]);
+    j.retour = true; j.nuit = null;
+    if (der) { j.km += km(der, H); j.conduite += dt(der, H); }
+  };
   for (let w = 0; w < semaines; w++) {
     let pos = H;
     for (let d = 0; d < nbJours; d++) {
       const o = w * 7 + d;                                               // jour du plan
-      const dernierJour = d === nbJours - 1;
+      const off = j => joursOff.has(j) && !(fixes.get(w * 7 + j) || []).length;   // jour sans tournée (sauf RDV imposé)
+      if (off(d)) { jours.push(jourVide(w, d, o, null)); pos = H; continue; }
+      let dernierTravaille = true;
+      for (let j = d + 1; j < nbJours; j++) if (!off(j)) dernierTravaille = false;
+      const dernierJour = dernierTravaille || off(d + 1);                 // le soir, retour à la maison
+      const budget = dernierTravaille && finDernier != null ? Math.min(budgetBase, finDernier) : budgetBase;
       // rendez-vous le lendemain : on ne dort sur place que si c'est plus près de ce rendez-vous que la maison
       const pinsDemain = (fixes.get(o + 1) || []).map(id => byId.get(id)).filter(m => m?.lat != null);
       const hDemain = m => heures.has(m.id) ? parseHeure(heures.get(m.id)) : Infinity;
@@ -81,8 +95,13 @@ export function planifier(magasins, s, { debut, semaines = 8, fixes = new Map(),
       // RDV tôt le lendemain, trop loin pour y être à l'heure en partant de la maison : on finit la journée vers lui et on dort sur place
       const marge = pinDemain ? hDemain(pinDemain) - parseHeure(s.heureDebut) : Infinity;
       const versDemain = !!pinDemain && s.decoucher && !dernierJour && marge < Infinity && dt(H, pinDemain) > marge;
+      // lendemain = dernier jour travaillé, peut-être raccourci : depuis l'hôtel il faut pouvoir voir des magasins ET rentrer
+      let demainDernier = !dernierJour;
+      for (let j = d + 2; j < nbJours; j++) if (!off(j)) demainDernier = false;
+      const budgetDemain = demainDernier && finDernier != null ? Math.min(budgetBase, finDernier) : budgetBase;
       const doitRentrer = m => versDemain ? false
-        : !s.decoucher || dernierJour || dt(m, H) <= seuil || (!!pinDemain && dt(m, pinDemain) > dt(H, pinDemain));
+        : !s.decoucher || dernierJour || dt(m, H) <= seuil || (!!pinDemain && dt(m, pinDemain) > dt(H, pinDemain))
+          || (demainDernier && dt(m, H) > budgetDemain * 0.5);
       // fin de journée : retour maison, ou route du soir vers l'hôtel proche du RDV du lendemain
       const fin = m => versDemain ? Math.max(0, dt(m, pinDemain) - marge) : (doitRentrer(m) ? dt(m, H) : 0);
       // dus : échéance passée ou dans la semaine ; bonus : à moins de la moitié de leur fréquence
@@ -102,7 +121,9 @@ export function planifier(magasins, s, { debut, semaines = 8, fixes = new Map(),
           // le plus loin d'abord, en avançant les magasins les plus en retard
           if (versDemain) c.sort((a, b) => (dt(a, pinDemain) + dt(H, a)) - (dt(b, pinDemain) + dt(H, b)) + (due.get(a) - due.get(b)) * 2);
           else c.sort((a, b) => (dt(H, b) - dt(H, a)) + (due.get(a) - due.get(b)) * 4);
-          seed = c.find(m => dt(H, m) + visite(m) + fin(m) <= budget);
+          // journée avec retour le soir : on garde au moins 40 % du temps pour les visites
+          if (!versDemain) seed = c.find(m => (!doitRentrer(m) || 2 * dt(H, m) <= budget * 0.6) && dt(H, m) + visite(m) + fin(m) <= budget);
+          seed ||= c.find(m => dt(H, m) + visite(m) + fin(m) <= budget);
         } else {
           c.sort((a, b) => dt(pos, a) + (dernierJour ? dt(a, H) * 0.5 : 0) - dt(pos, b) - (dernierJour ? dt(b, H) * 0.5 : 0));
           seed = c.find(m => dt(pos, m) + visite(m) + fin(m) <= budget);
@@ -112,7 +133,12 @@ export function planifier(magasins, s, { debut, semaines = 8, fixes = new Map(),
         // rien de dû faisable depuis l'hôtel : on rentre en voyant ce qui est sur le chemin
         const c = principaux.filter(estBonus).sort((a, b) => dt(pos, a) + dt(a, H) - dt(pos, b) - dt(b, H));
         seed = c.find(m => dt(pos, m) + visite(m) + dt(m, H) <= budget) || null;
-        if (!seed) { jours.push(jourVide(w, d, o, pos)); pos = H; continue; }
+        if (!seed) {
+          // rien de faisable depuis l'hôtel : la veille on rentre plutôt, et on refait cette journée depuis la maison
+          const veille = jours[jours.length - 1];
+          if (veille?.etapes.length && !veille.retour) { rentrer(veille); pos = H; d--; continue; }
+          jours.push(jourVide(w, d, o, pos)); pos = H; continue;
+        }
       }
       if (!seed) { jours.push(jourVide(w, d, o, null)); continue; }
 
@@ -122,6 +148,7 @@ export function planifier(magasins, s, { debut, semaines = 8, fixes = new Map(),
       for (const p of pins.slice(1).sort((a, b) => dt(seed, a) - dt(seed, b))) { t += dt(cur, p) + visite(p); etapes.push(p); pris.add(p); cur = p; }
       let sautMax = 80;
       for (;;) {
+        if (etapes.length >= maxJour) break;
         let best = null, bestScore = Infinity;
         for (const c of (estCible(seed) || modeAutres !== 'detour' ? principaux : petits)) {
           if (pris.has(c)) continue;
@@ -153,6 +180,7 @@ export function planifier(magasins, s, { debut, semaines = 8, fixes = new Map(),
       if (petits.length) {
         const duree = (l, ret) => { let c = 0, p = pos; for (const m of l) { c += dt(p, m) + visite(m); p = m; } return c + (ret ? dt(p, H) : versDemain ? fin(p) : 0); };
         for (;;) {
+          if (liste.length >= maxJour) break;
           let best = null;
           for (const c of petits) {
             if (pris.has(c) || !(estDu(c) || estBonus(c))) continue;
@@ -197,6 +225,13 @@ export function planifier(magasins, s, { debut, semaines = 8, fixes = new Map(),
     }
   }
 
+  // une nuit sur place n'a de sens que si le lendemain est travaillé : sinon retour à la maison le soir
+  jours.forEach((j, i) => {
+    const n = jours[i + 1];
+    if (!j.etapes.length || j.retour || (n && n.semaine === j.semaine && n.etapes.length)) return;
+    rentrer(j);
+    if (n) n.depart = null;
+  });
   const pleins = jours.filter(j => j.etapes.length);
   const jamais = actifs.filter(m => !visites.get(m));
   const enRetardFin = actifs.filter(m => due.get(m) < semaines * 7 - 7 && visites.get(m) > 0);
@@ -215,7 +250,7 @@ export function planifier(magasins, s, { debut, semaines = 8, fixes = new Map(),
 }
 
 function jourVide(w, d, o, pos) {
-  return { semaine: w + 1, jourSemaine: d, offset: o, depart: pos && pos.adresse ? { lat: pos.lat, lon: pos.lon, adresse: pos.adresse } : null, etapes: [], retour: true, km: 0, conduite: 0, fin: 0, depasse: false };
+  return { semaine: w + 1, jourSemaine: d, offset: o, depart: pos && pos.adresse ? { lat: pos.lat, lon: pos.lon, adresse: pos.adresse } : null, etapes: [], fixes: [], detours: [], ajouts: {}, retour: true, km: 0, conduite: 0, fin: 0, depasse: false };
 }
 
 export function dateDuJour(debut, offset) {

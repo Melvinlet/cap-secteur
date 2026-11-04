@@ -5,7 +5,7 @@
 // Aucune donnée d'entreprise ici : voir « Profil entreprise » en bas de fichier.
 // ─────────────────────────────────────────────────────────────────────────────
 
-export const APP_VERSION = '1.3.0';
+export const APP_VERSION = '1.4.0';
 
 export const DEFAULT_SETTINGS = {
   commercial: '',                 // ton nom, utilisé dans les exports
@@ -26,7 +26,7 @@ export const DEFAULT_SETTINGS = {
   seuilDecoucher: 75,             // au-delà de ce temps de retour (min), on dort sur place
   detourRetard: 40,               // détour accepté (min) pour un magasin en retard de visite
   // ciblage du remplissage automatique de la semaine (modifiable dans la fenêtre « Remplir automatiquement »)
-  ciblage: { enseignes: [], autres: 'detour', detourPetit: 20, completer: true, priorites: [1, 2, 3], departements: [] },
+  ciblage: { enseignes: [], autres: 'detour', detourPetit: 20, completer: true, priorites: [1, 2, 3], departements: [], maxParJour: 0, finDernierJour: '' },
   coefRoute: 1.3,                 // distance à vol d'oiseau × coef ≈ distance par la route
   vitesseMoyenne: 70,             // km/h, utilisée quand aucun service d'itinéraire n'est disponible
 
