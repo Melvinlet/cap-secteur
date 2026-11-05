@@ -70,20 +70,30 @@ export async function memoriser(brute, version, choix) {
   await db.put('reglages', { cle: 'kit', valeur: { cle: Array.from(brute), version, ...choix, maj: new Date().toISOString() } });
 }
 export const adhesion = async () => (await db.get('reglages', 'kit'))?.valeur || null;
-export async function quitter() { await db.del('reglages', 'kit'); }
+// Version réellement appliquée SUR CET APPAREIL (jamais synchronisée : chaque appareil applique le kit lui-même)
+const versionAppliquee = async () => (await db.get('sync', 'kitApplique'))?.valeur || null;
+const noterAppliquee = v => db.put('sync', { k: 'kitApplique', valeur: v }, { sync: false });
+export async function quitter() { await db.del('reglages', 'kit'); await db.del('sync', 'kitApplique', { sync: false }); }
+
+// Seule porte d'entrée pour installer un kit sur l'appareil : appliquer + mémoriser + noter la version
+export async function installer(kit, brute, version, choix) {
+  const r = await appliquerKit(kit, choix);
+  await memoriser(brute, version, choix);
+  await noterAppliquee(version);
+  return r;
+}
 
 // Vérifie s'il existe une version plus récente et l'applique (appelé après chaque synchronisation)
 export async function mettreAJour({ forcer = false } = {}) {
   const a = await adhesion();
   if (!a) return null;
   const info = await infoKit();
-  if (!info || (!forcer && info.version === a.version)) return null;
+  if (!info || (!forcer && info.version === await versionAppliquee())) return null;
   const brute = new Uint8Array(a.cle);
   let kit;
   try { kit = await telecharger(info, brute); }
   catch { return { erreur: 'Le code entreprise a changé : demande le nouveau code et rejoins à nouveau l\'équipe (Compte et synchronisation).' }; }
-  await appliquerKit(kit, a);
-  await memoriser(brute, info.version, { secteurs: a.secteurs, departements: a.departements });
+  await installer(kit, brute, info.version, { secteurs: a.secteurs, departements: a.departements });
   return { version: info.version, nom: kit.nom };
 }
 

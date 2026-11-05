@@ -109,8 +109,7 @@ export async function render(el, params = {}) {
       if (!choix.departements.length) return toast('Coche au moins un département', 'warn');
       const b = q('#go'); b.disabled = true; b.textContent = 'Chargement…';
       try {
-        const r = await kitS.appliquerKit(etat.ouvert.kit, choix);
-        await kitS.memoriser(etat.ouvert.brute, etat.ouvert.version, choix);
+        const r = await kitS.installer(etat.ouvert.kit, etat.ouvert.brute, etat.ouvert.version, choix);
         await saveSettings({ departements: choix.departements });
         etat.nb = r.magasins;
         toi();

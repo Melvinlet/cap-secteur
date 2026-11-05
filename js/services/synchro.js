@@ -103,6 +103,7 @@ async function appliquer(store, id, rec, supprime) {
 
 // Kit entreprise : nouvelle version publiée ? (simple vérification, téléchargement seulement si besoin)
 async function verifierKit() {
+  etat.kit = null;
   try {
     const k = await (await import('./kit.js')).mettreAJour();
     if (k?.erreur) etat.erreur = k.erreur;

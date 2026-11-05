@@ -274,8 +274,7 @@ async function rejoindre(el, actuel = null) {
   const choix = { secteurs: [c.secteur], departements: Object.keys(c).filter(k => k.startsWith('dep:')).map(k => k.slice(4)) };
   if (!choix.departements.length) return toast('Coche au moins un département', 'warn');
   try {
-    const res = await kitS.appliquerKit(ouvert.kit, choix);
-    await kitS.memoriser(ouvert.brute, ouvert.version, choix);
+    const res = await kitS.installer(ouvert.kit, ouvert.brute, ouvert.version, choix);
     toast(`Bienvenue : ${res.magasins} magasins chargés, avec le catalogue et les réglages de l'entreprise`);
     location.hash = '#/magasins';
   } catch (e) { toast(e.message, 'warn'); }
@@ -301,8 +300,9 @@ async function publier(el, info) {
     const res = await kitS.publierKit(kit, r.code, { nouveauCode: r.nouveau === 'on' });
     // si le responsable utilise déjà le kit, il passe directement à la nouvelle version
     const a = await kitS.adhesion();
-    if (a) await kitS.memoriser(res.brute, res.version, { secteurs: a.secteurs, departements: a.departements });
-    toast(`Kit publié et chiffré (${res.morceaux} morceau${res.morceaux > 1 ? 'x' : ''})${a ? '' : '. Pour l\'utiliser aussi toi-même : « Rejoindre l\'équipe »'}`);
+    // le kit publié s'applique aussi tout de suite sur cet appareil (avant : seule la version était notée, rien n'était appliqué)
+    if (a) await kitS.installer({ ...kit, version: res.version }, res.brute, res.version, { secteurs: a.secteurs, departements: a.departements });
+    toast(`Kit publié et chiffré (${res.morceaux} morceau${res.morceaux > 1 ? 'x' : ''})${a ? ', et appliqué sur cet appareil' : '. Pour l\'utiliser aussi toi-même : « Rejoindre l\'équipe »'}`);
     render(el);
   } catch (e) {
     toast(e.codeDifferent ? 'Ce code ne correspond pas au code actuel. Coche « Changer de code » si c\'est voulu.' : e.message, 'warn');
