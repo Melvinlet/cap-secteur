@@ -82,6 +82,9 @@ export function planifier(magasins, s, { debut, semaines = 8, fixes = new Map(),
     j.retour = true; j.nuit = null;
     if (der) { j.km += km(der, H); j.conduite += dt(der, H); }
   };
+  // zone imposée à certains jours : autour d'un point (rayon en minutes de route) ou un département
+  const zoneDu = d => cible?.zones?.[d] || null;
+  const dansZone = (z, m) => !z || (z.dep ? String(m.departement) === z.dep : dt(z, m) <= z.rayon);
   for (let w = 0; w < semaines; w++) {
     let pos = H;
     for (let d = 0; d < nbJours; d++) {
@@ -96,7 +99,9 @@ export function planifier(magasins, s, { debut, semaines = 8, fixes = new Map(),
       // rendez-vous le lendemain : on ne dort sur place que si c'est plus près de ce rendez-vous que la maison
       const pinsDemain = (fixes.get(o + 1) || []).map(id => byId.get(id)).filter(m => m?.lat != null);
       const hDemain = m => heures.has(m.id) ? parseHeure(heures.get(m.id)) : Infinity;
-      const pinDemain = pinsDemain.sort((a, b) => hDemain(a) - hDemain(b))[0];
+      const zone = zoneDu(d), ok = m => dansZone(zone, m);
+      // le lendemain se passe dans une zone : la nuit se décide comme pour un RDV (plus près de la zone que de la maison ?)
+      const pinDemain = pinsDemain.sort((a, b) => hDemain(a) - hDemain(b))[0] || (zoneDu(d + 1)?.lat != null ? zoneDu(d + 1) : undefined);
       // RDV tôt le lendemain, trop loin pour y être à l'heure en partant de la maison : on finit la journée vers lui et on dort sur place
       const marge = pinDemain ? hDemain(pinDemain) - debutDu(d + 1) : Infinity;
       const versDemain = !!pinDemain && s.decoucher && !dernierJour && marge < Infinity && dt(H, pinDemain) > marge;
@@ -114,6 +119,7 @@ export function planifier(magasins, s, { debut, semaines = 8, fixes = new Map(),
       const estBonus = m => due.get(m) <= o + freq.get(m) / 2;
       let dus = principaux.filter(estDu);
       if (!dus.length && modeAutres === 'detour' && cible?.completer !== false) dus = petits.filter(estDu);   // plus aucun grand magasin dû : on complète
+      if (zone) { dus = dus.filter(ok); if (!dus.length) dus = [...principaux, ...petits].filter(m => estDu(m) && ok(m)); }
       const depuisDomicile = pos === H;
       const pins = (fixes.get(o) || []).map(id => byId.get(id)).filter(m => m && m.lat != null);
 
@@ -136,7 +142,7 @@ export function planifier(magasins, s, { debut, semaines = 8, fixes = new Map(),
       }
       if (!seed && !depuisDomicile) {
         // rien de dû faisable depuis l'hôtel : on rentre en voyant ce qui est sur le chemin
-        const c = principaux.filter(estBonus).sort((a, b) => dt(pos, a) + dt(a, H) - dt(pos, b) - dt(b, H));
+        const c = principaux.filter(m => estBonus(m) && ok(m)).sort((a, b) => dt(pos, a) + dt(a, H) - dt(pos, b) - dt(b, H));
         seed = c.find(m => dt(pos, m) + visite(m) + dt(m, H) <= budget) || null;
         if (!seed) {
           // rien de faisable depuis l'hôtel : la veille on rentre plutôt, et on refait cette journée depuis la maison
@@ -155,8 +161,8 @@ export function planifier(magasins, s, { debut, semaines = 8, fixes = new Map(),
       for (;;) {
         if (etapes.length >= maxJour) break;
         let best = null, bestScore = Infinity;
-        for (const c of (estCible(seed) || modeAutres !== 'detour' ? principaux : petits)) {
-          if (pris.has(c)) continue;
+        for (const c of (zone ? [...principaux, ...petits] : estCible(seed) || modeAutres !== 'detour' ? principaux : petits)) {
+          if (pris.has(c) || !ok(c)) continue;
           const du = estDu(c);
           if (!du && !estBonus(c)) continue;
           const r = retard(c, o), enRetard = du && r >= 0.5;
@@ -188,7 +194,7 @@ export function planifier(magasins, s, { debut, semaines = 8, fixes = new Map(),
           if (liste.length >= maxJour) break;
           let best = null;
           for (const c of petits) {
-            if (pris.has(c) || !(estDu(c) || estBonus(c))) continue;
+            if (pris.has(c) || !ok(c) || !(estDu(c) || estBonus(c))) continue;
             const r = retard(c, o), max = detourPetit + (estDu(c) && r >= 0.5 ? Math.max(0, detour - detourPetit) / 2 : 0);
             for (let k = 0; k <= liste.length; k++) {
               const a = k ? liste[k - 1] : pos, b = k < liste.length ? liste[k] : (retour ? H : null);

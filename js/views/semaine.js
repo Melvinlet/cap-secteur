@@ -216,6 +216,14 @@ async function remplir(lundi, dates, tours, all, s, rdvs) {
       <div class="row"><label>Fin du dernier jour <small class="muted">(vide = ${s.heureFin})</small><input type="time" name="finDernierJour" value="${esc(c.finDernierJour || '')}"></label></div>
       <p class="small">Jours sans tournée cette semaine <span class="muted">(bureau, réunion, congé… les RDV de ce jour restent)</span></p>
       <div class="chips">${dates.map((d, i) => `<label class="chip-check"><input type="checkbox" name="off:${i}"><span>${JOURS[i]} ${new Date(d + 'T12:00').getDate()}</span></label>`).join('')}</div></fieldset>
+    <fieldset><legend>Zone par jour</legend>
+      <p class="hint">Pour rester dans le même coin toute la journée (ex. un RDV à Vannes : les autres magasins seront autour).</p>
+      <div class="zones-jours">${dates.map((d, i) => { const t = tours[i]; const m0 = t.etapes.map(e => all.find(m => m.id === e.magasinId)).find(Boolean);
+        return `<label>${JOURS[i]} ${new Date(d + 'T12:00').getDate()}<select name="zone:${i}">
+          <option value="libre">Libre</option>
+          ${m0 ? `<option value="autour" selected>Autour de ${esc(m0.nom)}${t.etapes.length > 1 ? ' et des magasins prévus' : ''}</option>` : ''}
+          ${deps.map(dp => `<option value="dep:${dp}">Département ${dp}</option>`).join('')}</select></label>`; }).join('')}</div>
+      <label class="mini-ligne">Autour = à moins de <input type="number" name="rayon" min="15" max="120" step="5" value="${c.rayonZone || 45}" class="mini-num"> min de route</label></fieldset>
     <fieldset><legend>Enseignes prioritaires</legend>
       <div class="chips">${enseignes.map(e => `<label class="chip-check"><input type="checkbox" name="ens:${esc(e)}" ${c.enseignes.includes(e) ? 'checked' : ''}><span>${esc(e)} <small>${nb(e)}</small></span></label>`).join('')}</div>
       <p class="hint">Les journées sont construites autour de ces magasins. Rien de coché = toutes les enseignes à égalité.</p>
@@ -265,6 +273,16 @@ async function remplir(lundi, dates, tours, all, s, rdvs) {
     ids.forEach(id => exclus.add(id));
   });
   const loc = all.filter(m => m.lat != null);
+  // zone de chaque jour : autour des magasins déjà prévus (centre + rayon) ou un département (centre = moyenne des magasins)
+  const rayon = Math.max(15, Number(r.rayon) || 45);
+  const centre = l => l.length ? { lat: l.reduce((a, m) => a + m.lat, 0) / l.length, lon: l.reduce((a, m) => a + m.lon, 0) / l.length } : null;
+  cible.zones = dates.map((_, i) => {
+    const v = r['zone:' + i] || 'libre';
+    if (v === 'autour') { const c0 = centre(tours[i].etapes.map(e => loc.find(m => m.id === e.magasinId)).filter(Boolean)); return c0 ? { ...c0, rayon } : null; }
+    if (v.startsWith('dep:')) { const dep = v.slice(4); const c0 = centre(loc.filter(m => String(m.departement) === dep)); return c0 ? { ...c0, dep } : null; }
+    return null;
+  });
+  if (r.memo === 'on') await saveSettings({ ciblage: { ...(await getSettings()).ciblage, rayonZone: rayon } });
   let retires = 0;
   const plan = planifier(loc, { ...s, decoucher: r.nuits === 'on', detourRetard: Number(r.detour) || 0, joursTerrain: dates.length },
     { debut: lundi, semaines: 1, fixes, exclus, cible, heures });

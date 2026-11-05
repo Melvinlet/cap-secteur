@@ -750,3 +750,7 @@ li.glisse { position: relative; z-index: 5; box-shadow: 0 10px 28px rgba(0,0,0,.
 .poignee i { width: 10px; height: 18px; background-size: 5px 5px; opacity: 1; background-image: radial-gradient(currentColor 1.6px, transparent 1.9px); }
 .stops .stop .poignee { background: linear-gradient(var(--trait), var(--trait)) center / 100% 100% no-repeat; background-color: transparent; border-radius: 5px; opacity: .9; }
 .stops .stop .poignee { background: none; box-shadow: inset 0 0 0 1px var(--trait); }
+/* Remplir : zone par jour */
+.zones-jours { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 210px), 1fr)); gap: .5rem .8rem; margin: .4rem 0 .6rem; }
+.zones-jours label { margin: 0; font-size: .85rem; font-weight: 600; }
+.zones-jours select { width: 100%; margin-top: .2rem; }
