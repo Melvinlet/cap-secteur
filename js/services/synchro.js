@@ -120,6 +120,7 @@ export function synchroniser() {
       if (!(await nuage.session()) || !(await chargerCles())) { await verifierKit(); return etat; }
       if (!(await nuage.jeton())) { etat.erreur = 'Session expirée : reconnecte-toi'; return etat; }
       let recus = 0, envoyes = 0;
+      dispatchEvent(new CustomEvent('cap-synchro-etat', { detail: { enCours: true } }));
       // 1. réception
       let depuis = await lire('depuis');
       for (;;) {
@@ -159,10 +160,12 @@ export function synchroniser() {
         envoyes += lot.length;
       }
       Object.assign(etat, { derniere: new Date().toISOString(), erreur: null, envoyes, recus });
+      dispatchEvent(new CustomEvent('cap-synchro-etat', { detail: { fini: true, echanges: envoyes + recus } }));
       await ecrire('derniere', etat.derniere);
       if (recus) dispatchEvent(new CustomEvent('cap-synchro', { detail: { recus } }));
       await verifierKit();
     } catch (e) {
+      dispatchEvent(new CustomEvent('cap-synchro-etat', { detail: { fini: true, erreur: true } }));
       etat.erreur = e.message;
       if (e.status === 401) etat.erreur = 'Session expirée : reconnecte-toi';
     } finally { enCours = null; }

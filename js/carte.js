@@ -47,3 +47,23 @@ export function repereDepart(p, hotel = false) {
   return L.marker([p.lat, p.lon], { title: 'Départ', icon: L.divIcon({ className: 'pin-wrap', html: `<span class="pin home">${hotel ? '☾' : '⌂'}</span>`, iconSize: [28, 28], iconAnchor: [14, 14] }) })
     .bindPopup(esc(p.adresse || 'Départ'));
 }
+
+// Le trajet se dessine (lignes pleines), puis les repères apparaissent ; les lignes pointillées (estimation) apparaissent en fondu
+export function animerTrace(couches) {
+  if (matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+  let n = 0;
+  for (const c of couches) {
+    const el = c.getElement?.();
+    if (!el) continue;
+    if (c instanceof L.Polyline) {
+      const pointille = !!c.options.dashArray;
+      if (!pointille) { el.setAttribute('pathLength', '1'); el.style.strokeDasharray = '1'; }
+      el.classList.add(pointille ? 'trace-fondu' : 'trace-anim');
+      el.style.animationDelay = `${n++ * 0.18}s`;
+      el.addEventListener('animationend', () => { if (!pointille) { el.style.strokeDasharray = ''; el.removeAttribute('pathLength'); } }, { once: true });
+    } else if (el.classList.contains('leaflet-marker-icon')) {
+      const pin = el.querySelector('.pin');
+      if (pin) { pin.classList.add('pin-tombe'); pin.style.animationDelay = `${0.15 + Math.min(n, 14) * 0.08}s`; }
+    }
+  }
+}

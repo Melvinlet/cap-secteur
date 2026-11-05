@@ -5,6 +5,7 @@
 import { db } from '../db.js';
 import { prioriteDe } from '../data.js';
 import { haversine } from './geo.js';
+import { trajet } from './routing.js';
 
 export async function chargerTout() {
   const st = ['magasins', 'notes', 'rdv', 'commandes', 'sav', 'concurrence', 'frais', 'tournees', 'objectifs', 'produits'];
@@ -23,7 +24,7 @@ function kmTournee(t, magById, s) {
   const dep = t.depart?.lat != null ? t.depart : s.depart;
   if (dep?.lat == null) return 0;
   const pts = [dep, ...t.etapes.map(e => magById.get(e.magasinId)).filter(m => m?.lat != null), ...(t.retour ? [s.depart] : [])];
-  let k = 0; for (let i = 1; i < pts.length; i++) k += haversine(pts[i - 1], pts[i]) * s.coefRoute;
+  let k = 0; for (let i = 1; i < pts.length; i++) k += trajet(pts[i - 1], pts[i], s).km;
   return k;
 }
 const minutes = h => { const [a, b] = (h || '').split(':').map(Number); return a * 60 + (b || 0); };

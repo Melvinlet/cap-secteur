@@ -16,7 +16,7 @@
 //    tournées calculées par TomTom (calibrage automatique).
 // ─────────────────────────────────────────────────────────────────────────────
 import { haversine } from './geo.js';
-import { optimiserOrdre } from './routing.js';
+import { optimiserOrdre, trajet } from './routing.js';
 import { dureeVisite, frequenceDe, prioriteDe } from '../data.js';
 import { parseHeure } from '../ui.js';
 
@@ -46,9 +46,8 @@ export function planifier(magasins, s, { debut, semaines = 8, fixes = new Map(),
   const budgetDu = d => parseHeure(s.heureFin) - debutDu(d) - pauseM;
   const finDernier = d => cible?.finDernierJour ? parseHeure(cible.finDernierJour) - debutDu(d) - pauseM : null;
   const cal = s.calibration || {};
-  const kmF = s.coefRoute * (cal.km || 1), tF = s.coefRoute * (cal.temps || 1);
-  const km = (a, b) => haversine(a, b) * kmF;
-  const dt = (a, b) => haversine(a, b) * tF / s.vitesseMoyenne * 60;
+  const km = (a, b) => trajet(a, b, s).km;
+  const dt = (a, b) => trajet(a, b, s).min;
   const visite = m => dureeVisite(m, s);
   const seuil = Number(s.seuilDecoucher) || 75;
   const nbJours = Math.max(1, Math.min(6, Number(s.joursTerrain) || 5));

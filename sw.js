@@ -3,7 +3,7 @@
 // IMPORTANT : à chaque mise en ligne d'une nouvelle version, change VERSION
 // (sinon les téléphones garderont l'ancienne version en cache).
 // ─────────────────────────────────────────────────────────────────────────────
-const VERSION = 'cap-secteur-1.5.0';
+const VERSION = 'cap-secteur-1.6.1';
 const TUILES = 'cap-secteur-tuiles';
 const IMAGES_WEB = 'cap-secteur-images-web';
 const MAX_TUILES = 3000;

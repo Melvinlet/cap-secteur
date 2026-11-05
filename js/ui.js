@@ -33,13 +33,48 @@ export const joursDepuis = d => d ? Math.floor((Date.now() - new Date(d).getTime
 export const norm = s => (s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
 
 export function toast(msg, type = '') {
+  document.querySelectorAll('.toast').forEach(x => x.remove());   // un seul message à la fois
   const t = document.createElement('div');
   t.className = `toast ${type}`;
   t.setAttribute('role', 'status');
   t.textContent = msg;
+  const duree = Math.min(6000, Math.max(2600, msg.length * 45));   // les messages longs restent plus longtemps
+  t.style.setProperty('--duree', `${duree - 250}ms`);
   document.body.append(t);
-  setTimeout(() => t.classList.add('out'), 2600);
-  setTimeout(() => t.remove(), 3000);
+  setTimeout(() => t.classList.add('out'), duree);
+  setTimeout(() => t.remove(), duree + 300);
+}
+
+// ── Animations légères (transform / opacity uniquement ; coupées si « réduire les animations ») ──
+export const animationsReduites = () => matchMedia('(prefers-reduced-motion: reduce)').matches;
+// Les chiffres d'un bandeau montent jusqu'à leur valeur (« 186 km », « 2 h 47 », « 17:28 »)
+export function animerChiffres(racine) {
+  if (animationsReduites()) return;
+  racine.querySelectorAll('.tour-sum .big').forEach(b => {
+    const final = b.textContent;
+    const heure = /^(\d{1,2}):(\d{2})$/.exec(final.trim());
+    const nombres = [...final.matchAll(/\d+(?:[.,]\d+)?/g)];
+    if (!nombres.length) return;
+    const t0 = performance.now(), D = 600;
+    const pas = t => {
+      if (!b.isConnected) return;
+      const k = Math.min(1, (t - t0) / D), e = 1 - Math.pow(1 - k, 3);
+      if (heure) { const fin = +heure[1] * 60 + +heure[2], v = Math.round(480 + (fin - 480) * e); b.textContent = fin < 480 ? final : `${String(Math.floor(v / 60)).padStart(2, '0')}:${String(v % 60).padStart(2, '0')}`; }
+      else { let i = 0; b.textContent = final.replace(/\d+(?:[.,]\d+)?/g, n => { const v = parseFloat(n.replace(',', '.')) * e; const dec = (n.split(/[.,]/)[1] || '').length; i++; return dec ? v.toFixed(dec).replace('.', n.includes(',') ? ',' : '.') : String(Math.round(v)); }); }
+      if (k < 1) requestAnimationFrame(pas); else b.textContent = final;
+    };
+    requestAnimationFrame(pas);
+  });
+}
+// Entrée d'un écran : fondu + légère montée, listes en cascade, chiffres qui défilent
+export function animerEntree(main) {
+  if (animationsReduites()) return;
+  const vue = main.firstElementChild;
+  if (vue) { vue.classList.remove('vue-entre'); void vue.offsetWidth; vue.classList.add('vue-entre'); }
+  main.querySelectorAll('.stops > li, .mini-stops > li, .wstops > li').forEach((li, i) => li.style.setProperty('--i', Math.min(i, 12)));
+  main.classList.add('anim');
+  clearTimeout(main._anim); main._anim = setTimeout(() => main.classList.remove('anim'), 1400);
+  animerChiffres(main);
 }
 
 // Fenêtre modale : renvoie l'objet des champs du formulaire, ou null si annulé.

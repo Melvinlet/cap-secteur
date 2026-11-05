@@ -454,9 +454,11 @@ progress { width: 220px; vertical-align: middle; accent-color: var(--bleu); }
 .modal-body { padding: .5rem 1.25rem 1rem; overflow-y: auto; }
 .modal footer { display: flex; justify-content: flex-end; gap: .5rem; padding: .75rem 1.25rem; border-top: 1px solid var(--trait); }
 .toast { position: fixed; z-index: 2000; left: 50%; bottom: calc(86px + env(safe-area-inset-bottom)); transform: translateX(-50%); background: var(--encre); color: var(--papier);
-  padding: .65rem 1.1rem; border-radius: var(--r); font-weight: 500; box-shadow: 0 6px 20px rgba(0, 0, 0, .25); transition: opacity .3s; max-width: calc(100vw - 32px); }
+  padding: .65rem 1.1rem .75rem; border-radius: var(--r); font-weight: 500; box-shadow: 0 6px 20px rgba(0, 0, 0, .25); transition: opacity .3s, transform .3s; max-width: calc(100vw - 32px);
+  overflow: hidden; animation: toast-entre .28s cubic-bezier(.2, .7, .3, 1); }
+.toast::after { content: ""; position: absolute; left: 0; bottom: 0; height: 3px; width: 100%; background: var(--jaune); transform-origin: left; animation: toast-temps var(--duree, 2400ms) linear .2s both; }
 .toast.warn { background: var(--orange); color: #fff; }
-.toast.out { opacity: 0; }
+.toast.out { opacity: 0; transform: translate(-50%, 8px); }
 @media (min-width: 900px) { .toast { bottom: 24px; } }
 @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
 
@@ -644,3 +646,56 @@ p.wleg.fin { margin-bottom: .25rem; }
 .wdep input { width: 6rem; padding: .2rem .3rem; font: inherit; border: 1.5px solid var(--trait); border-radius: var(--r); background: var(--surface); color: var(--encre); }
 #hDepRdv { margin-top: .35rem; }
 .h-dep::-webkit-calendar-picker-indicator { display: none; }
+
+/* ── Animations (transform / opacity uniquement) ─────────────────────────────── */
+@keyframes entre { from { opacity: 0; transform: translateY(10px); } }
+@keyframes pop { 50% { transform: scale(1.3); } }
+@keyframes raye { from { background-size: 0 2px; } to { background-size: 100% 2px; } }
+@keyframes trace { from { stroke-dashoffset: 1; } to { stroke-dashoffset: 0; } }
+@keyframes fondu { from { opacity: 0; } }
+@keyframes tombe { from { opacity: 0; transform: translateY(-10px) scale(.6); } }
+@keyframes toast-entre { from { opacity: 0; transform: translate(-50%, 18px); } }
+@keyframes toast-temps { from { transform: scaleX(1); } to { transform: scaleX(0); } }
+@keyframes feuille { from { transform: translateY(100%); } }
+@keyframes fenetre { from { opacity: 0; transform: translateY(14px) scale(.98); } }
+@keyframes alerte { 0% { opacity: 0; transform: translateX(-12px); } 55% { opacity: 1; transform: translateX(3px); } 100% { transform: none; } }
+@keyframes tourne { to { transform: rotate(360deg); } }
+/* 1. changement d'écran */
+.vue-entre { animation: entre .22s cubic-bezier(.2, .7, .3, 1); }
+/* 2. listes en cascade */
+.anim .stops > li, .anim .mini-stops > li, .anim .wstops > li { animation: entre .28s cubic-bezier(.2, .7, .3, 1) both; animation-delay: calc(var(--i, 0) * 45ms); }
+/* 3. magasin visité */
+.stop.juste-fait > .pin { animation: pop .35s cubic-bezier(.3, 1.6, .5, 1); }
+.stop.juste-fait .stop-body strong { text-decoration: none; background: linear-gradient(currentColor, currentColor) no-repeat 0 58% / 100% 2px; animation: raye .35s ease .1s both; }
+/* 4. trajet qui se dessine */
+.trace-anim { animation: trace .9s ease-in-out both; }
+.trace-fondu { animation: fondu .6s ease both; }
+.pin-tombe { animation: tombe .35s cubic-bezier(.3, 1.4, .5, 1) both; }
+/* 6. retour au toucher */
+.btn, .btn-icon, .chip, .w-btn { transition: transform .12s ease, background-color .12s, border-color .12s; }
+.btn:active, .btn-icon:active, .chip:active, .w-btn:active { transform: scale(.96); }
+/* 7. fenêtres : montent depuis le bas sur téléphone */
+.modal[open] { animation: fenetre .24s cubic-bezier(.2, .8, .3, 1); }
+.modal[open]::backdrop { animation: fondu .25s ease; }
+@media (max-width: 640px) {
+  .modal { width: 100vw; max-width: 100vw; margin: auto 0 0; border-radius: 14px 14px 0 0; max-height: 92vh; padding-bottom: env(safe-area-inset-bottom, 0px); }
+  .modal form { max-height: 92vh; }
+  .modal header::before { content: ""; position: absolute; left: 50%; top: 6px; width: 36px; height: 4px; margin-left: -18px; border-radius: 2px; background: var(--trait); }
+  .modal header { position: relative; padding-top: 1.1rem; }
+  .modal[open] { animation: feuille .28s cubic-bezier(.2, .8, .3, 1); }
+}
+/* 9. synchronisation */
+.sync-ind { position: fixed; z-index: 1500; top: calc(10px + env(safe-area-inset-top, 0px)); left: 50%; transform: translateX(-50%); display: flex; align-items: center; gap: .4rem;
+  background: var(--surface); color: var(--encre); border: 1.5px solid var(--trait); border-radius: 999px; padding: .25rem .7rem .25rem .35rem; font-size: .8rem; font-weight: 600;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, .12); animation: fondu .2s ease; }
+.sync-ind svg { width: 26px; height: 26px; stroke: var(--bleu); }
+.sync-ind .fleches { transform-origin: 20px 23px; }
+.sync-ind.tourne .fleches { animation: tourne 1s linear infinite; }
+.sync-ind .coche { stroke: var(--vert); stroke-dasharray: 24; stroke-dashoffset: 24; }
+.sync-ind.fini .fleches { opacity: 0; transition: opacity .15s; }
+.sync-ind.fini .coche { transition: stroke-dashoffset .35s ease .1s; stroke-dashoffset: 0; }
+/* 10. alerte retard */
+.anim .alerte-retard { animation: alerte .6s ease .15s both; }
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration: 1ms !important; animation-delay: 0ms !important; animation-iteration-count: 1 !important; transition-duration: 1ms !important; }
+}

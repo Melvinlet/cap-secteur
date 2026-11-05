@@ -4,7 +4,7 @@
 // puis ajoute une ligne dans ROUTES.
 // ─────────────────────────────────────────────────────────────────────────────
 import { persistStorage, chargerProfil } from './db.js';
-import { $, $$, esc } from './ui.js';
+import { $, $$, esc, animerEntree } from './ui.js';
 
 const ROUTES = [
   [/^\/?$/, 'aujourdhui', () => import('./views/aujourdhui.js')],
@@ -47,8 +47,11 @@ async function route(_, { garder = false } = {}) {
   try {
     current = await loader();
     main.innerHTML = '';
+    if (garder) delete main.dataset.entree; else main.dataset.entree = '1';   // les écrans animent leur carte seulement à l'arrivée
     await current.render(main, params);
     if (!params.keepScroll && !garder) window.scrollTo(0, 0);
+    if (!garder) animerEntree(main);
+    delete main.dataset.entree;
   } catch (e) {
     console.error(e);
     main.innerHTML = `<div class="page"><h1>Cet écran n'a pas pu s'afficher</h1><p class="muted">${esc(e.message)}</p><p><a href="#/">Revenir à l'accueil</a></p></div>`;
@@ -74,6 +77,29 @@ if (!window.__retourMail && /^#?\/?$/.test(location.hash)) {
 route();
 // synchronisation automatique entre appareils (si un compte est configuré)
 import('./services/synchro.js').then(({ demarrer }) => demarrer());
+// petit indicateur de synchronisation (visible seulement si elle dure ou si quelque chose a été échangé)
+{
+  const ind = document.createElement('div');
+  ind.className = 'sync-ind'; ind.hidden = true; ind.setAttribute('role', 'status');
+  ind.innerHTML = `<svg viewBox="0 0 40 40" aria-hidden="true" fill="none" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M11 30h19a7 7 0 0 0 .5-14A10 10 0 0 0 11 18a6 6 0 0 0 0 12z"/>
+    <g class="fleches"><path d="M16 23a4 4 0 0 1 7-2.6M24 23a4 4 0 0 1-7 2.6"/><path d="M23 18v2.5h-2.5M17 28v-2.5h2.5"/></g>
+    <path class="coche" d="M15 23.5l3.5 3.5 6.5-7"/></svg><span></span>`;
+  document.body.append(ind);
+  let montre = null, cache = null;
+  addEventListener('cap-synchro-etat', ({ detail: d }) => {
+    clearTimeout(cache);
+    if (d.enCours) {
+      ind.classList.remove('fini'); ind.querySelector('span').textContent = 'Synchronisation…';
+      montre = setTimeout(() => { ind.hidden = false; ind.classList.add('tourne'); }, 700);
+      return;
+    }
+    clearTimeout(montre);
+    if (d.erreur || (ind.hidden && !d.echanges)) { ind.hidden = true; ind.classList.remove('tourne'); return; }
+    ind.hidden = false; ind.classList.remove('tourne'); ind.classList.add('fini'); ind.querySelector('span').textContent = 'À jour';
+    cache = setTimeout(() => { ind.hidden = true; ind.classList.remove('fini'); }, 1800);
+  });
+}
 addEventListener('cap-synchro', async () => {
   // données reçues d'un autre appareil : on rafraîchit l'écran, sauf pendant une saisie
   const actif = document.activeElement;

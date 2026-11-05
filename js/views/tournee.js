@@ -5,9 +5,9 @@ import { magasinsEnrichis, dureeVisite, numeroVisite } from '../data.js';
 import { OBJETS_VISITE, ENSEIGNES_LISTE, PRIORITES, PROFIL } from '../config.js';
 import { exporterPlanning } from '../services/excel.js';
 import { downloadBlob, $, $$, esc, borne, prioTag, enseigneColor, fmtKm, fmtDuree, fmtHeure, parseHeure, fmtDateLong, today, toast, modal, norm, fmtDate } from '../ui.js';
-import { optimiserOrdre, calculerTrajets, lienGps, estimate } from '../services/routing.js';
+import { optimiserOrdre, calculerTrajets, lienGps, estimate, trajet, trajetBrut } from '../services/routing.js';
 import { geocodeMagasin, haversine } from '../services/geo.js';
-import { carte, repere, repereDepart } from '../carte.js';
+import { carte, repere, repereDepart, animerTrace } from '../carte.js';
 import { tousLesRdv } from '../services/rdv.js';
 
 let map;
@@ -24,6 +24,7 @@ export async function ajouterEtape(date, magasinId) {
   return true;
 }
 
+let justeFait = null;   // magasin qu'on vient de marquer visité (petite animation)
 const decale = (date, n) => { const d = new Date(date + 'T12:00'); d.setDate(d.getDate() + n); return d.toISOString().slice(0, 10); };
 
 // Horaires prévisionnels : départ, trajets, visites, pause déjeuner.
@@ -59,7 +60,9 @@ export function planning(t, mags, s, rdvs = null) {
 
 // Estimation d'une journée (TomTom si déjà calculée, sinon vol d'oiseau)
 export function estimerJour(t, mags, s, rdvs) {
-  if (t.calcul || !t.etapes.length || s.depart.lat == null) return { ...planning(t, mags, s, rdvs), estime: !t.calcul };
+  // trajets TomTom gardés tels quels ; une ancienne estimation enregistrée est refaite avec le modèle actuel
+  const reel = t.calcul?.provider === 'tomtom';
+  if (reel || !t.etapes.length || s.depart.lat == null) return { ...planning(t, mags, s, rdvs), estime: !reel };
   const dep = t.depart?.lat != null ? t.depart : s.depart;
   const pts = [dep, ...t.etapes.map(e => mags.get(e.magasinId)).filter(m => m?.lat != null), ...(t.retour ? [s.depart] : [])];
   return { ...planning({ ...t, calcul: estimate(pts, s) }, mags, s, rdvs), estime: true };
@@ -103,7 +106,7 @@ export async function render(el, { date = today() }) {
   const t = await getTournee(date);
   t.etapes = t.etapes.filter(e => mags.has(e.magasinId));
   const rdvs = await tousLesRdv();
-  const p = t.calcul ? planning(t, mags, s, rdvs) : estimerJour(t, mags, s, rdvs);
+  const p = estimerJour(t, mags, s, rdvs);
   const dep = t.depart?.lat != null ? t.depart : s.depart;   // départ d'un hôtel (plan de secteur) ou du domicile
   const departOk = dep.lat != null && s.depart.lat != null;
   const dernier = t.etapes.length ? mags.get(t.etapes[t.etapes.length - 1].magasinId) : null;
@@ -146,7 +149,7 @@ export async function render(el, { date = today() }) {
             ${hRdv && hRdv !== (t.heureDebut || s.heureDebut) ? `<button class="btn small ${p.rdvRates ? 'primary' : ''}" id="hDepRdv">Partir à ${esc(hRdv.replace(':', 'h'))} pour être à l'heure au RDV</button>` : ''}</div></li>` : ''}
           ${p.etapes.map((e, i) => { const m = mags.get(e.magasinId); return `
           ${e.leg ? `<li class="drive ${e.leg.min > 150 ? 'long' : ''}">${fmtKm(e.leg.km)} · ${fmtDuree(e.leg.min)}${e.leg.min > 150 ? ' — trajet très long : vérifie la position de ce magasin' : ''}</li>` : ''}
-          <li class="stop ${e.fait ? 'done' : ''} ${e.hors ? 'hors' : ''}">
+          <li class="stop ${e.fait ? 'done' : ''} ${e.fait && e.magasinId === justeFait ? 'juste-fait' : ''} ${e.hors ? 'hors' : ''}">
             <span class="time">${t.calcul ? '' : '<small>≈</small>'}${fmtHeure(e.arrivee)}<small>→ ${fmtHeure(e.depart)}</small></span>
             <span class="pin num" style="--c:${enseigneColor(m.enseigne)}">${i + 1}</span>
             <div class="stop-body">
@@ -197,7 +200,8 @@ export async function render(el, { date = today() }) {
   $$('[data-del]').forEach(b => b.onclick = () => { t.etapes.splice(+b.dataset.del, 1); save(); });
   $$('[data-up]').forEach(b => b.onclick = () => { const i = +b.dataset.up; [t.etapes[i - 1], t.etapes[i]] = [t.etapes[i], t.etapes[i - 1]]; save(); });
   $$('[data-down]').forEach(b => b.onclick = () => { const i = +b.dataset.down; [t.etapes[i + 1], t.etapes[i]] = [t.etapes[i], t.etapes[i + 1]]; save(); });
-  $$('[data-fait]').forEach(b => b.onclick = () => { const e = t.etapes[+b.dataset.fait]; e.fait = !e.fait; save(false); });
+  setTimeout(() => { justeFait = null; }, 0);
+  $$('[data-fait]').forEach(b => b.onclick = () => { const e = t.etapes[+b.dataset.fait]; e.fait = !e.fait; justeFait = e.fait ? e.magasinId : null; save(false); });
   $$('[data-objet]').forEach(x => x.onchange = async () => { t.etapes[+x.dataset.objet].objet = x.value; await db.put('tournees', t); });
   $$('[data-motif]').forEach(x => x.onchange = async () => { t.etapes[+x.dataset.motif].motif = x.value.trim(); await db.put('tournees', t); });
   $('#expPlanning').onclick = () => exporterVersPlanning(date, s);
@@ -224,7 +228,7 @@ export async function render(el, { date = today() }) {
       const last = locM[optimiserOrdre(dep, locM, true, s.depart).at(-1)];
       suivant = await getTournee(decale(date, 1));
       const pts = suivant.etapes.map(e => mags.get(e.magasinId)).filter(m => m?.lat != null);
-      const dtm = (a, b) => haversine(a, b) * s.coefRoute / s.vitesseMoyenne * 60;
+      const dtm = (a, b) => trajet(a, b, s).min;
       t.retour = !(pts.length && dtm(last, s.depart) > (Number(s.seuilDecoucher) || 75)
         && Math.min(...pts.map(m => dtm(last, m))) < Math.min(...pts.map(m => dtm(s.depart, m))));
     }
@@ -263,6 +267,7 @@ export async function render(el, { date = today() }) {
   t.etapes.forEach((e, i) => { const m = mags.get(e.magasinId); if (m.lat != null) layers.push(repere(m, i + 1).bindPopup(esc(m.nom))); });
   (t.calcul?.legs || []).forEach(l => layers.push(L.polyline(l.points, { color: '#1E4FA0', weight: 4, opacity: 0.8, dashArray: t.calcul.provider === 'tomtom' ? null : '6 8' })));
   const g = L.featureGroup(layers).addTo(map);
+  if (document.getElementById('main')?.dataset.entree) animerTrace(layers);
   if (layers.length) map.fitBounds(g.getBounds().pad(0.15), { animate: false });
   // tournée créée par le plan de secteur : trajets calculés à la première ouverture
   if (!t.calcul && t.etapes.length && departOk) calculer(false);
@@ -286,7 +291,7 @@ export async function exporterVersPlanning(date, s, periode = null) {
   const arrondi = min => fmtHeure(Math.round(min / 5) * 5);
   const jours = tournees.filter(x => x.id >= r.du && x.id <= r.au && x.etapes.length).sort((a, b) => a.id.localeCompare(b.id));
   for (const t of jours) {
-    const p = t.calcul ? planning(t, byId, s, rdvs) : estimerJour(t, byId, s, rdvs);
+    const p = estimerJour(t, byId, s, rdvs);
     p.etapes.forEach((e, k) => {
       const m = byId.get(e.magasinId);
       if (!m) return;
@@ -337,19 +342,19 @@ export function prochainJour(date, s) {
 
 // Calibrage automatique : compare les temps TomTom à l'estimation à vol d'oiseau
 // pour que le plan de secteur colle à la réalité de tes routes.
-async function calibrer(pts, legs, s) {
+export async function calibrer(pts, legs, s) {
   let estMin = 0, estKm = 0, reelMin = 0, reelKm = 0;
   legs.forEach((l, i) => {
-    const k = haversine(pts[i], pts[i + 1]) * s.coefRoute;
-    estKm += k; estMin += k / s.vitesseMoyenne * 60; reelKm += l.km; reelMin += l.min;
+    const e = trajetBrut(pts[i], pts[i + 1], s);
+    estKm += e.km; estMin += e.min; reelKm += l.km; reelMin += l.min;
   });
   if (estMin < 20) return;
-  const c = s.calibration || { temps: 1, km: 1, n: 0 };
+  const c = s.calibration?.modele === 2 ? s.calibration : { temps: 1, km: 1, n: 0 };   // calibrage refait pour le nouveau modèle
   const n = Math.min(c.n || 0, 19);
   const borne = x => Math.min(2.5, Math.max(0.5, x));
   await saveSettings({ calibration: {
     temps: (c.temps * n + borne(reelMin / estMin)) / (n + 1),
-    km: (c.km * n + borne(reelKm / estKm)) / (n + 1), n: n + 1 } });
+    km: (c.km * n + borne(reelKm / estKm)) / (n + 1), n: n + 1, modele: 2 } });
 }
 
 function gpsTout(t, mags, s) {
@@ -366,7 +371,7 @@ export async function choisirMagasins(t, all, s, depart = t.depart?.lat != null 
   const route = [depart, ...t.etapes.map(e => all.find(m => m.id === e.magasinId))].filter(m => m?.lat != null);
   if (t.retour !== false && s.depart?.lat != null) route.push(s.depart);
   const cal = s.calibration || {};
-  const dt = (a, b) => haversine(a, b) * s.coefRoute * (cal.temps || 1) / s.vitesseMoyenne * 60;
+  const dt = (a, b) => trajet(a, b, s).min;
   const aDesEtapes = route.length > 2 || (route.length === 2 && t.etapes.length);
   const detourDe = m => {
     if (m.lat == null || route.length < 1) return null;

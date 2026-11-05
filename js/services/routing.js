@@ -6,12 +6,28 @@
 // ─────────────────────────────────────────────────────────────────────────────
 import { haversine } from './geo.js';
 
-// Estimation hors ligne : vol d'oiseau × coefficient, à vitesse moyenne.
+// Estimation hors ligne (sans TomTom). Modèle « route » : sur un long trajet la route colle mieux au vol
+// d'oiseau (voies rapides) et on roule plus vite ; sur un court trajet on traverse des villes.
+// Réglé pour donner à peu près les temps TomTom (ex. 145 km à vol d'oiseau ≈ 167 km et 1 h 40).
+export function trajetBrut(a, b, s) {
+  const vol = haversine(a, b);
+  const coef = Math.max(1, 1.15 + ((s.coefRoute || 1.3) - 1.15) * Math.exp(-vol / 40));
+  const km = vol * coef;
+  const k = (Number(s.vitesseMoyenne) || 70) / 70;                     // la vitesse des Réglages règle l'ensemble
+  const vitesse = (45 + 60 * (1 - Math.exp(-km / 45))) * k;            // de ~45 km/h en ville à ~105 km/h sur autoroute
+  return { km, min: km / vitesse * 60 };
+}
+// … corrigé par le calibrage appris sur les tournées calculées par TomTom
+export function trajet(a, b, s) {
+  const r = trajetBrut(a, b, s);
+  const c = s.calibration?.modele === 2 ? s.calibration : null;
+  return { km: r.km * (c?.km || 1), min: r.min * (c?.temps || 1) };
+}
 export function estimate(points, s) {
   const legs = [];
   for (let i = 0; i < points.length - 1; i++) {
-    const km = haversine(points[i], points[i + 1]) * s.coefRoute;
-    legs.push({ km, min: km / s.vitesseMoyenne * 60, points: [[points[i].lat, points[i].lon], [points[i + 1].lat, points[i + 1].lon]] });
+    const { km, min } = trajet(points[i], points[i + 1], s);
+    legs.push({ km, min, points: [[points[i].lat, points[i].lon], [points[i + 1].lat, points[i + 1].lon]] });
   }
   return { provider: 'estimation', legs };
 }

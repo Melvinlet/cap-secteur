@@ -78,7 +78,7 @@ export async function render(el) {
           <button type="button" class="btn" id="showKey">Afficher</button><button type="button" class="btn" id="testKey">Tester</button></span>
           <small class="hint">Gratuite sur developer.tomtom.com. Elle reste sur cet appareil et n'est jamais incluse dans les sauvegardes.</small></label>
         <label>Fond de carte<select name="fondCarte"><option value="osm" ${s.fondCarte === 'osm' ? 'selected' : ''}>OpenStreetMap</option><option value="tomtom" ${s.fondCarte === 'tomtom' ? 'selected' : ''}>TomTom (utilise ta clé)</option></select></label>
-        <p class="hint">${s.calibration?.n ? `Calibrage automatique : d'après tes ${s.calibration.n} dernière(s) tournée(s) TomTom, les trajets réels prennent ×${s.calibration.temps.toFixed(2)} le temps estimé. Le plan de secteur en tient compte.` : 'Le plan de secteur se calibrera tout seul sur tes tournées calculées par TomTom.'}</p>
+        <p class="hint">${s.calibration?.n && s.calibration.modele === 2 ? `Calibrage automatique : d'après tes ${s.calibration.n} dernière(s) tournée(s) TomTom, les trajets réels prennent ×${s.calibration.temps.toFixed(2)} le temps estimé. Le plan de secteur en tient compte.` : 'Le plan de secteur se calibrera tout seul sur tes tournées calculées par TomTom.'}</p>
         <details><summary>Estimation sans service</summary><div class="row">
           <label>Coefficient route / vol d'oiseau<input type="number" name="coefRoute" min="1" max="2" step="0.05" value="${s.coefRoute}"></label>
           <label>Vitesse moyenne (km/h)<input type="number" name="vitesseMoyenne" min="20" max="130" value="${s.vitesseMoyenne}"></label></div></details>
