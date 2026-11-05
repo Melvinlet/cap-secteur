@@ -754,3 +754,27 @@ li.glisse { position: relative; z-index: 5; box-shadow: 0 10px 28px rgba(0,0,0,.
 .zones-jours { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 210px), 1fr)); gap: .5rem .8rem; margin: .4rem 0 .6rem; }
 .zones-jours label { margin: 0; font-size: .85rem; font-weight: 600; }
 .zones-jours select { width: 100%; margin-top: .2rem; }
+/* ── Stats des ventes (unités) ─────────────────────────────────────────── */
+.tag.ventes { background: var(--bleu-pale); color: var(--bleu); font-weight: 700; font-variant-numeric: tabular-nums; }
+.stats { display: grid; gap: 1rem; }
+.stat-sum { grid-template-columns: repeat(4, 1fr); }
+@media (max-width: 600px) { .stat-sum { grid-template-columns: 1fr 1fr; } .stat-sum > div:nth-child(2) { border-right: 0; } .stat-sum > div:nth-child(-n+2) { border-bottom: 1px solid rgba(255,255,255,.2); } }
+.stat-grille { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 340px), 1fr)); gap: 1rem; }
+.stat-bloc { background: var(--surface); border: 1.5px solid var(--trait); border-radius: var(--r); padding: .9rem 1rem; min-width: 0; }
+.stat-bloc .h2 { margin-top: 0; }
+.barres { list-style: none; margin: 0; padding: 0; display: grid; gap: .45rem; }
+.barres li { display: grid; grid-template-columns: minmax(0, 9.5rem) 1fr auto; gap: .6rem; align-items: center; font-size: .9rem; }
+.b-nom { display: flex; align-items: center; gap: .35rem; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.b-nom .borne { transform: scale(.8); transform-origin: left center; }
+.b-barre { height: 12px; background: var(--papier); border-radius: 6px; overflow: hidden; }
+.b-barre i { display: block; height: 100%; background: var(--bleu); border-radius: 6px; }
+.b-val { font-variant-numeric: tabular-nums; white-space: nowrap; text-align: right; }
+.b-val small { color: var(--gris); margin-left: .2rem; }
+.top-mag { list-style: none; margin: 0; padding: 0; display: grid; gap: 2px; }
+.top-mag a { display: grid; grid-template-columns: 1.8rem 1fr auto; gap: .6rem; align-items: center; padding: .45rem .3rem; border-radius: 4px; color: inherit; text-decoration: none; }
+.top-mag a:hover { background: var(--bleu-pale); }
+.top-mag .rang { font: 700 1rem var(--cond); color: var(--gris); text-align: right; }
+.top-mag .t-nom { min-width: 0; font-weight: 600; }
+.top-mag .t-nom small { display: block; font-weight: 400; color: var(--gris); font-size: .8rem; }
+.top-mag b { font: 700 1.15rem var(--cond); font-variant-numeric: tabular-nums; }
+@media (max-width: 520px) { .barres li { grid-template-columns: minmax(0, 6.5rem) 1fr auto; } }

@@ -18,6 +18,10 @@ export async function render(el, { id, onglet = 'infos' }) {
   onglet = onglet.split('?')[0];
   id = decodeURIComponent(id);
   const d = await magasinComplet(id);
+  if (d?.m?.ventes2026 > 0) {   // rang du magasin parmi les vendeurs de la base (unités, aucun montant)
+    const v = (await db.all('magasins')).map(x => Number(x.ventes2026) || 0).filter(n => n > 0);
+    d.rangVentes = { rang: 1 + v.filter(n => n > d.m.ventes2026).length, sur: v.length };
+  }
   if (!d) { el.innerHTML = `<div class="page"><h1>Magasin introuvable</h1><p><a href="#/magasins">Retour à la liste</a></p></div>`; return; }
   const s = await getSettings();
   d.produits = await db.all('produits');
@@ -55,7 +59,7 @@ const stamp = o => ({ ...o, maj: new Date().toISOString() });
 const kv = (k, v) => v ? `<dt>${esc(k)}</dt><dd>${esc(v)}</dd>` : '';
 
 // ── Infos & contacts ─────────────────────────────────────────────────────────
-function infos(el, { m, contacts }, s) {
+function infos(el, { m, contacts, rangVentes }, s) {
   const p = prioriteDe(m);
   el.innerHTML = `
     <div class="grid2">
@@ -67,7 +71,8 @@ function infos(el, { m, contacts }, s) {
           <div class="links">${telLink(c.tel)} ${telLink(c.tel2)} ${mailLink(c.email)}</div>
           ${c.note ? `<p class="note">${esc(c.note)}</p>` : ''}</div>
           <button class="btn-icon" data-edit="${c.id}" aria-label="Modifier">✎</button></li>`).join('') || '<li class="muted">Aucun contact enregistré.</li>'}</ul>
-        ${m.classement || m.remarqueReseau || m.notesReseau || m.meuble ? `<h2 class="h2">Infos ${esc(PROFIL.reseau || 'réseau')}</h2><dl class="kv">
+        ${m.classement || m.remarqueReseau || m.notesReseau || m.meuble || m.ventes2026 != null ? `<h2 class="h2">Infos ${esc(PROFIL.reseau || 'réseau')}</h2><dl class="kv">
+          ${m.ventes2026 != null ? kv('Ventes robots 2026', `${m.ventes2026} unité${m.ventes2026 > 1 ? 's' : ''}${rangVentes ? ` · ${rangVentes.rang}${rangVentes.rang === 1 ? "er" : "e"} sur ${rangVentes.sur} magasins vendeurs de ton secteur` : ''}`) : ''}
           ${kv('Classement', m.classement)}${kv('Meuble / PLV', m.meuble)}${kv('Remarque visite', m.remarqueReseau)}${kv('Notes', m.notesReseau)}</dl>` : ''}
       </div>
       <div>

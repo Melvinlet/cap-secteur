@@ -51,7 +51,7 @@ const COLS = {
   info: ['Info réseau'], commentaire: ['Commentaire'], livraisons: ['Livraisons'],
   code: ['Code magasin'], libellePlanning: ['Libellé planning'], telMagasin: ['Téléphone magasin'],
   statut: ['Statut réseau'], prioriteImport: ['Priorité'], prioriteRaison: ['Raison de la priorité'],
-  classement: ['Classement'], meuble: ['Meuble / PLV'], remarqueReseau: ['Remarque visite'],
+  classement: ['Classement'], ventes2026: ['Ventes robots 2026 (u.)'], meuble: ['Meuble / PLV'], remarqueReseau: ['Remarque visite'],
   notesReseau: ['Notes réseau'],
   latImport: ['Latitude'], lonImport: ['Longitude'], precisionImport: ['Précision position'],
 };
@@ -103,6 +103,7 @@ export async function appliquerBase(feuilles) {
       departement: f.departement || cp.slice(0, 2),
       region: f.region || REGIONS[cp.slice(0, 2)] || '',
       nom: f.nom || `${f.enseigne} ${f.ville}`,
+      ventes2026: f.ventes2026 === '' || f.ventes2026 == null ? null : Number(f.ventes2026) || 0,   // unités vendues (aucun montant)
       ...position,
       majImport: now,
     };
