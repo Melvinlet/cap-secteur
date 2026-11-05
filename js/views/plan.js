@@ -30,12 +30,13 @@ export async function render(el) {
     <header class="page-head"><h1>Plan de secteur</h1></header>
     <p class="muted">Les visites sont programmées selon la priorité de chaque magasin :
       ${[1, 2, 3].map(n => `<b>${PRIORITES[n].label}</b> tous les ${freqP(n)} j (${nbP(n)})`).join(' · ')}${[0, 5, 4].filter(nbP).map(n => ` · ${nbP(n)} ${PRIORITES[n].label.toLowerCase()}`).join('')} (hors tournées).
-      Journées de ${s.heureDebut} à ${s.heureFin}, ${s.joursTerrain} jours par semaine${s.decoucher ? `, nuit sur place quand le retour dépasse ${s.seuilDecoucher} min (retour le ${JOURS[s.joursTerrain - 1].toLowerCase()})` : ', retour chaque soir'}.
+      Journées de ${plan?.heureDebut || s.heureDebut} à ${s.heureFin}, ${s.joursTerrain} jours par semaine${s.decoucher ? `, nuit sur place quand le retour dépasse ${s.seuilDecoucher} min (retour le ${JOURS[s.joursTerrain - 1].toLowerCase()})` : ', retour chaque soir'}.
       <a href="#/reglages">Réglages</a> · <a href="#/magasins">Changer les priorités</a></p>
     ${departOk ? '' : '<div class="banner">Indique d\'abord ton point de départ dans les <a href="#/reglages">Réglages</a>.</div>'}
     ${mags.length - loc.length ? `<div class="banner warn">${mags.length - loc.length} magasin(s) pas encore localisé(s) ne seront pas dans le plan. <a href="#/reglages">Les localiser</a></div>` : ''}
     <form class="plan-form" id="pf">
       <label>À partir du lundi<input type="date" name="debut" value="${plan?.debut || prochainLundi()}" required></label>
+      <label>Départ le matin<input type="time" name="heureDebut" value="${esc(plan?.heureDebut || s.heureDebut)}" required></label>
       <label>Sur<select name="semaines">${[2, 4, 6, 8, 12].map(n => `<option value="${n}" ${(plan?.semaines || 8) === n ? 'selected' : ''}>${n} semaines</option>`).join('')}</select></label>
       <button class="btn ${plan ? '' : 'primary'}" ${departOk && loc.length ? '' : 'disabled'}>${plan ? 'Recalculer le plan' : 'Calculer le plan'}</button>
     </form>
@@ -46,7 +47,8 @@ export async function render(el) {
     e.preventDefault();
     const f = Object.fromEntries(new FormData(e.target));
     if (new Date(f.debut + 'T12:00').getDay() !== 1) return toast('Choisis un lundi comme premier jour', 'warn');
-    const p = planifier(loc, s, { debut: f.debut, semaines: Number(f.semaines) });
+    const p = planifier(loc, { ...s, heureDebut: f.heureDebut || s.heureDebut }, { debut: f.debut, semaines: Number(f.semaines) });
+    if (f.heureDebut && f.heureDebut !== s.heureDebut) p.heureDebut = f.heureDebut;
     await savePlan(p);
     toast(`Plan calculé : ${p.totaux.visites} visites en ${p.totaux.jours} journées`);
     render(el);
@@ -137,7 +139,7 @@ async function programmer(plan) {
   const manuelles = existantes.filter(t => !t.plan);
   if (manuelles.length && !(await confirmer('Remplacer des tournées ?', `${manuelles.length} journée(s) que tu as préparées à la main entre le ${fmtDate(jours[0].date)} et le ${fmtDate(jours[jours.length - 1].date)} seront remplacées par le plan.`, 'Remplacer'))) return;
   for (const j of jours) {
-    if (j.etapes.length) await db.put('tournees', { id: j.date, etapes: j.etapes.map(magasinId => ({ magasinId, fait: false })), retour: j.retour, depart: j.depart, calcul: null, plan: plan.cree });
+    if (j.etapes.length) await db.put('tournees', { id: j.date, etapes: j.etapes.map(magasinId => ({ magasinId, fait: false })), retour: j.retour, depart: j.depart, calcul: null, plan: plan.cree, ...(plan.heureDebut ? { heureDebut: plan.heureDebut } : {}) });
     else if (existantes.find(t => t.id === j.date)) await db.del('tournees', j.date);
   }
   const premier = jours.find(j => j.etapes.length);

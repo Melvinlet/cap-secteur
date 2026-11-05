@@ -37,7 +37,7 @@ export function heureRdv(e, r, jour) {
 
 export function planning(t, mags, s, rdvs = null) {
   const legs = t.calcul?.legs || [];
-  let h = parseHeure(s.heureDebut), pause = false, km = 0, conduite = 0, attente = 0;
+  let h = parseHeure(t.heureDebut || s.heureDebut), pause = false, km = 0, conduite = 0, attente = 0;
   const finJour = parseHeure(s.heureFin);
   const out = t.etapes.map((e, i) => {
     const leg = legs[i];
@@ -63,6 +63,19 @@ export function estimerJour(t, mags, s, rdvs) {
   const dep = t.depart?.lat != null ? t.depart : s.depart;
   const pts = [dep, ...t.etapes.map(e => mags.get(e.magasinId)).filter(m => m?.lat != null), ...(t.retour ? [s.depart] : [])];
   return { ...planning({ ...t, calcul: estimate(pts, s) }, mags, s, rdvs), estime: true };
+}
+
+// Heure de départ pour arriver pile à l'heure aux rendez-vous de la journée (5 min d'avance), ou null sans RDV
+export function departPourRdv(t, mags, s, rdvs, marge = 5) {
+  if (!t.etapes.some(e => heureRdv(e, rdvs?.get(e.magasinId), t.id))) return null;
+  const aLheure = debut => {
+    const p = estimerJour({ ...t, heureDebut: fmtHeure(debut) }, mags, s, rdvs);
+    return p.etapes.every(e => !e.rdvHeure || e.arrivee <= parseHeure(e.rdvHeure));   // en avance, on attend : arrivée = heure du RDV
+  };
+  let lo = 4 * 60, hi = parseHeure(s.heureFin);          // départ entre 4h et l'heure de fin
+  if (!aLheure(lo)) return null;                          // même en partant à 4h, impossible
+  while (hi - lo > 1) { const mid = Math.floor((lo + hi) / 2); if (aLheure(mid)) lo = mid; else hi = mid; }
+  return fmtHeure(Math.floor((lo - marge) / 5) * 5);      // quelques minutes d'avance, arrondi aux 5 minutes
 }
 
 // Place chaque rendez-vous (confirmé ou demandé pour ce jour) à l'endroit de la journée qui respecte
@@ -94,6 +107,7 @@ export async function render(el, { date = today() }) {
   const dep = t.depart?.lat != null ? t.depart : s.depart;   // départ d'un hôtel (plan de secteur) ou du domicile
   const departOk = dep.lat != null && s.depart.lat != null;
   const dernier = t.etapes.length ? mags.get(t.etapes[t.etapes.length - 1].magasinId) : null;
+  const hRdv = departOk ? departPourRdv(t, mags, s, rdvs) : null;
 
   el.innerHTML = `<div class="page wide tour">
     ${ongletsPlanning('jour', date)}
@@ -128,7 +142,8 @@ export async function render(el, { date = today() }) {
         </div>
         <label class="check"><input type="checkbox" id="retour" ${t.retour ? 'checked' : ''}> Retour au domicile le soir (sinon nuit sur place)</label>
         <ol class="stops">
-          ${departOk ? `<li class="stop home"><span class="time">${s.heureDebut}</span><span class="pin home">${dep === s.depart ? '⌂' : '☾'}</span><div><strong>Départ</strong><p class="muted">${esc(dep.adresse)}</p></div></li>` : ''}
+          ${departOk ? `<li class="stop home"><span class="time"><input type="time" id="hDep" value="${esc(t.heureDebut || s.heureDebut)}" aria-label="Heure de départ" class="h-dep${t.heureDebut ? ' modifiee' : ''}"></span><span class="pin home">${dep === s.depart ? '⌂' : '☾'}</span><div><strong>Départ</strong>${t.heureDebut ? ` <button class="btn-link" id="hDepReset">revenir à ${esc(s.heureDebut)}</button>` : ''}<p class="muted">${esc(dep.adresse)}</p>
+            ${hRdv && hRdv !== (t.heureDebut || s.heureDebut) ? `<button class="btn small ${p.rdvRates ? 'primary' : ''}" id="hDepRdv">Partir à ${esc(hRdv.replace(':', 'h'))} pour être à l'heure au RDV</button>` : ''}</div></li>` : ''}
           ${p.etapes.map((e, i) => { const m = mags.get(e.magasinId); return `
           ${e.leg ? `<li class="drive ${e.leg.min > 150 ? 'long' : ''}">${fmtKm(e.leg.km)} · ${fmtDuree(e.leg.min)}${e.leg.min > 150 ? ' — trajet très long : vérifie la position de ce magasin' : ''}</li>` : ''}
           <li class="stop ${e.fait ? 'done' : ''} ${e.hors ? 'hors' : ''}">
@@ -160,6 +175,10 @@ export async function render(el, { date = today() }) {
   const save = async (recalc = true) => { if (recalc) t.calcul = null; await db.put('tournees', t); await render(el, { date }); if (recalc && departOk && t.etapes.length) calculer(false); };
   $('#pickDate').onchange = e => { location.hash = `#/tournee/${e.target.value}`; };
   $('#retour').onchange = e => { t.retour = e.target.checked; save(); };
+  const changerDepart = async h => { if (!h || h === s.heureDebut) delete t.heureDebut; else t.heureDebut = h; await save(false); toast(`Départ à ${(t.heureDebut || s.heureDebut).replace(':', 'h')} ce jour-là`); };
+  $('#hDep')?.addEventListener('change', e => changerDepart(e.target.value));
+  $('#hDepReset')?.addEventListener('click', () => changerDepart(''));
+  $('#hDepRdv')?.addEventListener('click', () => changerDepart(hRdv));
   $('#add').onclick = () => choisirMagasins(t, all, s).then(ch => ch && save());
   $('#opt').onclick = () => calculer(true);
   $('#calc').onclick = () => calculer(false);

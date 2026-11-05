@@ -40,7 +40,11 @@ export function planifier(magasins, s, { debut, semaines = 8, fixes = new Map(),
   // magasins max : cible.limites[jour] (null = libre), sinon cible.maxParJour pour tous les jours
   const maxDu = d => { const l = cible?.limites?.[d]; return l != null ? (Number(l) || Infinity) : (cible?.limites ? Infinity : Number(cible?.maxParJour) || Infinity); };
   const joursOff = new Set((cible?.joursOff || []).map(Number));
-  const finDernier = cible?.finDernierJour ? parseHeure(cible.finDernierJour) - parseHeure(s.heureDebut) - (Number(s.pauseMidi) || 0) : null;
+  // heure de départ propre à certains jours (sinon celle des Réglages)
+  const debutDu = d => parseHeure(cible?.debuts?.[d] || s.heureDebut);
+  const pauseM = Number(s.pauseMidi) || 0;
+  const budgetDu = d => parseHeure(s.heureFin) - debutDu(d) - pauseM;
+  const finDernier = d => cible?.finDernierJour ? parseHeure(cible.finDernierJour) - debutDu(d) - pauseM : null;
   const cal = s.calibration || {};
   const kmF = s.coefRoute * (cal.km || 1), tF = s.coefRoute * (cal.temps || 1);
   const km = (a, b) => haversine(a, b) * kmF;
@@ -88,19 +92,19 @@ export function planifier(magasins, s, { debut, semaines = 8, fixes = new Map(),
       let dernierTravaille = true;
       for (let j = d + 1; j < nbJours; j++) if (!off(j)) dernierTravaille = false;
       const dernierJour = dernierTravaille || off(d + 1);                 // le soir, retour à la maison
-      const budget = dernierTravaille && finDernier != null ? Math.min(budgetBase, finDernier) : budgetBase;
+      const budget = dernierTravaille && finDernier(d) != null ? Math.min(budgetDu(d), finDernier(d)) : budgetDu(d);
       const maxJour = maxDu(d);
       // rendez-vous le lendemain : on ne dort sur place que si c'est plus près de ce rendez-vous que la maison
       const pinsDemain = (fixes.get(o + 1) || []).map(id => byId.get(id)).filter(m => m?.lat != null);
       const hDemain = m => heures.has(m.id) ? parseHeure(heures.get(m.id)) : Infinity;
       const pinDemain = pinsDemain.sort((a, b) => hDemain(a) - hDemain(b))[0];
       // RDV tôt le lendemain, trop loin pour y être à l'heure en partant de la maison : on finit la journée vers lui et on dort sur place
-      const marge = pinDemain ? hDemain(pinDemain) - parseHeure(s.heureDebut) : Infinity;
+      const marge = pinDemain ? hDemain(pinDemain) - debutDu(d + 1) : Infinity;
       const versDemain = !!pinDemain && s.decoucher && !dernierJour && marge < Infinity && dt(H, pinDemain) > marge;
       // lendemain = dernier jour travaillé, peut-être raccourci : depuis l'hôtel il faut pouvoir voir des magasins ET rentrer
       let demainDernier = !dernierJour;
       for (let j = d + 2; j < nbJours; j++) if (!off(j)) demainDernier = false;
-      const budgetDemain = demainDernier && finDernier != null ? Math.min(budgetBase, finDernier) : budgetBase;
+      const budgetDemain = demainDernier && finDernier(d + 1) != null ? Math.min(budgetDu(d + 1), finDernier(d + 1)) : budgetDu(d + 1);
       const doitRentrer = m => versDemain ? false
         : !s.decoucher || dernierJour || dt(m, H) <= seuil || (!!pinDemain && dt(m, pinDemain) > dt(H, pinDemain))
           || (demainDernier && dt(m, H) > budgetDemain * 0.5);
@@ -220,7 +224,7 @@ export function planifier(magasins, s, { debut, semaines = 8, fixes = new Map(),
         depart: depuisDomicile ? null : { lat: pos.lat, lon: pos.lon, adresse: pos.adresse },
         etapes: liste.map(m => m.id), fixes: pins.map(m => m.id), detours, ajouts,
         retour, km: k, conduite: c, nuit: retour ? null : `Nuit près de ${(nuitVers ? pinDemain : dernier).ville}`,
-        fin: parseHeure(s.heureDebut) + (Number(s.pauseMidi) || 0) + total, depasse: total > budget,
+        fin: debutDu(d) + pauseM + total, depasse: total > budget,
       });
       const lieu = nuitVers ? pinDemain : dernier;
       pos = retour ? H : { lat: lieu.lat, lon: lieu.lon, adresse: `Nuit près de ${lieu.ville}` };

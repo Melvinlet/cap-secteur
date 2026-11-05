@@ -635,3 +635,12 @@ p.wleg.fin { margin-bottom: .25rem; }
 .max-jours { display: grid; grid-template-columns: repeat(auto-fill, minmax(78px, 1fr)); gap: .5rem; margin: .5rem 0 .2rem; }
 .max-jours label { font-size: .85rem; margin: 0; }
 .max-jours input { text-align: center; }
+/* Heure de départ par journée */
+.h-dep { width: 4.1rem; padding: .15rem .2rem; font-size: .9rem !important; position: relative; z-index: 1; font: inherit; font-weight: 700; border: 1.5px solid var(--trait); border-radius: var(--r); background: var(--surface); color: var(--encre); }
+.h-dep.modifiee, .wdep input.modifiee { border-color: var(--orange); color: var(--orange); }
+.btn-link { background: none; border: 0; padding: 0; color: var(--bleu); text-decoration: underline; font: inherit; font-size: .85rem; cursor: pointer; }
+.wdep { display: flex; flex-wrap: wrap; align-items: center; gap: .4rem; margin: .2rem 0 .3rem; font-size: .85rem; }
+.wdep label { display: flex; align-items: center; gap: .35rem; margin: 0; font-weight: 600; }
+.wdep input { width: 6rem; padding: .2rem .3rem; font: inherit; border: 1.5px solid var(--trait); border-radius: var(--r); background: var(--surface); color: var(--encre); }
+#hDepRdv { margin-top: .35rem; }
+.h-dep::-webkit-calendar-picker-indicator { display: none; }

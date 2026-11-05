@@ -5,7 +5,7 @@ import { db, getSettings, saveSettings } from '../db.js';
 import { DEFAULT_SETTINGS, PRIORITES, PROFIL } from '../config.js';
 import { magasinsEnrichis, prioriteDe } from '../data.js';
 import { $, $$, esc, prioTag, enseigneColor, fmtKm, fmtDuree, fmtHeure, parseHeure, toast, modal, confirmer, fmtDate } from '../ui.js';
-import { getTournee, heureRdv, choisirMagasins, exporterVersPlanning, lundiDe, estimerJour as estimer, placerRendezVous } from './tournee.js';
+import { getTournee, heureRdv, choisirMagasins, exporterVersPlanning, lundiDe, estimerJour as estimer, placerRendezVous, departPourRdv } from './tournee.js';
 import { planifier } from '../services/planificateur.js';
 import { dateEnLettres, tousLesRdv } from '../services/rdv.js';
 import { haversine } from '../services/geo.js';
@@ -64,7 +64,10 @@ export async function render(el, params) {
     <div id="wmap" class="map-panel week-map"></div>
   </div>`;
 
-  const save = async t => { t.calcul = null; if (t.etapes.length) await db.put('tournees', t); else await db.del('tournees', t.id); };
+  const save = async t => { t.calcul = null; if (t.etapes.length || t.heureDebut) await db.put('tournees', t); else await db.del('tournees', t.id); };
+  const depart = async (i, h) => { const t = tours[i]; if (!h || h === s.heureDebut) delete t.heureDebut; else t.heureDebut = h; await save(t); render(el, { lundi }); };
+  $$('[data-hdep]').forEach(x => x.onchange = () => depart(+x.dataset.hdep, x.value));
+  $$('[data-hrdv]').forEach(b => b.onclick = () => { const [i, h] = b.dataset.hrdv.split(/:(.+)/); depart(+i, h); });
   $('#pick').onchange = e => { location.hash = `#/semaine/${lundiDe(e.target.value)}`; };
   $('#exp').onclick = () => exporterVersPlanning(lundi, s, { du: lundi, au: dates[dates.length - 1] });
   $('#vider').onclick = async () => {
@@ -125,6 +128,8 @@ function colonne(t, i, p, mags, s, dates, rdvs, soir = 0) {
   return `<section class="wday" style="--c:${COULEURS[i]}">
     <header><a href="#/tournee/${t.id}"><strong>${JOURS[i]} ${new Date(t.id + 'T12:00').getDate()}</strong></a>
       <span class="muted">${t.etapes.length} magasin${t.etapes.length > 1 ? 's' : ''}</span></header>
+    <div class="wdep"><label>Départ <input type="time" data-hdep="${i}" value="${esc(t.heureDebut || s.heureDebut)}" class="${t.heureDebut ? 'modifiee' : ''}"></label>
+      ${(() => { const h = t.etapes.length ? departPourRdv(t, mags, s, rdvs) : null; return h && h !== (t.heureDebut || s.heureDebut) ? `<button class="btn small ${p.rdvRates ? 'primary' : 'ghost'}" data-hrdv="${i}:${h}" title="Pour arriver à l'heure au RDV">${h.replace(':', 'h')} pour le RDV</button>` : ''; })()}</div>
     ${t.etapes.length ? `<p class="wday-sum ${p.depasse ? 'over' : ''}">${fmtKm(p.km)} · ${fmtDuree(p.conduite)} de route · fin ${p.estime ? 'vers ' : ''}${fmtHeure(p.fin)}${p.attente >= 20 ? ` · ${fmtDuree(p.attente)} d'attente avant RDV` : ''}${p.depasse ? ' — trop chargé' : ''}</p>` : ''}
     ${t.depart?.lat != null ? `<p class="wday-night">☾ départ ${esc(t.depart.adresse.replace(/^Nuit/, 'après la nuit'))}</p>` : ''}
     <ol class="wstops">${t.etapes.map((e, k) => { const m = mags.get(e.magasinId); const pe = p.etapes[k]; return `${pe?.leg ? `<li class="wleg" aria-label="Trajet"><span>${k === 0 ? (t.depart?.lat != null ? 'depuis l\'hôtel' : 'depuis la maison') : ''}</span>${p.estime ? '≈ ' : ''}${fmtKm(pe.leg.km)} · ${fmtDuree(pe.leg.min)}</li>` : ''}<li class="${pe?.hors ? 'hors' : ''} ${e.fait ? 'done' : ''}">
@@ -201,6 +206,7 @@ async function remplir(lundi, dates, tours, all, s, rdvs) {
   if (r.memo === 'on') await saveSettings({ ciblage: { ...cible } });   // les jours sans tournée ne valent que pour cette semaine
   cible.joursOff = dates.map((_, i) => i).filter(i => r['off:' + i] === 'on' || (mode === 'variable' && parJour[i] === 0));
   // limite effective par jour (null = sans limite), transmise au planificateur
+  cible.debuts = tours.map(t => t.heureDebut || null);
   cible.limites = dates.map((_, i) => mode === 'fixe' ? cible.maxParJour : mode === 'variable' ? parJour[i] : null);
   const limite = off => cible.limites[off] || 0;
   const garder = !deja || r.garder === 'on';
@@ -234,7 +240,7 @@ async function remplir(lundi, dates, tours, all, s, rdvs) {
     && (!cible.departements.length || cible.departements.includes(String(m.departement)))
     && (cible.autres !== 'aucun' || !cible.enseignes.length || cible.enseignes.includes(m.enseigne)));
   for (const t of tours) if (!limite(t.offset) || t.etapes.length < limite(t.offset)) combles += comblerAttente(t, magsMap, sDu(t.offset), rdvs, pool, prevus, limite(t.offset));
-  for (const t of tours) { delete t.offset; if (t.etapes.length) await db.put('tournees', t); else await db.del('tournees', t.id); }
+  for (const t of tours) { delete t.offset; if (t.etapes.length || t.heureDebut) await db.put('tournees', t); else await db.del('tournees', t.id); }
   const n = plan.jours.reduce((a, j) => a + j.etapes.length, 0), d = plan.jours.reduce((a, j) => a + j.detours.length, 0);
   const pc = plan.jours.reduce((a, j) => a + Object.keys(j.ajouts || {}).length, 0);
   toast(`Semaine remplie : ${n} visites${pc ? `, dont ${pc} petit${pc > 1 ? 's' : ''} magasin${pc > 1 ? 's' : ''} sur le chemin` : ''}${d ? `, ${d} détour${d > 1 ? 's' : ''} pour retard` : ''}${combles ? `. ${combles} magasin${combles > 1 ? 's' : ''} ajouté${combles > 1 ? 's' : ''} pour remplir l'attente avant un RDV` : ''}${retires ? `. ${retires} magasin${retires > 1 ? 's' : ''} retiré${retires > 1 ? 's' : ''} pour tenir les heures de RDV` : ''}`);
