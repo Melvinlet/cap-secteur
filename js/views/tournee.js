@@ -145,7 +145,8 @@ export async function render(el, { date = today() }) {
         </div>
         <label class="check"><input type="checkbox" id="retour" ${t.retour ? 'checked' : ''}> Retour au domicile le soir (sinon nuit sur place)</label>
         <ol class="stops">
-          ${departOk ? `<li class="stop home"><span class="time"><input type="time" id="hDep" value="${esc(t.heureDebut || s.heureDebut)}" aria-label="Heure de départ" class="h-dep${t.heureDebut ? ' modifiee' : ''}"></span><span class="pin home">${dep === s.depart ? '⌂' : '☾'}</span><div><strong>Départ</strong>${t.heureDebut ? ` <button class="btn-link" id="hDepReset">revenir à ${esc(s.heureDebut)}</button>` : ''}<p class="muted">${esc(dep.adresse)}</p>
+          ${departOk ? `<li class="stop home"><span class="time">${esc(t.heureDebut || s.heureDebut)}</span><span class="pin home">${dep === s.depart ? '⌂' : '☾'}</span><div><strong>Départ</strong>
+            <label class="h-dep-l">à <input type="time" id="hDep" value="${esc(t.heureDebut || s.heureDebut)}" aria-label="Heure de départ" class="h-dep${t.heureDebut ? ' modifiee' : ''}"></label>${t.heureDebut ? ` <button class="btn-link" id="hDepReset">revenir à ${esc(s.heureDebut.replace(':', 'h'))}</button>` : ''}<p class="muted">${esc(dep.adresse)}</p>
             ${hRdv && hRdv !== (t.heureDebut || s.heureDebut) ? `<button class="btn small ${p.rdvRates ? 'primary' : ''}" id="hDepRdv">Partir à ${esc(hRdv.replace(':', 'h'))} pour être à l'heure au RDV</button>` : ''}</div></li>` : ''}
           ${p.etapes.map((e, i) => { const m = mags.get(e.magasinId); return `
           ${e.leg ? `<li class="drive ${e.leg.min > 150 ? 'long' : ''}">${fmtKm(e.leg.km)} · ${fmtDuree(e.leg.min)}${e.leg.min > 150 ? ' — trajet très long : vérifie la position de ce magasin' : ''}</li>` : ''}
@@ -160,9 +161,9 @@ export async function render(el, { date = today() }) {
                 <button class="btn small" data-fait="${i}">${e.fait ? 'Visité ✓' : 'Marquer visité'}</button>
                 <select class="objet" data-objet="${i}" aria-label="Objet de la visite">${OBJETS_VISITE.map(o => `<option ${o === (e.objet || s.objetDefaut) ? 'selected' : ''}>${o}</option>`).join('')}</select>
                 <input class="motif" data-motif="${i}" value="${esc(e.motif || '')}" placeholder="Pourquoi j'y vais (précision)" aria-label="Précision sur l'objet de la visite">
-                <button class="btn-icon" data-up="${i}" aria-label="Monter" ${i === 0 ? 'disabled' : ''}>↑</button>
+                <span class="ordre"><button class="btn-icon" data-up="${i}" aria-label="Monter" ${i === 0 ? 'disabled' : ''}>↑</button>
                 <button class="btn-icon" data-down="${i}" aria-label="Descendre" ${i === p.etapes.length - 1 ? 'disabled' : ''}>↓</button>
-                <button class="btn-icon" data-del="${i}" aria-label="Retirer de la tournée">✕</button>
+                <button class="btn-icon" data-del="${i}" aria-label="Retirer de la tournée">✕</button></span>
               </div>
             </div></li>`; }).join('')}
           ${p.retour ? `<li class="drive">${fmtKm(p.retour.km)} · ${fmtDuree(p.retour.min)}</li><li class="stop home"><span class="time">${fmtHeure(p.fin)}</span><span class="pin home">⌂</span><div><strong>Retour</strong></div></li>` : ''}
@@ -386,16 +387,19 @@ export async function choisirMagasins(t, all, s, depart = t.depart?.lat != null 
   if (!choix.tri) choix.tri = aDesEtapes ? 'detour' : 'urgence';
   const TRIS = { detour: 'Détour le plus court', urgence: 'Les plus urgents', distance: 'Les plus proches de chez moi', enseigne: 'Enseigne puis ville' };
   const p = modal({ titre: 'Ajouter des magasins', valider: 'Ajouter à la tournée', large: true, corps: `
+    <input type="search" id="pickQ" placeholder="Ville, magasin…" aria-label="Rechercher">
+    <details class="pick-filtres"><summary>Filtres et tri</summary>
     <div class="pick-f">
-      <input type="search" id="pickQ" placeholder="Ville, magasin…" aria-label="Rechercher">
       <select id="pickDep" aria-label="Département"><option value="">Tous départements</option>${deps.map(d => `<option>${d}</option>`).join('')}</select>
       <select id="pickPrio" aria-label="Priorité"><option value="">Toutes priorités</option>${[1, 2, 3].map(k => `<option value="${k}" ${choix.prio === String(k) ? 'selected' : ''}>${PRIORITES[k].label} seulement</option>`).join('')}<option value="12" ${choix.prio === '12' ? 'selected' : ''}>P1 et P2</option></select>
       <select id="pickVoir" aria-label="À voir"><option value="">Tous les magasins</option><option value="avoir" ${choix.voir === 'avoir' ? 'selected' : ''}>À voir (en retard ou jamais vus)</option><option value="retard" ${choix.voir === 'retard' ? 'selected' : ''}>En retard seulement</option></select>
       <select id="pickTri" aria-label="Trier par">${Object.entries(TRIS).map(([k, l]) => `<option value="${k}" ${choix.tri === k ? 'selected' : ''}>Tri : ${l}</option>`).join('')}</select>
     </div>
     <div class="chips pick-ens">${enseignes.map(e => `<button type="button" class="chip" data-e="${esc(e)}" aria-pressed="${choix.ens.includes(e)}"><i class="dot" style="background:${enseigneColor(e)}"></i>${esc(e)}</button>`).join('')}</div>
+    </details>
     <p class="hint" id="pickHint"></p>
     <div class="pick-list" id="pickList"></div>` });
+  if (matchMedia('(min-width: 641px)').matches) document.querySelector('dialog[open] .pick-filtres')?.setAttribute('open', '');
   const coches = new Set();
   const row = m => `<label class="pick">
       <input type="checkbox" name="m:${esc(m.id)}" ${dans.has(m.id) ? 'checked disabled' : coches.has(m.id) ? 'checked' : ''}>

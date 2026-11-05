@@ -98,7 +98,7 @@ export function modal({ titre, corps, valider = 'Enregistrer', danger = false, l
     };
     d.onclose = () => { resolve(d.returnValue === 'ok' ? (d._data || {}) : null); d.remove(); };
     d.showModal();
-    d.querySelector('input:not([type=hidden]),textarea,select')?.focus();
+    if (!matchMedia('(pointer: coarse)').matches) d.querySelector('input:not([type=hidden]),textarea,select')?.focus();   // sur téléphone, pas de clavier qui surgit
   });
 }
 

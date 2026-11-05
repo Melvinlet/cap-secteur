@@ -6,7 +6,7 @@ const ONGLETS = [
   ['rapport', 'Rapport', () => import('./act/rapport.js')],
   ['objectifs', 'Objectifs', () => import('./act/objectifs.js')],
   ['concurrence', 'Concurrence', () => import('./act/concurrence.js')],
-  ['frais', 'Notes de frais', () => import('./act/frais.js')],
+  ['frais', 'Frais', () => import('./act/frais.js')],
 ];
 let courant = null;
 

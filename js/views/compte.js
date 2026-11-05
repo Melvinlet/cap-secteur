@@ -33,7 +33,7 @@ export async function render(el, params = {}) {
 function ecranConfig(z, el) {
   const q = s => z.querySelector(s);
   z.innerHTML = `<form id="fi" class="settings"><h2 class="h2">Tu as reçu un lien d'invitation ?</h2>
-      <label>Colle-le ici<input name="lien" type="url" placeholder="https://…#/compte?projet=…" required></label>
+      <label>Colle-le ici<input name="lien" type="url" placeholder="https://…#/bienvenue?projet=…" required></label>
       <button class="btn primary">Rejoindre mon équipe</button></form>
     <details><summary>Configurer un service à toi (responsable)</summary>
     <p>Pour retrouver tes données sur le téléphone et le PC automatiquement, l'appli utilise ton propre espace en ligne (Supabase).

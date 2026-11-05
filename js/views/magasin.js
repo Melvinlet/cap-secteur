@@ -74,7 +74,7 @@ function infos(el, { m, contacts }, s) {
         <h2 class="h2">Informations <button class="btn small" id="editMag">Modifier</button></h2>
         <dl class="kv">
           ${kv('Société', m.societe)}${kv('Code magasin', m.code)}
-          ${kv('Priorité', `${PRIORITES[p].label}${m.prioriteManuelle ? ' (choisie par toi)' : m.prioriteRaison ? ` (${m.prioriteRaison})` : ''}`)}
+          ${kv('Priorité', `${PRIORITES[p].label}${m.prioriteManuelle ? ' (choisie par toi)' : m.prioriteRaison && m.prioriteRaison.toLowerCase() !== PRIORITES[p].label.toLowerCase() ? ` (${m.prioriteRaison})` : ''}`)}
           ${kv('Visite', frequenceDe(m, s) ? `tous les ${frequenceDe(m, s)} jours` : 'hors tournées')}
           ${kv('Durée de visite', `${dureeVisite(m, s)} min${m.dureeVisite ? '' : ' (selon l’enseigne)'}`)}${kv('Commentaire', m.commentaire)}${kv('Livraisons', m.livraisons)}
           ${kv('Position', m.lat != null ? (m.precision === 'ville' ? 'Centre de la ville (approximatif)' : m.precision === 'commune' ? 'Centre de la commune (affinée automatiquement à l\'adresse dès que tu as du réseau)' : m.positionManuelle ? 'Placée à la main' : 'Adresse trouvée') : 'Pas encore localisé')}

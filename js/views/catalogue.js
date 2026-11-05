@@ -19,7 +19,7 @@ export async function render(el) {
       <select id="ens" aria-label="Enseigne"><option value="">Toutes les enseignes</option>${ENSEIGNES_LISTE.map(e => `<option ${filtre.ens === e ? 'selected' : ''}>${esc(e)}</option>`).join('')}</select></div>
       <div class="products" id="grid"></div>`
     : `<div class="empty"><p>Ton catalogue est vide. Ajoute tes produits avec leurs photos et leurs points forts : tu pourras les présenter en plein écran aux chefs de rayon, même sans réseau.</p>
-       <p class="muted">Un collègue t'a envoyé un pack catalogue ? Importe-le depuis les <a href="#/reglages">Réglages</a>.</p></div>`}
+       <p class="muted">Le catalogue de ton entreprise arrive avec le kit entreprise (<a href="#/compte">Compte et équipe</a>). Un collègue t'a envoyé un pack catalogue ? Importe-le dans Réglages → Avancé.</p></div>`}
   </div>`;
   $('#new').onclick = async () => { const p = await editProduit(); if (p) location.hash = `#/produit/${p.id}`; };
   if (!produits.length) return;

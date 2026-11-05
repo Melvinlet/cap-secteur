@@ -15,6 +15,7 @@ import { carte, repere, repereDepart, animerTrace } from '../carte.js';
 const COULEURS = ['#1E4FA0', '#C8371D', '#2E8540', '#6B4BA1', '#B25E09', '#0E7C86'];
 const JOURS = ['Lun.', 'Mar.', 'Mer.', 'Jeu.', 'Ven.', 'Sam.'];
 let map;
+let echecTomTom = null;   // TomTom en échec pendant cette session : on n'insiste pas (bouton pour réessayer)
 
 const decale = (iso, n) => { const d = new Date(iso + 'T12:00'); d.setDate(d.getDate() + n); return d.toISOString().slice(0, 10); };
 
@@ -56,7 +57,7 @@ export async function render(el, params) {
       <button class="btn" id="optSem" ${departOk && tot.n > 1 ? '' : 'disabled'}>Optimiser la semaine</button>
       <a class="btn" href="#/rdv?du=${lundi}&au=${dates[dates.length - 1]}">Demander les RDV</a>
       <button class="btn" id="exp">Exporter le ${esc(PROFIL.planning.nom || 'planning')}</button>
-      ${s.cleTomTom && tours.some(t => t.etapes.length && t.calcul?.provider !== 'tomtom') ? '<button class="btn" id="reels" title="Remplace les temps estimés par les temps TomTom">Trajets réels (TomTom)</button>' : ''}
+      ${s.cleTomTom && echecTomTom && tours.some(t => t.etapes.length && t.calcul?.provider !== 'tomtom') ? '<button class="btn" id="reels" title="Remplace les temps estimés par les temps TomTom">Trajets réels (TomTom)</button>' : ''}
       <button class="btn ghost" id="vider" ${tot.n ? '' : 'disabled'}>Vider la semaine</button>
     </div>
     <div class="week">${tours.map((t, i) => colonne(t, i, est[i], mags, s, dates, rdvs, routeDuSoir(t, tours[i + 1], mags, s))).join('')}</div>
@@ -68,7 +69,25 @@ export async function render(el, params) {
   const save = async t => { t.calcul = null; if (t.etapes.length || t.heureDebut) await db.put('tournees', t); else await db.del('tournees', t.id); };
   // changer l'heure de départ ne change pas les trajets : on garde le calcul TomTom
   const depart = async (i, h) => { const t = tours[i]; if (!h || h === s.heureDebut) delete t.heureDebut; else t.heureDebut = h; await db.put('tournees', t); render(el, { lundi }); };
+  // trajets réels TomTom : calculés automatiquement pour les jours qui n'en ont pas (une seule fois, gardés ensuite)
+  if (s.cleTomTom && s.itineraire === 'tomtom' && departOk && navigator.onLine && !echecTomTom && tours.some(t => t.etapes.length && t.calcul?.provider !== 'tomtom')) {
+    (async () => {
+      const hash = location.hash;
+      for (const t of tours) {
+        if (!t.etapes.length || t.calcul?.provider === 'tomtom') continue;
+        const dep = t.depart?.lat != null ? t.depart : s.depart;
+        const pts = [dep, ...t.etapes.map(x => mags.get(x.magasinId)).filter(m => m?.lat != null), ...(t.retour ? [s.depart] : [])];
+        if (pts.length < 2) continue;
+        const r = await calculerTrajets(pts, s);
+        if (r.provider !== 'tomtom') { echecTomTom = r.erreur || 'indisponible'; break; }
+        t.calcul = { ...r, ts: new Date().toISOString() }; await db.put('tournees', t);
+        await calibrer(pts, r.legs, s);
+      }
+      if (location.hash === hash && !document.querySelector('dialog[open]')) render(el, { lundi });
+    })();
+  }
   $('#reels')?.addEventListener('click', async e => {
+    echecTomTom = null;
     const b = e.currentTarget; b.disabled = true;
     let n = 0, err = null;
     for (const t of tours) {
@@ -147,7 +166,7 @@ function colonne(t, i, p, mags, s, dates, rdvs, soir = 0) {
   return `<section class="wday" style="--c:${COULEURS[i]}">
     <header><a href="#/tournee/${t.id}"><strong>${JOURS[i]} ${new Date(t.id + 'T12:00').getDate()}</strong></a>
       <span class="muted">${t.etapes.length} magasin${t.etapes.length > 1 ? 's' : ''}</span></header>
-    <div class="wdep"><label>Départ <input type="time" data-hdep="${i}" value="${esc(t.heureDebut || s.heureDebut)}" class="${t.heureDebut ? 'modifiee' : ''}"></label>
+    <div class="wdep"><label>Départ <input type="time" data-hdep="${i}" value="${esc(t.heureDebut || s.heureDebut)}" class="${t.heureDebut ? 'modifiee' : ''}"></label>${t.heureDebut ? `<button class="btn-link" data-hrdv="${i}:${esc(s.heureDebut)}" title="Revenir à l'heure habituelle">habituel ${esc(s.heureDebut.replace(':', 'h'))}</button>` : ''}
       ${(() => { const h = t.etapes.length ? departPourRdv(t, mags, s, rdvs) : null; return h && h !== (t.heureDebut || s.heureDebut) ? `<button class="btn small ${p.rdvRates ? 'primary' : 'ghost'}" data-hrdv="${i}:${h}" title="Pour arriver à l'heure au RDV">${h.replace(':', 'h')} pour le RDV</button>` : ''; })()}</div>
     ${t.etapes.length ? `<p class="wday-sum ${p.depasse ? 'over' : ''}">${p.estime ? '≈ ' : ''}${fmtKm(p.km)} · ${fmtDuree(p.conduite)} de route${p.estime ? '' : ' (TomTom)'} · fin ${p.estime ? 'vers ' : ''}${fmtHeure(p.fin)}${p.attente >= 20 ? ` · ${fmtDuree(p.attente)} d'attente avant RDV` : ''}${p.depasse ? ' — trop chargé' : ''}</p>` : ''}
     ${t.depart?.lat != null ? `<p class="wday-night">☾ départ ${esc(t.depart.adresse.replace(/^Nuit/, 'après la nuit'))}</p>` : ''}
@@ -179,8 +198,8 @@ async function remplir(lundi, dates, tours, all, s, rdvs) {
     <fieldset><legend>Nombre de magasins par jour</legend>
       <div class="radio-col">
         <label class="check"><input type="radio" name="modeMax" value="libre" ${modeMax === 'libre' ? 'checked' : ''}> Pas de limite (autant que les horaires le permettent)</label>
-        <label class="check"><input type="radio" name="modeMax" value="fixe" ${modeMax === 'fixe' ? 'checked' : ''}> Le même maximum chaque jour :
-          <input type="number" name="maxParJour" min="1" max="15" value="${c.maxParJour || 4}" class="mini-num" aria-label="Magasins maximum par jour"> magasins max</label>
+        <label class="check"><input type="radio" name="modeMax" value="fixe" ${modeMax === 'fixe' ? 'checked' : ''}> Le même maximum chaque jour</label>
+        <label class="indent mini-ligne"><input type="number" name="maxParJour" min="1" max="15" value="${c.maxParJour || 4}" class="mini-num" aria-label="Magasins maximum par jour"> magasins maximum par jour</label>
         <label class="check"><input type="radio" name="modeMax" value="variable" ${modeMax === 'variable' ? 'checked' : ''}> Variable selon le jour</label>
       </div>
       <div class="max-jours" id="maxJours" ${modeMax === 'variable' ? '' : 'hidden'}>${dates.map((d, i) => `<label>${JOURS[i]} ${new Date(d + 'T12:00').getDate()}<input type="number" name="maxJ:${i}" min="0" max="15" value="${maxJours[i] ?? ''}" placeholder="libre"></label>`).join('')}</div>

@@ -26,7 +26,8 @@ export async function render(el) {
       <select id="type"><option value="">Tous les types</option>${TYPES_CONCURRENCE.map(t => `<option ${t === f.type ? 'selected' : ''}>${t}</option>`).join('')}</select>
       <select id="ens"><option value="">Toutes les enseignes</option>${ens.map(e => `<option ${e === f.ens ? 'selected' : ''}>${esc(e)}</option>`).join('')}</select>
     </div>
-    <table class="table conc"><thead><tr><th>Date</th><th>Marque</th><th>Produit</th><th>Type</th><th>Observation / offre</th><th>Magasin</th><th></th></tr></thead><tbody>
+    ${liste.length ? '' : '<p class="muted vide">Aucun relevé. Ajoute-les ici ou directement dans tes comptes rendus de visite.</p>'}
+    <table class="table conc" ${liste.length ? '' : 'hidden'}><thead><tr><th>Date</th><th>Marque</th><th>Produit</th><th>Type</th><th>Observation / offre</th><th>Magasin</th><th></th></tr></thead><tbody>
     ${liste.map(c => { const m = byId.get(c.magasinId); return `<tr><td>${fmtDate(c.date)}</td><td><strong>${esc(c.marque)}</strong></td><td>${esc(c.produit || '')}</td><td>${esc(c.type || '')}</td>
       <td>${esc(c.observation || '')}</td><td>${m ? `<a href="#/magasin/${encodeURIComponent(m.id)}">${esc(m.nom)}</a>` : ''}${c.noteId ? ` <a class="muted" href="#/cr/${encodeURIComponent(c.magasinId)}/${c.noteId}">(visite)</a>` : ''}</td>
       <td><button class="btn-icon" data-ed="${c.id}" aria-label="Modifier">✎</button></td></tr>`; }).join('') || '<tr><td colspan="7" class="muted">Aucun relevé. Ajoute-les ici ou directement dans tes comptes rendus de visite.</td></tr>'}</tbody></table>`;

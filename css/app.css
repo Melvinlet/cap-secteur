@@ -699,3 +699,34 @@ p.wleg.fin { margin-bottom: .25rem; }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation-duration: 1ms !important; animation-delay: 0ms !important; animation-iteration-count: 1 !important; transition-duration: 1ms !important; }
 }
+
+/* ── Corrections du balayage ─────────────────────────────────────────────── */
+/* heure de départ : petite case, sans icône d'horloge */
+.h-dep, .wdep input { -webkit-appearance: none; appearance: none; width: 4.6rem; min-height: 0; padding: .15rem .3rem; text-align: center; font: 600 .9rem var(--sans); font-variant-numeric: tabular-nums;
+  border: 1.5px solid var(--trait); border-radius: var(--r); background: var(--surface); color: var(--encre); z-index: auto; }
+.h-dep::-webkit-calendar-picker-indicator, .wdep input::-webkit-calendar-picker-indicator { display: none; }
+.h-dep-l { display: inline-flex; align-items: center; gap: .3rem; margin: 0 0 0 .4rem; font-size: .85rem; color: var(--gris); font-weight: 500; }
+.wdep { gap: .3rem .6rem; }
+.wdep label { font-weight: 500; color: var(--gris); }
+.wdep .btn { min-height: 30px; padding: .15rem .55rem; font-size: .8rem; }
+/* étapes : ↑ ↓ ✕ groupés, précision sur sa propre ligne */
+.stop-actions .ordre { display: inline-flex; gap: .2rem; margin-left: auto; }
+.stop-actions .motif { flex: 1 1 100%; order: 10; }
+/* bandeau de chiffres : pas de retour à la ligne */
+.tour-sum .big { white-space: nowrap; font-size: clamp(1.15rem, 5.2vw, 1.55rem); }
+@media (max-width: 420px) { .tour-sum > div { padding: .55rem .5rem; font-size: .74rem; } }
+/* onglets Activité : les 5 tiennent sur un téléphone */
+@media (max-width: 520px) { .tabs { gap: 0; } .tabs a { padding: .6rem .45rem; font-size: .88rem; } }
+/* compteur lisible sur une puce cochée */
+.chip-check input:checked + span small { color: inherit; opacity: .85; }
+.mini-ligne { display: flex; align-items: center; margin: 0; font-size: .9rem; }
+.mini-ligne { gap: .5rem; }
+/* boutons d'en-tête plus compacts sur téléphone */
+@media (max-width: 520px) { .page-head .btn { min-height: 38px; padding: .35rem .75rem; font-size: .88rem; } }
+/* ajouter des magasins : filtres repliés sur téléphone */
+.pick-filtres { margin: .5rem 0; }
+.pick-filtres > summary { cursor: pointer; font-weight: 600; color: var(--bleu); padding: .3rem 0; }
+#pickQ { width: 100%; }
+p.vide { margin-top: 1rem; }
+/* frais sur téléphone : le montant reste visible (colonne « Payé par » masquée) */
+@media (max-width: 520px) { .table.frais th:nth-child(4), .table.frais td:nth-child(4) { display: none; } .table.frais { font-size: .85rem; } }
