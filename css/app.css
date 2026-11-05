@@ -730,3 +730,23 @@ p.wleg.fin { margin-bottom: .25rem; }
 p.vide { margin-top: 1rem; }
 /* frais sur téléphone : le montant reste visible (colonne « Payé par » masquée) */
 @media (max-width: 520px) { .table.frais th:nth-child(4), .table.frais td:nth-child(4) { display: none; } .table.frais { font-size: .85rem; } }
+
+/* ── Poignée pour réordonner les magasins (glisser) ─────────────────────────── */
+.stops .stop { grid-template-columns: 22px 46px 28px 1fr; }
+@media (max-width: 520px) { .stops .stop { grid-template-columns: 20px 40px 28px 1fr; } .drive { margin-left: 78px; } }
+.poignee { all: unset; box-sizing: border-box; width: 22px; align-self: stretch; min-height: 44px; display: grid; place-items: center; cursor: grab; touch-action: none; border-radius: 4px; color: var(--gris); }
+.poignee i { width: 8px; height: 16px; background-image: radial-gradient(currentColor 1.3px, transparent 1.6px); background-size: 4px 4px; opacity: .8; }
+.poignee:hover, .poignee:focus-visible { background: var(--bleu-pale, rgba(30,79,160,.08)); color: var(--bleu); }
+.poignee:focus-visible { outline: 3px solid var(--focus); outline-offset: 1px; }
+.en-glisse { user-select: none; -webkit-user-select: none; }
+.en-glisse > li:not(.glisse) { transition: transform .15s ease; }
+li.glisse { position: relative; z-index: 5; box-shadow: 0 10px 28px rgba(0,0,0,.25); cursor: grabbing; }
+.en-glisse .poignee { cursor: grabbing; }
+.wstops > li { position: relative; }
+.wstops > li .poignee { width: 18px; min-height: 36px; margin-left: -4px; }
+.wstops > li { display: flex; gap: .4rem; align-items: flex-start; }
+.btn-link.duree, .btn-link.vis { font-size: inherit; color: inherit; text-decoration: underline dotted; text-underline-offset: 3px; }
+.btn-link.modifiee { color: var(--orange); font-weight: 600; }
+.poignee i { width: 10px; height: 18px; background-size: 5px 5px; opacity: 1; background-image: radial-gradient(currentColor 1.6px, transparent 1.9px); }
+.stops .stop .poignee { background: linear-gradient(var(--trait), var(--trait)) center / 100% 100% no-repeat; background-color: transparent; border-radius: 5px; opacity: .9; }
+.stops .stop .poignee { background: none; box-shadow: inset 0 0 0 1px var(--trait); }

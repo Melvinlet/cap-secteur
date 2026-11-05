@@ -146,3 +146,50 @@ export function dictee(champ, bouton) {
     bouton.textContent = '■ Arrêter'; bouton.classList.add('rec');
   };
 }
+
+// Réordonner une liste en glissant une poignée, au doigt ou à la souris (flèches ↑ ↓ au clavier).
+// items : les éléments déplaçables (dans l'ordre) ; onDeplace(de, vers) est appelé au lâcher.
+export function glisser(liste, { item = 'li[data-k]', poignee = '.poignee', onDeplace }) {
+  const tous = () => [...liste.querySelectorAll(item)];
+  liste.querySelectorAll(poignee).forEach(h => {
+    h.addEventListener('keydown', e => {
+      const de = tous().indexOf(h.closest(item));
+      if (e.key === 'ArrowUp' && de > 0) { e.preventDefault(); onDeplace(de, de - 1); }
+      if (e.key === 'ArrowDown' && de < tous().length - 1) { e.preventDefault(); onDeplace(de, de + 1); }
+    });
+    h.addEventListener('pointerdown', ev => {
+      if (ev.button > 0) return;
+      const items = tous(), li = h.closest(item), de = items.indexOf(li);
+      if (de < 0 || items.length < 2) return;
+      ev.preventDefault(); h.setPointerCapture(ev.pointerId);
+      const sy = () => window.scrollY;
+      const zones = items.map(x => { const r = x.getBoundingClientRect(); return { haut: r.top + sy(), h: r.height }; });
+      const pas = de < items.length - 1 ? zones[de + 1].haut - zones[de].haut : zones[de].haut - zones[de - 1].haut;
+      const y0 = ev.clientY + sy();
+      let vers = de, defile = 0, dernierY = ev.clientY;
+      li.classList.add('glisse'); liste.classList.add('en-glisse');
+      const placer = () => {
+        const dy = dernierY + sy() - y0;
+        li.style.transform = `translateY(${dy}px)`;
+        const centre = zones[de].haut + zones[de].h / 2 + dy;
+        vers = zones.filter((z, i) => i !== de && z.haut + z.h / 2 < centre).length;   // nombre d'éléments au-dessus
+        items.forEach((x, i) => { if (x === li) return; const d = de < vers && i > de && i <= vers ? -pas : de > vers && i >= vers && i < de ? pas : 0; x.style.transform = d ? `translateY(${d}px)` : ''; });
+      };
+      const boucle = () => { if (!defile) return; scrollBy(0, defile); placer(); requestAnimationFrame(boucle); };
+      const move = e => {
+        dernierY = e.clientY;
+        const avant = defile;
+        defile = e.clientY < 90 ? -10 : e.clientY > innerHeight - 120 ? 10 : 0;
+        if (defile && !avant) requestAnimationFrame(boucle);
+        placer();
+      };
+      const fin = () => {
+        defile = 0;
+        h.removeEventListener('pointermove', move); h.removeEventListener('pointerup', fin); h.removeEventListener('pointercancel', fin);
+        items.forEach(x => { x.style.transform = ''; }); li.classList.remove('glisse'); liste.classList.remove('en-glisse');
+        if (vers !== de) onDeplace(de, vers);
+      };
+      h.addEventListener('pointermove', move); h.addEventListener('pointerup', fin); h.addEventListener('pointercancel', fin);
+    });
+  });
+}

@@ -4,8 +4,8 @@ import { ongletsPlanning } from './onglets-planning.js';
 import { db, getSettings, saveSettings } from '../db.js';
 import { DEFAULT_SETTINGS, PRIORITES, PROFIL } from '../config.js';
 import { magasinsEnrichis, prioriteDe } from '../data.js';
-import { $, $$, esc, prioTag, enseigneColor, fmtKm, fmtDuree, fmtHeure, parseHeure, toast, modal, confirmer, fmtDate } from '../ui.js';
-import { getTournee, heureRdv, choisirMagasins, exporterVersPlanning, lundiDe, estimerJour as estimer, placerRendezVous, departPourRdv, calibrer } from './tournee.js';
+import { $, $$, esc, prioTag, enseigneColor, fmtKm, fmtDuree, fmtHeure, parseHeure, toast, modal, confirmer, fmtDate , glisser } from '../ui.js';
+import { getTournee, heureRdv, choisirMagasins, exporterVersPlanning, lundiDe, estimerJour as estimer, placerRendezVous, departPourRdv, calibrer, empreinte, modifierDuree } from './tournee.js';
 import { planifier } from '../services/planificateur.js';
 import { dateEnLettres, tousLesRdv } from '../services/rdv.js';
 import { haversine } from '../services/geo.js';
@@ -78,12 +78,15 @@ export async function render(el, params) {
         const dep = t.depart?.lat != null ? t.depart : s.depart;
         const pts = [dep, ...t.etapes.map(x => mags.get(x.magasinId)).filter(m => m?.lat != null), ...(t.retour ? [s.depart] : [])];
         if (pts.length < 2) continue;
+        const emp = empreinte(t);
         const r = await calculerTrajets(pts, s);
         if (r.provider !== 'tomtom') { echecTomTom = r.erreur || 'indisponible'; break; }
-        t.calcul = { ...r, ts: new Date().toISOString() }; await db.put('tournees', t);
+        const enBase = await db.get('tournees', t.id);
+        if (!enBase || empreinte(enBase) !== emp) continue;   // modifiée entre-temps (onglet Jour…) : on ne l'écrase pas
+        await db.put('tournees', { ...enBase, calcul: { ...r, ts: new Date().toISOString() } });
         await calibrer(pts, r.legs, s);
       }
-      if (location.hash === hash && !document.querySelector('dialog[open]')) render(el, { lundi });
+      if (location.hash === hash && document.body.contains(el) && !document.querySelector('dialog[open]')) render(el, { lundi });
     })();
   }
   $('#reels')?.addEventListener('click', async e => {
@@ -95,9 +98,12 @@ export async function render(el, params) {
       b.textContent = `Calcul… ${++n}`;
       const dep = t.depart?.lat != null ? t.depart : s.depart;
       const pts = [dep, ...t.etapes.map(x => mags.get(x.magasinId)).filter(m => m?.lat != null), ...(t.retour ? [s.depart] : [])];
+      const emp = empreinte(t);
       const r = await calculerTrajets(pts, s);
       if (r.erreur || r.sansCle) { err = r.erreur || 'clé TomTom manquante'; break; }
-      t.calcul = { ...r, ts: new Date().toISOString() }; await db.put('tournees', t);
+      const enBase = await db.get('tournees', t.id);
+      if (!enBase || empreinte(enBase) !== emp) continue;
+      await db.put('tournees', { ...enBase, calcul: { ...r, ts: new Date().toISOString() } });
       if (r.provider === 'tomtom') await calibrer(pts, r.legs, s);
     }
     toast(err ? `TomTom indisponible (${err}) : temps estimés` : 'Trajets réels calculés avec TomTom', err ? 'warn' : undefined);
@@ -122,6 +128,8 @@ export async function render(el, params) {
     const [i, k] = b.dataset.del.split(':').map(Number);
     tours[i].etapes.splice(k, 1); await save(tours[i]); render(el, { lundi });
   });
+  el.querySelectorAll('.wstops').forEach((ol, i) => glisser(ol, { onDeplace: async (de, vers) => { const t = tours[i]; const [x] = t.etapes.splice(de, 1); t.etapes.splice(vers, 0, x); await save(t); render(el, { lundi }); } }));
+  $$('[data-duree]').forEach(b => b.onclick = async () => { const [i, k] = b.dataset.duree.split(':').map(Number); if (await modifierDuree(tours[i], k, mags, s)) { await db.put('tournees', tours[i]); render(el, { lundi }); } });
   $$('[data-move]').forEach(sel => sel.onchange = async () => {
     const [i, k] = sel.dataset.move.split(':').map(Number);
     const j = Number(sel.value);
@@ -170,10 +178,11 @@ function colonne(t, i, p, mags, s, dates, rdvs, soir = 0) {
       ${(() => { const h = t.etapes.length ? departPourRdv(t, mags, s, rdvs) : null; return h && h !== (t.heureDebut || s.heureDebut) ? `<button class="btn small ${p.rdvRates ? 'primary' : 'ghost'}" data-hrdv="${i}:${h}" title="Pour arriver à l'heure au RDV">${h.replace(':', 'h')} pour le RDV</button>` : ''; })()}</div>
     ${t.etapes.length ? `<p class="wday-sum ${p.depasse ? 'over' : ''}">${p.estime ? '≈ ' : ''}${fmtKm(p.km)} · ${fmtDuree(p.conduite)} de route${p.estime ? '' : ' (TomTom)'} · fin ${p.estime ? 'vers ' : ''}${fmtHeure(p.fin)}${p.attente >= 20 ? ` · ${fmtDuree(p.attente)} d'attente avant RDV` : ''}${p.depasse ? ' — trop chargé' : ''}</p>` : ''}
     ${t.depart?.lat != null ? `<p class="wday-night">☾ départ ${esc(t.depart.adresse.replace(/^Nuit/, 'après la nuit'))}</p>` : ''}
-    <ol class="wstops">${t.etapes.map((e, k) => { const m = mags.get(e.magasinId); const pe = p.etapes[k]; return `${pe?.leg ? `<li class="wleg" aria-label="Trajet"><span>${k === 0 ? (t.depart?.lat != null ? 'depuis l\'hôtel' : 'depuis la maison') : ''}</span>${p.estime ? '≈ ' : ''}${fmtKm(pe.leg.km)} · ${fmtDuree(pe.leg.min)}</li>` : ''}<li class="${pe?.hors ? 'hors' : ''} ${e.fait ? 'done' : ''}">
+    <ol class="wstops">${t.etapes.map((e, k) => { const m = mags.get(e.magasinId); const pe = p.etapes[k]; return `${pe?.leg ? `<li class="wleg" aria-label="Trajet"><span>${k === 0 ? (t.depart?.lat != null ? 'depuis l\'hôtel' : 'depuis la maison') : ''}</span>${p.estime ? '≈ ' : ''}${fmtKm(pe.leg.km)} · ${fmtDuree(pe.leg.min)}</li>` : ''}<li class="${pe?.hors ? 'hors' : ''} ${e.fait ? 'done' : ''}" data-k="${k}">
+      <button type="button" class="poignee" aria-label="Changer l'ordre de ${esc(m.nom)} : glisser, ou flèches haut et bas" title="Glisser pour changer l'ordre"><i></i></button>
       <span class="pin num" style="--c:${enseigneColor(m.enseigne)}">${k + 1}</span>
       <div><a href="#/magasin/${encodeURIComponent(m.id)}">${esc(m.nom)}</a> ${prioTag(m.prio)}
-        ${pe ? `<span class="hrs">${p.estime ? '≈ ' : ''}${fmtHeure(pe.arrivee)} – ${fmtHeure(pe.depart)} <span class="vis">(${fmtDuree(pe.duree)} sur place)</span>${rdvTxt(e, rdvs.get(e.magasinId), t.id)}${pe.retardRdv ? ` <b class="late-txt">· arrivée ${pe.retardRdv} min après le RDV</b>` : ''}</span>` : ''}
+        ${pe ? `<span class="hrs">${p.estime ? '≈ ' : ''}${fmtHeure(pe.arrivee)} – ${fmtHeure(pe.depart)} <button type="button" class="btn-link vis${e.duree ? ' modifiee' : ''}" data-duree="${i}:${k}" title="Changer le temps sur place">(${fmtDuree(pe.duree)} sur place)</button>${rdvTxt(e, rdvs.get(e.magasinId), t.id)}${pe.retardRdv ? ` <b class="late-txt">· arrivée ${pe.retardRdv} min après le RDV</b>` : ''}</span>` : ''}
         <small>${esc(m.ville)}${e.motif ? ` · <i>${esc(e.motif)}</i>` : ''}${e.detour ? ' · <b class="late-txt">détour : en retard</b>' : e.comble ? ' · <span class="chemin">en attendant le RDV</span>' : e.surChemin != null ? ` · <span class="chemin">sur le chemin${e.surChemin >= 1 ? ` (+${e.surChemin} min)` : ""}</span>` : m.enRetard ? ' · en retard' : ''}</small>
         <span class="wact"><select data-move="${i}:${k}" aria-label="Déplacer ${esc(m.nom)}"><option value="${i}">Déplacer…</option>${dates.map((d, j) => j === i ? '' : `<option value="${j}">${JOURS[j]} ${new Date(d + 'T12:00').getDate()}</option>`).join('')}</select>
         <button class="btn-icon" data-del="${i}:${k}" aria-label="Retirer">✕</button></span></div></li>`; }).join('')}</ol>

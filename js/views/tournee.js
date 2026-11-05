@@ -4,13 +4,17 @@ import { db, getSettings, saveSettings } from '../db.js';
 import { magasinsEnrichis, dureeVisite, numeroVisite } from '../data.js';
 import { OBJETS_VISITE, ENSEIGNES_LISTE, PRIORITES, PROFIL } from '../config.js';
 import { exporterPlanning } from '../services/excel.js';
-import { downloadBlob, $, $$, esc, borne, prioTag, enseigneColor, fmtKm, fmtDuree, fmtHeure, parseHeure, fmtDateLong, today, toast, modal, norm, fmtDate } from '../ui.js';
+import { downloadBlob, $, $$, esc, borne, prioTag, enseigneColor, fmtKm, fmtDuree, fmtHeure, parseHeure, fmtDateLong, today, toast, modal, norm, fmtDate, glisser } from '../ui.js';
 import { optimiserOrdre, calculerTrajets, lienGps, estimate, trajet, trajetBrut } from '../services/routing.js';
 import { geocodeMagasin, haversine } from '../services/geo.js';
 import { carte, repere, repereDepart, animerTrace } from '../carte.js';
 import { tousLesRdv } from '../services/rdv.js';
 
 let map;
+
+// Empreinte d'une tournée (magasins, ordre, retour, départ) : un calcul lancé en arrière-plan n'enregistre
+// son résultat que si la tournée n'a pas été modifiée entre-temps (ailleurs dans l'appli).
+export const empreinte = t => JSON.stringify([(t.etapes || []).map(e => e.magasinId), !!t.retour, t.depart?.lat ?? null, t.depart?.lon ?? null]);
 
 export async function getTournee(date) {
   return (await db.get('tournees', date)) || { id: date, etapes: [], retour: true, calcul: null };
@@ -66,6 +70,33 @@ export function estimerJour(t, mags, s, rdvs) {
   const dep = t.depart?.lat != null ? t.depart : s.depart;
   const pts = [dep, ...t.etapes.map(e => mags.get(e.magasinId)).filter(m => m?.lat != null), ...(t.retour ? [s.depart] : [])];
   return { ...planning({ ...t, calcul: estimate(pts, s) }, mags, s, rdvs), estime: true };
+}
+
+// Temps passé dans un magasin : pour cette visite seulement, ou toujours (fiche magasin)
+export async function modifierDuree(t, k, mags, s) {
+  const e = t.etapes[k], m = mags.get(e.magasinId);
+  const habituelle = dureeVisite(m, s), actuelle = Number(e.duree) || habituelle;
+  const choix = [20, 30, 45, 60, 90, 120, 150];
+  const r = await modal({ titre: 'Temps sur place', valider: 'Appliquer', corps: `
+    <p><strong>${esc(m.nom)}</strong><br><span class="muted">Habituellement ${habituelle} min${m.dureeVisite ? ' (réglé sur la fiche du magasin)' : ' (selon l\'enseigne)'}</span></p>
+    <div class="chips">${choix.map(c => `<label class="chip-check"><input type="radio" name="rapide" value="${c}" ${c === actuelle ? 'checked' : ''}><span>${c < 60 ? c + ' min' : fmtDuree(c)}</span></label>`).join('')}</div>
+    <label>Ou en minutes<input type="number" name="duree" min="5" max="600" step="5" value="${actuelle}" required></label>
+    <label class="check"><input type="checkbox" name="toujours"> Toujours pour ce magasin (fiche du magasin et prochains plannings)</label>` });
+  const dlg = document.querySelector('dialog[open]');
+  dlg?.querySelectorAll('input[name=rapide]').forEach(x => x.onchange = () => { dlg.querySelector('input[name=duree]').value = x.value; });
+  const res = await r;
+  if (!res) return false;
+  // un bouton rapide choisi (sans avoir retapé le nombre) l'emporte
+  const tape = Number(res.duree), rapide = Number(res.rapide);
+  const n = Math.max(5, rapide && rapide !== actuelle && tape === actuelle ? rapide : tape || rapide || habituelle);
+  if (res.toujours === 'on') {
+    const brut = await db.get('magasins', m.id);
+    await db.put('magasins', { ...brut, dureeVisite: n, maj: new Date().toISOString() });
+    m.dureeVisite = n; delete e.duree;
+    toast(`${n} min désormais pour ${m.nom}`);
+  } else if (n === habituelle) delete e.duree;
+  else e.duree = n;
+  return true;
 }
 
 // Heure de départ pour arriver pile à l'heure aux rendez-vous de la journée (5 min d'avance), ou null sans RDV
@@ -145,28 +176,27 @@ export async function render(el, { date = today() }) {
         </div>
         <label class="check"><input type="checkbox" id="retour" ${t.retour ? 'checked' : ''}> Retour au domicile le soir (sinon nuit sur place)</label>
         <ol class="stops">
-          ${departOk ? `<li class="stop home"><span class="time">${esc(t.heureDebut || s.heureDebut)}</span><span class="pin home">${dep === s.depart ? '⌂' : '☾'}</span><div><strong>Départ</strong>
+          ${departOk ? `<li class="stop home"><span></span><span class="time">${esc(t.heureDebut || s.heureDebut)}</span><span class="pin home">${dep === s.depart ? '⌂' : '☾'}</span><div><strong>Départ</strong>
             <label class="h-dep-l">à <input type="time" id="hDep" value="${esc(t.heureDebut || s.heureDebut)}" aria-label="Heure de départ" class="h-dep${t.heureDebut ? ' modifiee' : ''}"></label>${t.heureDebut ? ` <button class="btn-link" id="hDepReset">revenir à ${esc(s.heureDebut.replace(':', 'h'))}</button>` : ''}<p class="muted">${esc(dep.adresse)}</p>
             ${hRdv && hRdv !== (t.heureDebut || s.heureDebut) ? `<button class="btn small ${p.rdvRates ? 'primary' : ''}" id="hDepRdv">Partir à ${esc(hRdv.replace(':', 'h'))} pour être à l'heure au RDV</button>` : ''}</div></li>` : ''}
           ${p.etapes.map((e, i) => { const m = mags.get(e.magasinId); return `
           ${e.leg ? `<li class="drive ${e.leg.min > 150 ? 'long' : ''}">${fmtKm(e.leg.km)} · ${fmtDuree(e.leg.min)}${e.leg.min > 150 ? ' — trajet très long : vérifie la position de ce magasin' : ''}</li>` : ''}
-          <li class="stop ${e.fait ? 'done' : ''} ${e.fait && e.magasinId === justeFait ? 'juste-fait' : ''} ${e.hors ? 'hors' : ''}">
+          <li class="stop ${e.fait ? 'done' : ''} ${e.fait && e.magasinId === justeFait ? 'juste-fait' : ''} ${e.hors ? 'hors' : ''}" data-k="${i}">
+            <button type="button" class="poignee" aria-label="Changer l'ordre de ${esc(m.nom)} : glisser, ou flèches haut et bas" title="Glisser pour changer l'ordre"><i></i></button>
             <span class="time">${t.calcul ? '' : '<small>≈</small>'}${fmtHeure(e.arrivee)}<small>→ ${fmtHeure(e.depart)}</small></span>
             <span class="pin num" style="--c:${enseigneColor(m.enseigne)}">${i + 1}</span>
             <div class="stop-body">
               <a href="#/magasin/${encodeURIComponent(m.id)}"><strong>${esc(m.nom)}</strong></a>
-              <p class="muted">${e.rdv ? `<span class="tag ok">RDV ${e.rdv.heure ? esc(e.rdv.heure) : 'confirmé'}</span> ` : e.rdvHeure ? `<span class="tag">RDV demandé ${esc(e.rdvHeure)}</span> ` : ''}${e.retardRdv ? `<span class="tag late">arrivée ${e.retardRdv} min après le RDV</span> ` : ''}${esc(m.ville)} · visite ${e.duree} min${m.savOuverts ? ` · <span class="tag warn">${m.savOuverts} SAV</span>` : ''}${m.lat == null ? ' · <span class="tag late">non localisé</span>' : ''}</p>
+              <p class="muted">${e.rdv ? `<span class="tag ok">RDV ${e.rdv.heure ? esc(e.rdv.heure) : 'confirmé'}</span> ` : e.rdvHeure ? `<span class="tag">RDV demandé ${esc(e.rdvHeure)}</span> ` : ''}${e.retardRdv ? `<span class="tag late">arrivée ${e.retardRdv} min après le RDV</span> ` : ''}${esc(m.ville)} · <button type="button" class="btn-link duree${t.etapes[i]?.duree ? ' modifiee' : ''}" data-duree="${i}" title="Changer le temps passé dans ce magasin">visite ${e.duree} min</button>${m.savOuverts ? ` · <span class="tag warn">${m.savOuverts} SAV</span>` : ''}${m.lat == null ? ' · <span class="tag late">non localisé</span>' : ''}</p>
               <div class="stop-actions">
                 ${m.lat != null ? `<a class="btn small" href="${lienGps(s.gps, m)}" target="_blank" rel="noopener">GPS</a>` : ''}
                 <button class="btn small" data-fait="${i}">${e.fait ? 'Visité ✓' : 'Marquer visité'}</button>
                 <select class="objet" data-objet="${i}" aria-label="Objet de la visite">${OBJETS_VISITE.map(o => `<option ${o === (e.objet || s.objetDefaut) ? 'selected' : ''}>${o}</option>`).join('')}</select>
                 <input class="motif" data-motif="${i}" value="${esc(e.motif || '')}" placeholder="Pourquoi j'y vais (précision)" aria-label="Précision sur l'objet de la visite">
-                <span class="ordre"><button class="btn-icon" data-up="${i}" aria-label="Monter" ${i === 0 ? 'disabled' : ''}>↑</button>
-                <button class="btn-icon" data-down="${i}" aria-label="Descendre" ${i === p.etapes.length - 1 ? 'disabled' : ''}>↓</button>
-                <button class="btn-icon" data-del="${i}" aria-label="Retirer de la tournée">✕</button></span>
+                <span class="ordre"><button class="btn-icon" data-del="${i}" aria-label="Retirer de la tournée">✕</button></span>
               </div>
             </div></li>`; }).join('')}
-          ${p.retour ? `<li class="drive">${fmtKm(p.retour.km)} · ${fmtDuree(p.retour.min)}</li><li class="stop home"><span class="time">${fmtHeure(p.fin)}</span><span class="pin home">⌂</span><div><strong>Retour</strong></div></li>` : ''}
+          ${p.retour ? `<li class="drive">${fmtKm(p.retour.km)} · ${fmtDuree(p.retour.min)}</li><li class="stop home"><span></span><span class="time">${fmtHeure(p.fin)}</span><span class="pin home">⌂</span><div><strong>Retour</strong></div></li>` : ''}
           ${!t.retour && dernier && t.etapes.length ? `<li class="stop home"><span class="time">${t.calcul ? fmtHeure(p.fin) : ''}</span><span class="pin home">☾</span><div><strong>Nuit sur place</strong><p class="muted">${t.nuit ? esc(t.nuit.replace(/^Nuit près/, 'Près')) + ' (RDV tôt le lendemain : route du soir jusqu\'à l\'hôtel)' : `Près de ${esc(dernier.ville)}`}</p></div></li>` : ''}
         </ol>
         ${t.etapes.length ? '' : '<p class="empty">Aucun magasin prévu ce jour-là. Ajoute ceux que tu veux visiter : l\'ordre et les horaires se calculent tout seuls.</p>'}
@@ -199,8 +229,9 @@ export async function render(el, { date = today() }) {
     save();
   });
   $$('[data-del]').forEach(b => b.onclick = () => { t.etapes.splice(+b.dataset.del, 1); save(); });
-  $$('[data-up]').forEach(b => b.onclick = () => { const i = +b.dataset.up; [t.etapes[i - 1], t.etapes[i]] = [t.etapes[i], t.etapes[i - 1]]; save(); });
-  $$('[data-down]').forEach(b => b.onclick = () => { const i = +b.dataset.down; [t.etapes[i + 1], t.etapes[i]] = [t.etapes[i], t.etapes[i + 1]]; save(); });
+  const liste = el.querySelector('.stops');
+  if (liste) glisser(liste, { onDeplace: (de, vers) => { const [x] = t.etapes.splice(de, 1); t.etapes.splice(vers, 0, x); save(); } });
+  $$('[data-duree]').forEach(b => b.onclick = async () => { if (await modifierDuree(t, +b.dataset.duree, mags, s)) save(false); });
   setTimeout(() => { justeFait = null; }, 0);
   $$('[data-fait]').forEach(b => b.onclick = () => { const e = t.etapes[+b.dataset.fait]; e.fait = !e.fait; justeFait = e.fait ? e.magasinId : null; save(false); });
   $$('[data-objet]').forEach(x => x.onchange = async () => { t.etapes[+x.dataset.objet].objet = x.value; await db.put('tournees', t); });
@@ -208,6 +239,7 @@ export async function render(el, { date = today() }) {
   $('#expPlanning').onclick = () => exporterVersPlanning(date, s);
 
   async function calculer(optimiser) {
+    const hash0 = location.hash, emp0 = empreinte(t);
     const btn = $(optimiser ? '#opt' : '#calc');
     if (btn) { btn.disabled = true; btn.textContent = 'Calcul…'; }
     // localise d'abord les magasins qui ne le sont pas encore
@@ -254,10 +286,13 @@ export async function render(el, { date = today() }) {
       if (suivant.etapes.length) { suivant.depart = t.nuit ? { lat: der.lat, lon: der.lon, adresse: t.nuit } : null; suivant.calcul = null; await db.put('tournees', suivant); }
       toast(t.retour ? 'Optimisé : retour à la maison le soir' : `Optimisé : ${t.nuit.toLowerCase()} (le lendemain est plus près)`);
     }
+    const enBase = await db.get('tournees', t.id);
+    if (enBase && empreinte(enBase) !== emp0) return;   // modifiée ailleurs pendant le calcul : on garde la version la plus récente
+    if (enBase) t.heureDebut = enBase.heureDebut;
     await db.put('tournees', t);
     if (r.provider === 'tomtom') await calibrer(pts, r.legs, s);
     if (r.erreur) toast('Service d\'itinéraire indisponible : estimation à vol d\'oiseau', 'warn');
-    await render(el, { date });
+    if (location.hash === hash0 && document.body.contains(el)) await render(el, { date });
   }
 
   // carte
