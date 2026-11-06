@@ -778,3 +778,14 @@ li.glisse { position: relative; z-index: 5; box-shadow: 0 10px 28px rgba(0,0,0,.
 .top-mag .t-nom small { display: block; font-weight: 400; color: var(--gris); font-size: .8rem; }
 .top-mag b { font: 700 1.15rem var(--cond); font-variant-numeric: tabular-nums; }
 @media (max-width: 520px) { .barres li { grid-template-columns: minmax(0, 6.5rem) 1fr auto; } }
+/* Semaine : aujourd'hui en avant, jours passés repliés */
+.wday.auj { box-shadow: 0 0 0 2px var(--bleu); }
+.wday.auj > header strong::after { content: "aujourd'hui"; margin-left: .45rem; padding: .05rem .4rem; border-radius: 999px; background: var(--bleu); color: var(--sur-bleu, #fff); font: 600 .7rem var(--sans); vertical-align: middle; }
+.wday.passe { opacity: .55; }
+.wday.passe > header { cursor: pointer; }
+.wday.passe:not(.ouvert) > :not(header) { display: none; }
+.wday.passe:not(.ouvert) > header::after { content: "passé ▸"; font-size: .75rem; color: var(--gris); }
+.wday.passe.ouvert { opacity: .85; }
+/* bouton déjà utilisé (messagerie ouverte) */
+.btn.deja { background: var(--papier); color: var(--gris); border-color: var(--trait); }
+@media (prefers-color-scheme: dark) { .wday.auj > header strong::after { color: #0D1524; } }

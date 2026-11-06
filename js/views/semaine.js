@@ -4,7 +4,7 @@ import { ongletsPlanning } from './onglets-planning.js';
 import { db, getSettings, saveSettings } from '../db.js';
 import { DEFAULT_SETTINGS, PRIORITES, PROFIL } from '../config.js';
 import { magasinsEnrichis, prioriteDe } from '../data.js';
-import { $, $$, esc, prioTag, enseigneColor, fmtKm, fmtDuree, fmtHeure, parseHeure, toast, modal, confirmer, fmtDate , glisser } from '../ui.js';
+import { $, $$, esc, prioTag, enseigneColor, fmtKm, fmtDuree, fmtHeure, parseHeure, toast, modal, confirmer, fmtDate , glisser , today } from '../ui.js';
 import { getTournee, heureRdv, choisirMagasins, exporterVersPlanning, lundiDe, estimerJour as estimer, placerRendezVous, departPourRdv, calibrer, empreinte, modifierDuree, chainer, lieuNuit, pointsJour, choisirNuit } from './tournee.js';
 import { planifier } from '../services/planificateur.js';
 import { dateEnLettres, tousLesRdv } from '../services/rdv.js';
@@ -22,7 +22,9 @@ const decale = (iso, n) => { const d = new Date(iso + 'T12:00'); d.setDate(d.get
 export async function render(el, params) {
   destroy();
   const s = await getSettings();
-  const lundi = lundiDe(params.lundi || new Date().toISOString().slice(0, 10));
+  // sans date : la semaine en cours (le week-end : la suivante) ; les jours déjà passés sont repliés
+  const auj = today(), jSem = new Date(auj + 'T12:00').getDay();
+  const lundi = lundiDe(params.lundi || (jSem === 0 || jSem === 6 ? decale(auj, jSem === 6 ? 2 : 1) : auj));
   const nb = Math.max(1, Math.min(6, Number(s.joursTerrain) || 5));
   const dates = Array.from({ length: nb }, (_, i) => decale(lundi, i));
   const all = await magasinsEnrichis(s);
@@ -118,6 +120,10 @@ export async function render(el, params) {
     render(el, { lundi });
   });
   $$('[data-hdep]').forEach(x => x.onchange = () => depart(+x.dataset.hdep, x.value));
+  // jours passés repliés (un clic sur l'en-tête les déplie) ; sur téléphone, on arrive directement sur aujourd'hui
+  $$('.wday.passe > header').forEach(h => { h.title = 'Jour passé : cliquer pour afficher'; h.onclick = e => { if (e.target.closest('a')) return; h.parentElement.classList.toggle('ouvert'); }; });
+  const jAuj = el.querySelector('.wday.auj');
+  if (jAuj && !params.lundi && matchMedia('(max-width: 899px)').matches && el.querySelector('.wday.passe')) setTimeout(() => jAuj.scrollIntoView({ block: 'start', behavior: 'instant' }), 50);
   $$('[data-nuit]').forEach(b => b.onclick = async () => { const t = tours[+b.dataset.nuit]; if (await choisirNuit(t, all, s)) { await save(t); render(el, { lundi }); } });
   $$('[data-hrdv]').forEach(b => b.onclick = () => { const [i, h] = b.dataset.hrdv.split(/:(.+)/); depart(+i, h); });
   $('#pick').onchange = e => { location.hash = `#/semaine/${lundiDe(e.target.value)}`; };
@@ -170,7 +176,8 @@ function rdvTxt(e, r, jour) {
 
 function colonne(t, i, p, mags, s, dates, rdvs) {
   const last = t.etapes.length ? mags.get(t.etapes[t.etapes.length - 1].magasinId) : null;
-  return `<section class="wday" style="--c:${COULEURS[i]}">
+  const auj = today();
+  return `<section class="wday${t.id < auj ? ' passe' : ''}${t.id === auj ? ' auj' : ''}" style="--c:${COULEURS[i]}" data-jour="${t.id}">
     <header><a href="#/tournee/${t.id}"><strong>${JOURS[i]} ${new Date(t.id + 'T12:00').getDate()}</strong></a>
       <span class="muted">${t.etapes.length} magasin${t.etapes.length > 1 ? 's' : ''}</span></header>
     <div class="wdep"><label>Départ <input type="time" data-hdep="${i}" value="${esc(t.heureDebut || s.heureDebut)}" class="${t.heureDebut ? 'modifiee' : ''}"></label>${t.heureDebut ? `<button class="btn-link" data-hrdv="${i}:${esc(s.heureDebut)}" title="Revenir à l'heure habituelle">habituel ${esc(s.heureDebut.replace(':', 'h'))}</button>` : ''}

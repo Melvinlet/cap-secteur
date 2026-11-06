@@ -1,10 +1,11 @@
 // Écran « Rendez-vous » : choisir des magasins, générer la demande (mail / SMS) avec
 // les contacts du magasin, et suivre la réponse (envoyée, acceptée, autre date, refusée).
+import { civiliteDevinee } from '../services/civilite.js';
 import { db, getSettings } from '../db.js';
 import { magasinsEnrichis, trierContacts, roleDe } from '../data.js';
 import { $, $$, esc, borne, prioTag, fmtDate, fmtHeure, toast, modal, norm, today } from '../ui.js';
 import { STATUTS_RDV, OBJETS_VISITE } from '../config.js';
-import { getRdv, tousLesRdv, genererMessage, lienMail, lienSms, estMobile, changerStatut, aRelancer, modeles, dateEnLettres } from '../services/rdv.js';
+import { getRdv, tousLesRdv, genererMessage, lienMail, lienSms, estMobile, changerStatut, aRelancer, modeles, dateEnLettres, lienMailCci } from '../services/rdv.js';
 import { planning } from './tournee.js';
 import { evenementRdv, proposerAgenda } from '../services/agenda.js';
 
@@ -74,7 +75,8 @@ export async function render(el, params = {}) {
     </div>
     ${etat.mode === 'semaine' && !lignes.length ? `<div class="empty"><p>Aucune tournée prévue du ${fmtDate(etat.du)} au ${fmtDate(etat.au)}. Prépare d'abord tes tournées (ou ton plan de secteur), ou passe sur « Tous les magasins ».</p><a class="btn" href="#/tournee/${etat.du}">Ouvrir la tournée du ${fmtDate(etat.du)}</a></div>` : ''}
     ${visibles.length ? `<div class="actions"><label class="check"><input type="checkbox" id="all"> Tout sélectionner</label>
-      <button class="btn primary" id="lot" disabled>Préparer les demandes</button></div>` : ''}
+      <button class="btn primary" id="lot" disabled>Préparer les demandes</button>
+      <button class="btn" id="tous" title="Un seul mail générique (sans prénom ni adresse), tous les contacts en copie cachée">Un seul mail à tous</button></div>` : ''}
     <ul class="rdv-list">${visibles.map((l, i) => ligneHTML(l, i)).join('')}</ul>
   </div>`;
 
@@ -89,6 +91,7 @@ export async function render(el, params = {}) {
   $$('.rdv-sel').forEach(c => c.onchange = majLot);
   $('#lot')?.addEventListener('click', () => rediger($$('.rdv-sel:checked').map(c => visibles[+c.dataset.i]), s, () => render(el)));
   $$('[data-ecrire]').forEach(b => b.onclick = () => rediger([visibles[+b.dataset.ecrire]], s, () => render(el)));
+  $('#tous')?.addEventListener('click', () => { const sel = $$('.rdv-sel:checked').map(c => visibles[+c.dataset.i]); mailGroupe(sel.length ? sel : visibles, s, () => render(el)); });
   $$('[data-agenda]').forEach(b => b.onclick = () => agenda(visibles[+b.dataset.agenda], visibles[+b.dataset.agenda].rdv, s));
   $$('[data-statut]').forEach(sel => sel.onchange = async () => {
     const l = visibles[+sel.dataset.statut];
@@ -162,7 +165,8 @@ function rediger(file, s, fin) {
       <div class="modal-body">
         <div class="row">
           <label>Contact<select id="cCt">${l.contacts.map(c => `<option value="${c.id}" ${c.id === r.contactId ? 'selected' : ''}>${esc(c.nom || 'Contact')}${roleDe(c) ? ` (${esc(roleDe(c))})` : ''}${c.email ? ` — ${esc(c.email)}` : ''}${!c.email && c.tel ? ` — ${esc(c.tel)}` : ''}</option>`).join('') || '<option value="">Aucun contact enregistré</option>'}</select></label>
-          <label>Message<select id="cType">${Object.entries(mods).map(([k, m]) => `<option value="${k}" ${k === type0 ? 'selected' : ''}>${esc(m.label)}</option>`).join('')}</select></label></div>
+          <label>Civilité<select id="cCiv"></select></label>
+          <label>Message<select id="cType">${Object.entries(mods).filter(([, m]) => !m.groupe).map(([k, m]) => `<option value="${k}" ${k === type0 ? 'selected' : ''}>${esc(m.label)}</option>`).join('')}</select></label></div>
         <div class="row">
           <label>Date proposée<input type="date" id="cDate" value="${esc(r.date || '')}"></label>
           <label>Heure<input type="time" id="cHeure" value="${esc(r.heure || '')}"></label>
@@ -176,13 +180,25 @@ function rediger(file, s, fin) {
         <a class="btn" id="cTel">Appeler</a>
         <a class="btn" id="cSms">Envoyer par SMS</a>
         <button type="button" class="btn" id="cCopy">Copier le texte</button>
-        <a class="btn primary" id="cMail">Ouvrir dans ma messagerie</a>
+        <a class="btn primary" id="cMail">${r.mailOuvert ? `Messagerie ouverte le ${fmtDate(r.mailOuvert)} · rouvrir` : 'Ouvrir dans ma messagerie'}</a>
         ${file.length > 1 ? `<button type="button" class="btn ghost" id="cNext">${i < file.length - 1 ? 'Suivant' : 'Terminer'}</button>` : ''}
       </footer></form>`;
     if (!d.open) d.showModal();
     $$('[data-close]', d).forEach(b => b.onclick = () => d.close());
 
     const contact = () => l.contacts.find(c => c.id === $('#cCt', d).value) || l.contacts[0];
+    const LIB = { M: 'Monsieur', Mme: 'Madame', MmeM: 'Madame, Monsieur' };
+    const remplirCiv = () => {   // « Auto » = devinée d'après le nom ; le choix est gardé sur le contact
+      const c = contact() || {}, g = civiliteDevinee(c);
+      $('#cCiv', d).innerHTML = `<option value="">Auto (${g ? LIB[g] : 'sans civilité'})</option><option value="M">Monsieur</option><option value="Mme">Madame</option><option value="MmeM">Madame, Monsieur</option><option value="aucune">Sans (« Bonjour »)</option>`;
+      $('#cCiv', d).value = c.civilite || '';
+    };
+    $('#cCiv', d).onchange = async () => {
+      const c = contact(); if (!c) return;
+      c.civilite = $('#cCiv', d).value || undefined;
+      const brut = await db.get('contacts', c.id); if (brut) await db.put('contacts', { ...brut, civilite: c.civilite, maj: new Date().toISOString() });
+      maj();
+    };
     const maj = () => {
       r.date = $('#cDate', d).value; r.heure = $('#cHeure', d).value; r.objet = $('#cObjet', d).value; r.contactId = contact()?.id;
       const type = $('#cType', d).value;
@@ -194,10 +210,11 @@ function rediger(file, s, fin) {
       const mob = [c.tel, c.tel2].find(estMobile);
       $('#cTel', d).hidden = !tel; if (tel) $('#cTel', d).href = `tel:${tel.replace(/\s/g, '')}`;
       $('#cSms', d).hidden = !mob;
-      $('#cMail', d).hidden = !c.email; $('#cMail', d).classList.toggle('primary', !!c.email);
+      $('#cMail', d).hidden = !c.email; $('#cMail', d).classList.toggle('primary', !!c.email && !r.mailOuvert); $('#cMail', d).classList.toggle('deja', !!r.mailOuvert);
     };
-    ['#cCt', '#cType', '#cDate', '#cHeure', '#cObjet'].forEach(k => $(k, d).onchange = maj);
-    maj();
+    ['#cType', '#cDate', '#cHeure', '#cObjet'].forEach(k => $(k, d).onchange = maj);
+    $('#cCt', d).onchange = () => { remplirCiv(); maj(); };
+    remplirCiv(); maj();
 
     // l'envoi marque la demande comme envoyée (ou relancée)
     const marquer = async () => {
@@ -209,7 +226,13 @@ function rediger(file, s, fin) {
       l.rdv = res.rdv;
       toast(st === 'relancee' ? 'Marquée comme relancée' : 'Marquée comme envoyée');
     };
-    $('#cMail', d).onclick = e => { e.currentTarget.href = lienMail(contact()?.email, $('#cSujet', d).value, $('#cCorps', d).value); marquer(); };
+    $('#cMail', d).onclick = async e => {
+      const b = e.currentTarget;
+      b.href = lienMail(contact()?.email, $('#cSujet', d).value, $('#cCorps', d).value);
+      r.mailOuvert = new Date().toISOString().slice(0, 10);
+      b.classList.add('deja'); b.classList.remove('primary'); b.textContent = 'Messagerie ouverte ✓ · rouvrir';   // on voit qu'on a déjà appuyé
+      await marquer(); l.rdv.mailOuvert = r.mailOuvert; await db.put('rdv', { ...l.rdv, mailOuvert: r.mailOuvert });
+    };
     $('#cSms', d).onclick = e => { const c = contact(); e.currentTarget.href = lienSms([c.tel, c.tel2].find(estMobile), $('#cCorps', d).value); marquer(); };
     $('#cCopy', d).onclick = async () => {
       const t = ($('#cType', d).value === 'sms' ? '' : `Objet : ${$('#cSujet', d).value}\n\n`) + $('#cCorps', d).value;
@@ -219,4 +242,44 @@ function rediger(file, s, fin) {
     $('#cNext', d)?.addEventListener('click', () => { if (i < file.length - 1) { i++; afficher(); } else d.close(); });
   };
   afficher();
+}
+
+// ── Un seul mail à tous : texte générique, contacts en copie cachée (Cci) ──────────────
+async function mailGroupe(lignes, s, fin) {
+  const avecMail = lignes.map(l => ({ l, c: l.contacts.find(c => c.id === l.rdv.contactId && c.email) || l.contacts.find(c => c.email) })).filter(x => x.c);
+  const emails = [...new Set(avecMail.map(x => x.c.email.trim().toLowerCase()))];
+  const sans = lignes.length - avecMail.length;
+  if (!emails.length) return toast('Aucune adresse e-mail parmi ces magasins', 'warn');
+  const msg = genererMessage('groupe', { s, rdv: { objet: s.objetDefaut } });
+  const p = modal({ titre: 'Un seul mail à tous', valider: 'Fermer', large: true, corps: `
+    <p><strong>${emails.length} adresse${emails.length > 1 ? 's' : ''}</strong> en copie cachée (personne ne voit les autres)${sans ? ` · <span class="muted">${sans} magasin${sans > 1 ? 's' : ''} sans e-mail : à faire au cas par cas</span>` : ''}.</p>
+    <label>Objet<select id="gObjet">${OBJETS_VISITE.map(o => `<option ${o === s.objetDefaut ? 'selected' : ''}>${esc(o)}</option>`).join('')}</select></label>
+    <label>Objet du mail<input id="gSujet" value="${esc(msg.sujet)}"></label>
+    <label>Texte<textarea id="gCorps" rows="11">${esc(msg.corps)}</textarea></label>
+    <label class="check"><input type="checkbox" id="gMarquer" checked> Marquer ces demandes comme envoyées</label>
+    <div class="actions"><a class="btn primary" id="gMail">Ouvrir dans ma messagerie</a><button type="button" class="btn" id="gCopie">Copier les adresses</button></div>
+    <p class="hint">Texte générique, sans prénom ni nom de magasin. Pour un message personnalisé, utilise « Écrire » sur chaque magasin, comme d'habitude.</p>` });
+  const dlg = document.querySelector('dialog[open]');
+  const q = x => dlg.querySelector(x);
+  q('#gObjet').onchange = () => { const m = genererMessage('groupe', { s, rdv: { objet: q('#gObjet').value } }); q('#gSujet').value = m.sujet; q('#gCorps').value = m.corps; };
+  const copier = async () => { try { await navigator.clipboard.writeText(emails.join('; ')); return true; } catch { return false; } };
+  q('#gCopie').onclick = async () => toast(await copier() ? `${emails.length} adresses copiées : colle-les dans le champ Cci` : 'Copie impossible sur cet appareil', 'warn');
+  q('#gMail').onclick = async e => {
+    const b = e.currentTarget;
+    const lien = lienMailCci(emails, q('#gSujet').value, q('#gCorps').value);
+    if (lien) b.href = lien;
+    else { await copier(); b.href = lienMail('', q('#gSujet').value, q('#gCorps').value); toast(`Trop d'adresses pour les mettre dans le lien : elles sont copiées, colle-les dans le champ Cci`); }
+    b.classList.add('deja'); b.classList.remove('primary'); b.textContent = 'Messagerie ouverte ✓ · rouvrir';
+    if (q('#gMarquer').checked && !b.dataset.fait) {
+      b.dataset.fait = '1';
+      const jour = new Date().toISOString().slice(0, 10);
+      for (const { l } of avecMail) {
+        const r = l.rdv, st = r.statut === 'aFaire' ? 'envoyee' : ['envoyee', 'relancee'].includes(r.statut) ? 'relancee' : null;
+        if (st) { const res = await changerStatut(r, st, { objet: q('#gObjet').value }); await db.put('rdv', { ...res.rdv, mailOuvert: jour }); }
+      }
+      toast(`${avecMail.length} demande${avecMail.length > 1 ? 's' : ''} marquée${avecMail.length > 1 ? 's' : ''} comme envoyée${avecMail.length > 1 ? 's' : ''}`);
+    }
+  };
+  await p;
+  fin();
 }

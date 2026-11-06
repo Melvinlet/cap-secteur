@@ -1,5 +1,6 @@
 // Fiche magasin : infos & contacts, visites, stock, commandes, SAV, implantations.
 // Aucun prix n'est affiché ni saisi ici.
+import { civiliteDevinee } from '../services/civilite.js';
 import { db, uid, getSettings } from '../db.js';
 import { magasinComplet, dureeVisite, prioriteDe, frequenceDe, produitsPour, numeroVisite, analyseStock, offertsDejaDonnes, roleDe, trierContacts } from '../data.js';
 import { $, $$, esc, borne, prioTag, enseigneColor, fmtDate, toast, modal, confirmer, telLink, mailLink, today, downloadBlob } from '../ui.js';
@@ -109,7 +110,8 @@ async function miniCarte(m) {
 
 async function editContact(m, c = {}) {
   const r = await modal({ titre: c.id ? 'Modifier le contact' : 'Nouveau contact', corps: `
-    <label>Nom<input name="nom" value="${esc(c.nom)}"></label>
+    <div class="row"><label>Civilité<select name="civilite"><option value="">Auto${(g => g ? ` (${({ M: 'Monsieur', Mme: 'Madame', MmeM: 'Madame, Monsieur' })[g]})` : '')(civiliteDevinee(c))}</option><option value="M" ${c.civilite === 'M' ? 'selected' : ''}>Monsieur</option><option value="Mme" ${c.civilite === 'Mme' ? 'selected' : ''}>Madame</option><option value="MmeM" ${c.civilite === 'MmeM' ? 'selected' : ''}>Madame, Monsieur</option><option value="aucune" ${c.civilite === 'aucune' ? 'selected' : ''}>Sans</option></select></label>
+    <label>Nom<input name="nom" value="${esc(c.nom)}"></label></div>
     <div class="row"><label>Rôle<select name="role"><option value="">—</option>${ROLES_CONTACT.map(r => `<option ${r === roleDe(c) ? 'selected' : ''}>${r}</option>`).join('')}</select></label>
     <label>Précision<input name="fonction" value="${esc(c.fonction)}" placeholder="ex. rayon jardin, adjoint…"></label></div>
     <label class="check"><input type="checkbox" name="principal" ${c.principal ? 'checked' : ''}> Interlocuteur principal (proposé en premier pour les rendez-vous)</label>
@@ -120,6 +122,7 @@ async function editContact(m, c = {}) {
     ${c.id ? `<button type="button" class="btn danger small" id="delC" data-cid="${esc(c.id)}">Supprimer ce contact</button>` : ''}` });
   if (!r) return;
   r.principal = r.principal === 'on';
+  if (!r.civilite) r.civilite = undefined;   // « Auto » : devinée d'après le nom
   const id = c.id || uid('c');
   if (r.principal) for (const x of await db.byMagasin('contacts', m.id)) if (x.id !== id && x.principal) await db.put('contacts', stamp({ ...x, principal: false }));
   await db.put('contacts', stamp({ ...c, ...r, id, magasinId: m.id, source: c.source || 'appli' }));

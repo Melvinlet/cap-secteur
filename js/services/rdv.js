@@ -2,6 +2,7 @@
 // Rendez-vous : génération des messages, suivi des demandes, lien avec les tournées.
 // Une demande « en cours » par magasin (id = rdv-<magasin>) avec son historique.
 // ─────────────────────────────────────────────────────────────────────────────
+import { bonjourDe } from './civilite.js';
 import { db } from '../db.js';
 import { MODELES_RDV, OBJET_PHRASE, STATUTS_RDV, PROFIL } from '../config.js';
 import { ajouterEtape } from '../views/tournee.js';
@@ -10,7 +11,22 @@ export const rdvId = magasinId => `rdv-${magasinId}`;
 export const getRdv = async magasinId => (await db.get('rdv', rdvId(magasinId))) || { id: rdvId(magasinId), magasinId, statut: 'aFaire', historique: [] };
 export const tousLesRdv = async () => new Map((await db.all('rdv')).map(r => [r.magasinId, r]));
 
-export const modeles = s => Object.fromEntries(Object.entries(MODELES_RDV).map(([k, m]) => [k, { ...m, ...((s.modelesRdv || {})[k] || {}) }]));
+// Message groupé : un seul mail à tous (en copie cachée), sans prénom, sans magasin ni date
+const GROUPE = { label: 'Message groupé (à tous)', groupe: true, sujet: 'Prise de rendez-vous – {marques}', corps: `Bonjour,
+
+Je suis {chef}, {poste} {marques} sur votre région.
+
+Je souhaiterais passer vous rencontrer dans les prochaines semaines pour {objet}. Pourriez-vous m'indiquer le jour et le créneau qui vous conviennent le mieux ?
+
+Bien cordialement,
+
+{chef}
+{poste}
+{telephone}
+{email}` };
+export const modeles = s => Object.fromEntries(Object.entries({ ...MODELES_RDV, groupe: MODELES_RDV.groupe || GROUPE }).map(([k, m]) => [k, { ...m, ...((s.modelesRdv || {})[k] || {}) }]));
+// Lien mailto avec les destinataires en copie cachée (null si trop long pour une messagerie)
+export const lienMailCci = (emails, sujet, corps) => { const u = `mailto:?bcc=${emails.map(encodeURIComponent).join(',')}&subject=${encodeURIComponent(sujet)}&body=${encodeURIComponent(corps)}`; return u.length < 1900 ? u : null; };
 
 const JOURS = ['dimanche', 'lundi', 'mardi', 'mercredi', 'jeudi', 'vendredi', 'samedi'];
 const MOIS = ['janvier', 'février', 'mars', 'avril', 'mai', 'juin', 'juillet', 'août', 'septembre', 'octobre', 'novembre', 'décembre'];
@@ -34,13 +50,13 @@ export function quand(date, heure, approx = true) {
 }
 
 // Remplit un modèle avec les infos du magasin, du contact et de la demande
-export function genererMessage(type, { m, contact, rdv, s }) {
+export function genererMessage(type, { m = {}, contact, rdv = {}, s }) {
   const md = modeles(s)[type] || modeles(s).demande;
   const date = rdv.statut === 'autreDate' ? rdv.dateRetenue : rdv.date;
   const heure = rdv.statut === 'autreDate' ? rdv.heureRetenue : rdv.heure;
   const nom = (contact?.nom || '').trim();
   const v = {
-    bonjour: nom ? `Bonjour ${nom}` : 'Bonjour', contact: nom, magasin: m.nom, enseigne: m.enseigne, ville: m.ville,
+    bonjour: bonjourDe(contact), contact: nom,   // « Bonjour Monsieur / Madame », jamais le prénom magasin: m.nom, enseigne: m.enseigne, ville: m.ville,
     quand: quand(date, heure, type !== 'confirmation'), date: dateEnLettres(date), heure: heureEnLettres(heure),
     objet: OBJET_PHRASE[rdv.objet || s.objetDefaut] || OBJET_PHRASE.Autre,
     chef: s.commercial || '[ton nom]', telephone: s.telPro || '', email: s.emailPro || '',
