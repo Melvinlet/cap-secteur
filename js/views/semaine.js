@@ -5,7 +5,7 @@ import { db, getSettings, saveSettings } from '../db.js';
 import { DEFAULT_SETTINGS, PRIORITES, PROFIL } from '../config.js';
 import { magasinsEnrichis, prioriteDe } from '../data.js';
 import { $, $$, esc, prioTag, enseigneColor, fmtKm, fmtDuree, fmtHeure, parseHeure, toast, modal, confirmer, fmtDate , glisser } from '../ui.js';
-import { getTournee, heureRdv, choisirMagasins, exporterVersPlanning, lundiDe, estimerJour as estimer, placerRendezVous, departPourRdv, calibrer, empreinte, modifierDuree } from './tournee.js';
+import { getTournee, heureRdv, choisirMagasins, exporterVersPlanning, lundiDe, estimerJour as estimer, placerRendezVous, departPourRdv, calibrer, empreinte, modifierDuree, chainer, lieuNuit, pointsJour, choisirNuit } from './tournee.js';
 import { planifier } from '../services/planificateur.js';
 import { dateEnLettres, tousLesRdv } from '../services/rdv.js';
 import { haversine } from '../services/geo.js';
@@ -29,6 +29,11 @@ export async function render(el, params) {
   const mags = new Map(all.map(m => [m.id, m]));
   const tours = await Promise.all(dates.map(getTournee));
   tours.forEach(t => { t.etapes = t.etapes.filter(e => mags.has(e.magasinId)); });
+  // chaque départ est recalé d'après la nuit de la veille (vendredi soir → lundi : pas de lien, le week-end se passe à la maison)
+  for (let i = 0; i < tours.length; i++) {
+    const veille = i ? tours[i - 1] : null;
+    if (chainer(veille, tours[i], mags) && (tours[i].etapes.length || tours[i].heureDebut)) await db.put('tournees', tours[i]);
+  }
   const rdvs = await tousLesRdv();
   const est = tours.map(t => estimer(t, mags, s, rdvs));
   const tot = { n: tours.reduce((a, t) => a + t.etapes.length, 0), km: est.reduce((a, p) => a + p.km, 0),
@@ -60,13 +65,18 @@ export async function render(el, params) {
       ${s.cleTomTom && echecTomTom && tours.some(t => t.etapes.length && t.calcul?.provider !== 'tomtom') ? '<button class="btn" id="reels" title="Remplace les temps estimés par les temps TomTom">Trajets réels (TomTom)</button>' : ''}
       <button class="btn ghost" id="vider" ${tot.n ? '' : 'disabled'}>Vider la semaine</button>
     </div>
-    <div class="week">${tours.map((t, i) => colonne(t, i, est[i], mags, s, dates, rdvs, routeDuSoir(t, tours[i + 1], mags, s))).join('')}</div>
+    <div class="week">${tours.map((t, i) => colonne(t, i, est[i], mags, s, dates, rdvs)).join('')}</div>
     <h2 class="h2">Carte de la semaine</h2>
     <p class="legend">${dates.map((d, i) => `<span><i style="background:${COULEURS[i]}"></i>${JOURS[i]} ${new Date(d + 'T12:00').getDate()}</span>`).join('')}</p>
     <div id="wmap" class="map-panel week-map"></div>
   </div>`;
 
-  const save = async t => { t.calcul = null; if (t.etapes.length || t.heureDebut) await db.put('tournees', t); else await db.del('tournees', t.id); };
+  const save = async t => {
+    t.calcul = null; if (t.retour) delete t.hotel;
+    if (t.etapes.length || t.heureDebut) await db.put('tournees', t); else await db.del('tournees', t.id);
+    const i = tours.indexOf(t), l = tours[i + 1];
+    if (l && chainer(t, l, mags) && (l.etapes.length || l.heureDebut)) await db.put('tournees', l);   // le lendemain part du bon endroit
+  };
   // changer l'heure de départ ne change pas les trajets : on garde le calcul TomTom
   const depart = async (i, h) => { const t = tours[i]; if (!h || h === s.heureDebut) delete t.heureDebut; else t.heureDebut = h; await db.put('tournees', t); render(el, { lundi }); };
   // trajets réels TomTom : calculés automatiquement pour les jours qui n'en ont pas (une seule fois, gardés ensuite)
@@ -75,8 +85,7 @@ export async function render(el, params) {
       const hash = location.hash;
       for (const t of tours) {
         if (!t.etapes.length || t.calcul?.provider === 'tomtom') continue;
-        const dep = t.depart?.lat != null ? t.depart : s.depart;
-        const pts = [dep, ...t.etapes.map(x => mags.get(x.magasinId)).filter(m => m?.lat != null), ...(t.retour ? [s.depart] : [])];
+        const pts = pointsJour(t, mags, s);
         if (pts.length < 2) continue;
         const emp = empreinte(t);
         const r = await calculerTrajets(pts, s);
@@ -96,8 +105,7 @@ export async function render(el, params) {
     for (const t of tours) {
       if (!t.etapes.length || t.calcul?.provider === 'tomtom') continue;
       b.textContent = `Calcul… ${++n}`;
-      const dep = t.depart?.lat != null ? t.depart : s.depart;
-      const pts = [dep, ...t.etapes.map(x => mags.get(x.magasinId)).filter(m => m?.lat != null), ...(t.retour ? [s.depart] : [])];
+      const pts = pointsJour(t, mags, s);
       const emp = empreinte(t);
       const r = await calculerTrajets(pts, s);
       if (r.erreur || r.sansCle) { err = r.erreur || 'clé TomTom manquante'; break; }
@@ -110,6 +118,7 @@ export async function render(el, params) {
     render(el, { lundi });
   });
   $$('[data-hdep]').forEach(x => x.onchange = () => depart(+x.dataset.hdep, x.value));
+  $$('[data-nuit]').forEach(b => b.onclick = async () => { const t = tours[+b.dataset.nuit]; if (await choisirNuit(t, all, s)) { await save(t); render(el, { lundi }); } });
   $$('[data-hrdv]').forEach(b => b.onclick = () => { const [i, h] = b.dataset.hrdv.split(/:(.+)/); depart(+i, h); });
   $('#pick').onchange = e => { location.hash = `#/semaine/${lundiDe(e.target.value)}`; };
   $('#exp').onclick = () => exporterVersPlanning(lundi, s, { du: lundi, au: dates[dates.length - 1] });
@@ -143,8 +152,7 @@ export async function render(el, params) {
   map = await carte($('#wmap'));
   const layers = departOk ? [repereDepart(s.depart)] : [];
   tours.forEach((t, i) => {
-    const pts = [t.depart?.lat != null ? t.depart : s.depart, ...t.etapes.map(e => mags.get(e.magasinId)).filter(m => m?.lat != null)];
-    if (t.retour) pts.push(s.depart);
+    const pts = pointsJour(t, mags, s);
     if (departOk && pts.length > 2) layers.push(L.polyline(pts.map(p => [p.lat, p.lon]), { color: COULEURS[i], weight: 3, opacity: .8 }));
     t.etapes.forEach((e, k) => { const m = mags.get(e.magasinId); if (m?.lat != null) layers.push(repere(m, k + 1, COULEURS[i]).bindPopup(`<strong>${esc(m.nom)}</strong><br>${dateEnLettres(t.id)}`)); });
   });
@@ -160,16 +168,7 @@ function rdvTxt(e, r, jour) {
   return '';
 }
 
-// nuit sur place loin du dernier magasin (RDV tôt le lendemain) : route du soir jusqu'à l'hôtel
-function routeDuSoir(t, suivant, mags, s) {
-  if (t.retour || !t.etapes.length || suivant?.depart?.lat == null) return 0;
-  const last = mags.get(t.etapes[t.etapes.length - 1].magasinId);
-  if (last?.lat == null) return 0;
-  const min = estimate([last, suivant.depart], s).legs[0]?.min || 0;
-  return min >= 20 ? min : 0;
-}
-
-function colonne(t, i, p, mags, s, dates, rdvs, soir = 0) {
+function colonne(t, i, p, mags, s, dates, rdvs) {
   const last = t.etapes.length ? mags.get(t.etapes[t.etapes.length - 1].magasinId) : null;
   return `<section class="wday" style="--c:${COULEURS[i]}">
     <header><a href="#/tournee/${t.id}"><strong>${JOURS[i]} ${new Date(t.id + 'T12:00').getDate()}</strong></a>
@@ -187,8 +186,9 @@ function colonne(t, i, p, mags, s, dates, rdvs, soir = 0) {
         <span class="wact"><select data-move="${i}:${k}" aria-label="Déplacer ${esc(m.nom)}"><option value="${i}">Déplacer…</option>${dates.map((d, j) => j === i ? '' : `<option value="${j}">${JOURS[j]} ${new Date(d + 'T12:00').getDate()}</option>`).join('')}</select>
         <button class="btn-icon" data-del="${i}:${k}" aria-label="Retirer">✕</button></span></div></li>`; }).join('')}</ol>
     ${p.retour ? `<p class="wleg fin"><span>retour maison</span>${p.estime ? '≈ ' : ''}${fmtKm(p.retour.km)} · ${fmtDuree(p.retour.min)}</p>` : ''}
-    ${soir ? `<p class="wday-night">→ ${fmtDuree(soir)} de route le soir jusqu'à l'hôtel (RDV tôt le lendemain), arrivée vers ${fmtHeure(p.fin + soir)}</p>` : ''}
-    ${t.etapes.length && !t.retour && last ? `<p class="wday-night">☾ ${t.nuit ? esc(t.nuit.replace(/^Nuit/, 'nuit')) : `nuit près de ${esc(last.ville)}`}</p>` : ''}
+    ${p.versHotel ? `<p class="wleg fin"><span>jusqu'à l'hôtel</span>${p.estime ? '≈ ' : ''}${fmtKm(p.versHotel.km)} · ${fmtDuree(p.versHotel.min)}</p>` : ''}
+    ${t.etapes.length && !t.retour && last ? `<p class="wday-night">☾ ${esc((lieuNuit(t, mags)?.adresse || 'Nuit sur place').replace(/^Nuit/, 'nuit'))} <button type="button" class="btn-link" data-nuit="${i}">${t.hotel?.choisi ? 'changer' : 'choisir la ville'}</button></p>`
+      : t.etapes.length ? `<p class="wday-night muted"><button type="button" class="btn-link" data-nuit="${i}">dormir sur place ?</button></p>` : ''}
     <button class="btn small ghost" data-add="${i}">Ajouter des magasins</button>
   </section>`;
 }
@@ -295,7 +295,9 @@ async function remplir(lundi, dates, tours, all, s, rdvs) {
     if (!t) continue;
     const anciens = new Map(t.etapes.map(e => [e.magasinId, e]));
     t.etapes = j.etapes.map(id => anciens.get(id) || { magasinId: id, fait: false, auto: true, detour: j.detours.includes(id), ...(id in (j.ajouts || {}) ? { surChemin: j.ajouts[id] } : {}) });
-    t.retour = j.retour; t.depart = j.depart; t.nuit = j.nuit || null; t.calcul = null;
+    t.retour = j.retour; t.depart = j.depart; t.nuit = j.nuit || null; t.calcul = null; delete t.hotel;
+    const jl = plan.jours.find(x => x.offset === j.offset + 1);   // nuit choisie près du RDV du lendemain (pas au dernier magasin)
+    if (!j.retour && j.nuit && jl?.depart?.lat != null) t.hotel = { lat: jl.depart.lat, lon: jl.depart.lon, ville: j.nuit.replace(/^Nuit (près de|à) /, '') };
     t.offset = j.offset;
     retires += caserRendezVous(t, magsMap, sDu(j.offset), rdvs, new Set(fixes.get(j.offset) || []));
   }
@@ -305,6 +307,7 @@ async function remplir(lundi, dates, tours, all, s, rdvs) {
     && (!cible.departements.length || cible.departements.includes(String(m.departement)))
     && (cible.autres !== 'aucun' || !cible.enseignes.length || cible.enseignes.includes(m.enseigne)));
   for (const t of tours) if (!limite(t.offset) || t.etapes.length < limite(t.offset)) combles += comblerAttente(t, magsMap, sDu(t.offset), rdvs, pool, prevus, limite(t.offset));
+  tours.forEach((t, i) => chainer(i ? tours[i - 1] : null, t, magsMap));
   for (const t of tours) { delete t.offset; if (t.etapes.length || t.heureDebut) await db.put('tournees', t); else await db.del('tournees', t.id); }
   const n = plan.jours.reduce((a, j) => a + j.etapes.length, 0), d = plan.jours.reduce((a, j) => a + j.detours.length, 0);
   const pc = plan.jours.reduce((a, j) => a + Object.keys(j.ajouts || {}).length, 0);
@@ -325,6 +328,7 @@ async function optimiserSemaineUI(tours, mags, s, rdvs) {
   if (!r) return false;
   const avant = bilan(tours, mags, s, rdvs);
   optimiserSemaine(tours, mags, s, rdvs, { nuits: r.nuits === 'on', deplacer: r.deplacer === 'on' });
+  tours.forEach((t, i) => { if (t.retour) delete t.hotel; chainer(i ? tours[i - 1] : null, t, mags); });
   const apres = bilan(tours, mags, s, rdvs);
   for (const t of tours) { if (t.etapes.length) await db.put('tournees', t); else await db.del('tournees', t.id); }
   const gain = Math.round(avant.conduite - apres.conduite);

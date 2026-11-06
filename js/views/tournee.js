@@ -14,7 +14,41 @@ let map;
 
 // Empreinte d'une tournée (magasins, ordre, retour, départ) : un calcul lancé en arrière-plan n'enregistre
 // son résultat que si la tournée n'a pas été modifiée entre-temps (ailleurs dans l'appli).
-export const empreinte = t => JSON.stringify([(t.etapes || []).map(e => e.magasinId), !!t.retour, t.depart?.lat ?? null, t.depart?.lon ?? null]);
+export const empreinte = t => JSON.stringify([(t.etapes || []).map(e => e.magasinId), !!t.retour, t.depart?.lat ?? null, t.depart?.lon ?? null, t.hotel?.lat ?? null, t.hotel?.lon ?? null]);
+
+// ── Nuits ─────────────────────────────────────────────────────────────────────
+// Une seule règle : le soir d'une journée « sans retour », on dort à l'hôtel choisi (t.hotel) sinon près du
+// dernier magasin ; le lendemain part de là. Le départ du lendemain est TOUJOURS recalculé à partir de la veille
+// (avant, il était enregistré une fois et restait faux si la veille changeait).
+const dernierLoc = (t, mags) => [...t.etapes].reverse().map(e => mags.get(e.magasinId)).find(m => m?.lat != null);
+export function lieuNuit(t, mags) {
+  if (!t || t.retour || !t.etapes.length) return null;
+  if (t.hotel?.lat != null) return { lat: t.hotel.lat, lon: t.hotel.lon, ville: t.hotel.ville, choisi: !!t.hotel.choisi, adresse: `Nuit ${t.hotel.choisi ? 'à' : 'près de'} ${t.hotel.ville}` };
+  const d = dernierLoc(t, mags);
+  return d ? { lat: d.lat, lon: d.lon, ville: d.ville, adresse: `Nuit près de ${d.ville}` } : null;
+}
+// Recale le départ de t d'après la veille (et le libellé de la nuit de la veille) ; renvoie true si t a changé
+export function chainer(veille, t, mags) {
+  const l = lieuNuit(veille, mags);
+  if (veille) veille.nuit = l?.adresse || null;
+  const dep = l ? { lat: l.lat, lon: l.lon, adresse: l.adresse } : null;
+  const cle = d => d ? `${d.lat.toFixed(4)},${d.lon.toFixed(4)},${d.adresse}` : '';
+  if (cle(t.depart?.lat != null ? t.depart : null) === cle(dep)) return false;
+  t.depart = dep; t.calcul = null;
+  return true;
+}
+// Points du trajet de la journée : départ, magasins, puis maison ou hôtel (si l'hôtel n'est pas au dernier magasin)
+export function pointsJour(t, mags, s) {
+  const dep = t.depart?.lat != null ? t.depart : s.depart;
+  const mg = t.etapes.map(e => mags.get(e.magasinId)).filter(m => m?.lat != null);
+  const fin = t.retour ? [s.depart] : t.hotel?.lat != null && (!mg.length || haversine(mg[mg.length - 1], t.hotel) > 1) ? [t.hotel] : [];
+  return [dep, ...mg, ...fin];
+}
+// Le lendemain d'une journée modifiée part du bon endroit
+export async function recalerLendemain(t, mags) {
+  const l = await db.get('tournees', decale(t.id, 1));
+  if (l && chainer(t, l, mags)) await db.put('tournees', l);
+}
 
 export async function getTournee(date) {
   return (await db.get('tournees', date)) || { id: date, etapes: [], retour: true, calcul: null };
@@ -57,9 +91,10 @@ export function planning(t, mags, s, rdvs = null) {
     const retardRdv = cible != null && arrivee > cible + 10 ? Math.round(arrivee - cible) : 0;
     return { ...e, leg, arrivee, depart: h, duree, rdvHeure: rv?.heure, rdvConfirme: rv?.confirme, retardRdv, hors: !!t.calcul && h > finJour };
   });
-  const retour = t.retour && legs[t.etapes.length];
-  if (retour) { h += retour.min; km += retour.km; conduite += retour.min; }
-  return { etapes: out, fin: h, km, conduite, retour, attente, depasse: h > finJour, finJour, nbHors: out.filter(e => e.hors).length, rdvRates: out.filter(e => e.retardRdv).length };
+  const finLeg = legs[t.etapes.length];   // retour maison, ou route du soir jusqu'à l'hôtel
+  const retour = t.retour && finLeg, versHotel = !t.retour && finLeg;
+  if (finLeg) { h += finLeg.min; km += finLeg.km; conduite += finLeg.min; }
+  return { etapes: out, fin: h, km, conduite, retour, versHotel, attente, depasse: h > finJour, finJour, nbHors: out.filter(e => e.hors).length, rdvRates: out.filter(e => e.retardRdv).length };
 }
 
 // Estimation d'une journée (TomTom si déjà calculée, sinon vol d'oiseau)
@@ -67,9 +102,44 @@ export function estimerJour(t, mags, s, rdvs) {
   // trajets TomTom gardés tels quels ; une ancienne estimation enregistrée est refaite avec le modèle actuel
   const reel = t.calcul?.provider === 'tomtom';
   if (reel || !t.etapes.length || s.depart.lat == null) return { ...planning(t, mags, s, rdvs), estime: !reel };
-  const dep = t.depart?.lat != null ? t.depart : s.depart;
-  const pts = [dep, ...t.etapes.map(e => mags.get(e.magasinId)).filter(m => m?.lat != null), ...(t.retour ? [s.depart] : [])];
-  return { ...planning({ ...t, calcul: estimate(pts, s) }, mags, s, rdvs), estime: true };
+  return { ...planning({ ...t, calcul: estimate(pointsJour(t, mags, s), s) }, mags, s, rdvs), estime: true };
+}
+
+// Où dormir le soir d'une journée : maison, près du dernier magasin, ou une ville au choix
+export async function choisirNuit(t, all, s) {
+  const mags = new Map(all.map(m => [m.id, m]));
+  const der = dernierLoc(t, mags);
+  const lendemain = await db.get('tournees', decale(t.id, 1));
+  const villes = [...new Set([...t.etapes, ...(lendemain?.etapes || [])].map(e => mags.get(e.magasinId)?.ville).filter(Boolean))].slice(0, 8);
+  const mode = t.retour ? 'maison' : t.hotel?.choisi ? 'ville' : 'dernier';
+  const p = modal({ titre: 'Où dors-tu ce soir-là ?', valider: 'Valider', corps: `
+    <div class="radio-col">
+      <label class="check"><input type="radio" name="mode" value="maison" ${mode === 'maison' ? 'checked' : ''}> Je rentre à la maison</label>
+      ${der ? `<label class="check"><input type="radio" name="mode" value="dernier" ${mode === 'dernier' ? 'checked' : ''}> Près du dernier magasin (${esc(der.ville)})</label>` : ''}
+      <label class="check"><input type="radio" name="mode" value="ville" ${mode === 'ville' ? 'checked' : ''}> Dans une autre ville</label></div>
+    <label id="nuitL" ${mode === 'ville' ? '' : 'hidden'}>Ville de l'hôtel<input name="ville" value="${esc(t.hotel?.choisi ? t.hotel.ville : '')}" placeholder="ex. Lorient, Vannes…" autocomplete="off"></label>
+    ${villes.length ? `<div class="chips" id="nuitV" ${mode === 'ville' ? '' : 'hidden'}>${villes.map(v => `<button type="button" class="chip" data-v="${esc(v)}">${esc(v)}</button>`).join('')}</div>` : ''}
+    <p class="hint">Le lendemain partira de là, et la route du soir jusqu'à l'hôtel est comptée dans la journée.</p>` });
+  const dlg = document.querySelector('dialog[open]');
+  const maj = () => { const v = dlg.querySelector('input[name=mode]:checked')?.value === 'ville'; dlg.querySelector('#nuitL').hidden = !v; const c = dlg.querySelector('#nuitV'); if (c) c.hidden = !v; if (v) dlg.querySelector('input[name=ville]').focus(); };
+  dlg.querySelectorAll('input[name=mode]').forEach(x => x.onchange = maj);
+  dlg.querySelectorAll('[data-v]').forEach(b => b.onclick = () => { dlg.querySelector('input[name=ville]').value = b.dataset.v; });
+  const r = await p;
+  if (!r) return false;
+  if (r.mode === 'maison') { t.retour = true; delete t.hotel; }
+  else if (r.mode === 'dernier') { t.retour = false; delete t.hotel; }
+  else {
+    const v = (r.ville || '').trim();
+    if (!v) { toast('Indique la ville de l\'hôtel', 'warn'); return false; }
+    // un magasin de la base dans cette ville donne la position tout de suite (même sans réseau), sinon recherche de l'adresse
+    const mg = all.find(m => m.lat != null && norm(m.ville) === norm(v));
+    let pos = mg ? { lat: mg.lat, lon: mg.lon } : null;
+    if (!pos) { try { const { geocodeAdresse } = await import('../services/geo.js'); pos = await geocodeAdresse(`${v}, France`, s.cleTomTom); } catch { /* hors ligne */ } }
+    if (!pos) { toast(`Ville « ${v} » introuvable : vérifie l'orthographe`, 'warn'); return false; }
+    t.retour = false; t.hotel = { lat: pos.lat, lon: pos.lon, ville: mg?.ville || v, choisi: true };
+  }
+  t.calcul = null;
+  return true;
 }
 
 // Temps passé dans un magasin : pour cette visite seulement, ou toujours (fiche magasin)
@@ -136,6 +206,9 @@ export async function render(el, { date = today() }) {
   const mags = new Map(all.map(m => [m.id, m]));
   const t = await getTournee(date);
   t.etapes = t.etapes.filter(e => mags.has(e.magasinId));
+  // départ recalé d'après la nuit de la veille (et le lendemain d'après ce soir)
+  const veille = await db.get('tournees', decale(date, -1));
+  if (chainer(veille, t, mags) && (t.etapes.length || t.heureDebut)) await db.put('tournees', t);
   const rdvs = await tousLesRdv();
   const p = estimerJour(t, mags, s, rdvs);
   const dep = t.depart?.lat != null ? t.depart : s.depart;   // départ d'un hôtel (plan de secteur) ou du domicile
@@ -197,7 +270,9 @@ export async function render(el, { date = today() }) {
               </div>
             </div></li>`; }).join('')}
           ${p.retour ? `<li class="drive">${fmtKm(p.retour.km)} · ${fmtDuree(p.retour.min)}</li><li class="stop home"><span></span><span class="time">${fmtHeure(p.fin)}</span><span class="pin home">⌂</span><div><strong>Retour</strong></div></li>` : ''}
-          ${!t.retour && dernier && t.etapes.length ? `<li class="stop home"><span class="time">${t.calcul ? fmtHeure(p.fin) : ''}</span><span class="pin home">☾</span><div><strong>Nuit sur place</strong><p class="muted">${t.nuit ? esc(t.nuit.replace(/^Nuit près/, 'Près')) + ' (RDV tôt le lendemain : route du soir jusqu\'à l\'hôtel)' : `Près de ${esc(dernier.ville)}`}</p></div></li>` : ''}
+          ${p.versHotel ? `<li class="drive">${fmtKm(p.versHotel.km)} · ${fmtDuree(p.versHotel.min)} jusqu'à l'hôtel</li>` : ''}
+          ${!t.retour && dernier && t.etapes.length ? `<li class="stop home"><span></span><span class="time">${fmtHeure(p.fin)}</span><span class="pin home">☾</span><div><strong>${esc(lieuNuit(t, mags)?.adresse || 'Nuit sur place')}</strong>
+            <button type="button" class="btn-link" id="nuitVille">${t.hotel?.choisi ? 'changer' : 'choisir la ville'}</button></div></li>` : ''}
         </ol>
         ${t.etapes.length ? '' : '<p class="empty">Aucun magasin prévu ce jour-là. Ajoute ceux que tu veux visiter : l\'ordre et les horaires se calculent tout seuls.</p>'}
         ${t.etapes.length > 1 && s.gps === 'google' ? `<a class="btn" target="_blank" rel="noopener" href="${lienGps('google', ...gpsTout(t, mags, s))}">Ouvrir toute la tournée dans Google Maps</a>` : ''}
@@ -206,9 +281,10 @@ export async function render(el, { date = today() }) {
       <section class="tour-map"><div id="map"></div></section>
     </div></div>`;
 
-  const save = async (recalc = true) => { if (recalc) t.calcul = null; await db.put('tournees', t); await render(el, { date }); if (recalc && departOk && t.etapes.length) calculer(false); };
+  const save = async (recalc = true) => { if (recalc) t.calcul = null; await db.put('tournees', t); await recalerLendemain(t, mags); await render(el, { date }); if (recalc && departOk && t.etapes.length) calculer(false); };
   $('#pickDate').onchange = e => { location.hash = `#/tournee/${e.target.value}`; };
-  $('#retour').onchange = e => { t.retour = e.target.checked; save(); };
+  $('#retour').onchange = e => { t.retour = e.target.checked; if (t.retour) delete t.hotel; save(); };
+  $('#nuitVille')?.addEventListener('click', async () => { if (await choisirNuit(t, all, s)) save(); });
   const changerDepart = async h => { if (!h || h === s.heureDebut) delete t.heureDebut; else t.heureDebut = h; await save(false); toast(`Départ à ${(t.heureDebut || s.heureDebut).replace(':', 'h')} ce jour-là`); };
   $('#hDep')?.addEventListener('change', e => changerDepart(e.target.value));
   $('#hDepReset')?.addEventListener('click', () => changerDepart(''));
@@ -265,31 +341,30 @@ export async function render(el, { date = today() }) {
       t.retour = !(pts.length && dtm(last, s.depart) > (Number(s.seuilDecoucher) || 75)
         && Math.min(...pts.map(m => dtm(last, m))) < Math.min(...pts.map(m => dtm(s.depart, m))));
     }
+    if (t.retour) delete t.hotel;
+    const finJour = t.retour ? s.depart : t.hotel?.lat != null ? t.hotel : null;   // la tournée se termine à la maison, à l'hôtel choisi, ou au dernier magasin
     if (optimiser) {
-      const ordre = optimiserOrdre(dep, loc.map(e => mags.get(e.magasinId)), t.retour, s.depart);
+      const ordre = optimiserOrdre(dep, loc.map(e => mags.get(e.magasinId)), !!finJour, finJour || s.depart);
       t.etapes = [...ordre.map(i => loc[i]), ...t.etapes.filter(e => !loc.includes(e))];
       if (avecRdv) { t.calcul = null; placerRendezVous(t, mags, s, rdvs); }   // l'ordre respecte les heures de RDV
     }
     const etapesLoc = t.etapes.filter(e => mags.get(e.magasinId).lat != null);
-    const pts = [dep, ...etapesLoc.map(e => mags.get(e.magasinId)), ...(t.retour ? [s.depart] : [])];
+    const pts = pointsJour(t, mags, s);
+    const finFixe = pts.length > etapesLoc.length + 1;   // dernier point = maison ou hôtel (sinon le dernier magasin)
     const r = await calculerTrajets(pts, s, { optimiser: optimiser && !avecRdv });
     if (r.ordre && optimiser) {
       // TomTom a trouvé un meilleur ordre : on l'applique (les étapes intermédiaires seulement)
-      const inter = t.retour ? etapesLoc : etapesLoc.slice(0, -1);
+      const inter = finFixe ? etapesLoc : etapesLoc.slice(0, -1);
       const reord = r.ordre.map(i => inter[i]);
-      t.etapes = [...reord, ...(t.retour ? [] : etapesLoc.slice(-1)), ...t.etapes.filter(e => !etapesLoc.includes(e))];
+      t.etapes = [...reord, ...(finFixe ? [] : etapesLoc.slice(-1)), ...t.etapes.filter(e => !etapesLoc.includes(e))];
     }
     t.calcul = { ...r, ts: new Date().toISOString() };
-    if (suivant) {   // le lendemain part de l'hôtel (ou de la maison)
-      const der = mags.get(t.etapes.at(-1)?.magasinId);
-      t.nuit = t.retour || der?.lat == null ? null : `Nuit près de ${der.ville}`;
-      if (suivant.etapes.length) { suivant.depart = t.nuit ? { lat: der.lat, lon: der.lon, adresse: t.nuit } : null; suivant.calcul = null; await db.put('tournees', suivant); }
-      toast(t.retour ? 'Optimisé : retour à la maison le soir' : `Optimisé : ${t.nuit.toLowerCase()} (le lendemain est plus près)`);
-    }
+    if (suivant) toast(t.retour ? 'Optimisé : retour à la maison le soir' : `Optimisé : ${lieuNuit(t, mags)?.adresse.toLowerCase()} (le lendemain est plus près)`);
     const enBase = await db.get('tournees', t.id);
     if (enBase && empreinte(enBase) !== emp0) return;   // modifiée ailleurs pendant le calcul : on garde la version la plus récente
     if (enBase) t.heureDebut = enBase.heureDebut;
     await db.put('tournees', t);
+    await recalerLendemain(t, mags);
     if (r.provider === 'tomtom') await calibrer(pts, r.legs, s);
     if (r.erreur) toast('Service d\'itinéraire indisponible : estimation à vol d\'oiseau', 'warn');
     if (location.hash === hash0 && document.body.contains(el)) await render(el, { date });
@@ -300,6 +375,7 @@ export async function render(el, { date = today() }) {
   const layers = [];
   if (departOk) layers.push(repereDepart(dep, dep !== s.depart));
   if (departOk && dep !== s.depart && t.retour) layers.push(repereDepart(s.depart));
+  if (departOk && !t.retour && t.hotel?.lat != null) layers.push(repereDepart({ ...t.hotel, adresse: `Nuit à ${t.hotel.ville}` }, true));
   t.etapes.forEach((e, i) => { const m = mags.get(e.magasinId); if (m.lat != null) layers.push(repere(m, i + 1).bindPopup(esc(m.nom))); });
   (t.calcul?.legs || []).forEach(l => layers.push(L.polyline(l.points, { color: '#1E4FA0', weight: 4, opacity: 0.8, dashArray: t.calcul.provider === 'tomtom' ? null : '6 8' })));
   const g = L.featureGroup(layers).addTo(map);
