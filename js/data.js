@@ -1,6 +1,6 @@
 // Requêtes métier réutilisées par plusieurs écrans.
 import { db } from './db.js';
-import { joursDepuis } from './ui.js';
+import { joursDepuis, today } from './ui.js';
 import { DUREES_ENSEIGNE, PRIORITES, PRIORITE_ENSEIGNE, PRIORITE_DEFAUT, SAISON, ROLES_CONTACT } from './config.js';
 
 // Durée de visite : réglage du magasin > réglage de l'enseigne > durée par défaut
@@ -29,7 +29,10 @@ export function frequenceDe(m, s) {
 export async function magasinsEnrichis(settings) {
   const [mags, notes, sav, cmds] = await Promise.all([db.all('magasins'), db.all('notes'), db.all('sav'), db.all('commandes')]);
   const last = new Map(), savOuv = new Map(), nbCmd = new Map();
-  for (const n of notes) if (n.type === 'Visite' && (!last.has(n.magasinId) || n.date > last.get(n.magasinId))) last.set(n.magasinId, n.date);
+  // dernière visite = visite faite (pas une visite seulement prévue, ni annulée ou reportée)
+  const auj = today();
+  for (const n of notes) if (n.type === 'Visite' && n.date <= auj && !['Planifiée', 'Confirmée', 'Annulée', 'Reportée'].includes(n.statut)
+    && (!last.has(n.magasinId) || n.date > last.get(n.magasinId))) last.set(n.magasinId, n.date);
   for (const s of sav) if (s.statut !== 'Résolu') savOuv.set(s.magasinId, (savOuv.get(s.magasinId) || 0) + 1);
   for (const c of cmds) nbCmd.set(c.magasinId, (nbCmd.get(c.magasinId) || 0) + 1);
   return mags.map(m => {

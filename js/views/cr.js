@@ -7,6 +7,7 @@ import { getRdv, changerStatut, dateEnLettres } from '../services/rdv.js';
 import { evenementRdv, proposerAgenda } from '../services/agenda.js';
 import { STATUTS_VISITE, OBJETS_VISITE, ACTIONS_VISITE, ETIQUETTES_PHOTO, MARQUES_CONCURRENTES, TYPES_CONCURRENCE } from '../config.js';
 import { reduireImage, imageURL, oublierImage } from '../services/images.js';
+import { estVide } from '../services/visite.js';
 
 const maintenant = () => { const d = new Date(); return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`; };
 
@@ -17,10 +18,11 @@ export async function render(el, { magasin, note }) {
   const s = await getSettings();
   const produits = await db.all('produits');
   const { m } = d;
-  const n = note ? (await db.get('notes', note)) : null;
-  const neuf = !n;
+  // sans visite précise : on complète celle déjà notée « visité » aujourd'hui plutôt que d'en créer une deuxième
+  const n = note ? (await db.get('notes', note)) : d.notes.find(x => x.type === 'Visite' && x.date === today() && x.statut === 'Réalisée' && estVide(x)) || null;
+  const neuf = !n || estVide(n);   // une visite « visité » sans détails se remplit comme un nouveau compte rendu
   const cr = n || { id: uid('n'), type: 'Visite', magasinId: m.id, date: today(), statut: 'Réalisée', objet: s.objetDefaut, actions: [], photos: [], interlocuteurs: [] };
-  if (neuf) { cr.numero = numeroVisite(d.notes, cr.date); const t = await db.get('tournees', cr.date); const e = t?.etapes.find(x => x.magasinId === m.id); if (e?.objet) cr.objet = e.objet; }
+  if (neuf) { cr.numero = cr.numero || numeroVisite(d.notes, cr.date); const t = await db.get('tournees', cr.date); const e = t?.etapes.find(x => x.magasinId === m.id); if (e?.objet) cr.objet = e.objet; }
   const concur = (await db.byMagasin('concurrence', m.id)).filter(c => c.noteId === cr.id);
   const photos = [...(cr.photos || [])];          // [{ id, etiquette, legende }]
   const ajoutees = [];                              // photos prises pendant cette saisie (supprimées si on annule)
@@ -56,8 +58,12 @@ export async function render(el, { magasin, note }) {
 
       <section class="cr-sec"><h2 class="h2">Photos de rayon</h2>
         <div class="photo-grid" id="photos"></div>
-        <label class="btn" for="pic">📷 Prendre / ajouter des photos</label>
+        <div class="choix-photo">
+          <label class="btn" for="pic">📷 Prendre une photo</label>
+          <label class="btn" for="picGal">🖼️ Choisir dans mes photos</label>
+        </div>
         <input type="file" id="pic" accept="image/*" capture="environment" multiple hidden>
+        <input type="file" id="picGal" accept="image/*" multiple hidden>
       </section>
 
       ${vendables.length ? `<section class="cr-sec"><h2 class="h2">Relevé de stock</h2>
@@ -77,7 +83,7 @@ export async function render(el, { magasin, note }) {
       </section>
 
       <div class="sticky-save cr-save">
-        ${neuf ? '' : '<button type="button" class="btn danger" id="del">Supprimer</button>'}
+        ${n ? '<button type="button" class="btn danger" id="del">Supprimer</button>' : ''}
         <a class="btn ghost" href="#/magasin/${encodeURIComponent(m.id)}/suivi" id="annuler">Annuler</a>
         <button class="btn primary" type="submit" name="suite" value="">Enregistrer le compte rendu</button>
       </div>
@@ -98,7 +104,7 @@ export async function render(el, { magasin, note }) {
     $$('[data-leg]').forEach(x => x.oninput = () => { photos[+x.dataset.leg].legende = x.value; });
     $$('[data-rm]').forEach(x => x.onclick = () => { photos.splice(+x.dataset.rm, 1); dessinerPhotos(); });
   };
-  $('#pic').onchange = async e => {
+  $('#pic').onchange = $('#picGal').onchange = async e => {
     for (const f of e.target.files) {
       const pid = uid('ph');
       await db.put('images', { id: pid, blob: await reduireImage(f, 1600, 0.8), type: 'rayon', magasinId: m.id, noteId: cr.id, date: cr.date });
@@ -128,6 +134,9 @@ export async function render(el, { magasin, note }) {
     for (const p of photos) await db.del('images', p.id);
     for (const c of concur) await db.del('concurrence', c.id);
     await db.del('notes', cr.id);
+    const t = await db.get('tournees', cr.date);   // le planning ne la montre plus comme visitée
+    const et = t?.etapes.find(x => x.magasinId === m.id);
+    if (et?.fait) { et.fait = false; await db.put('tournees', t); }
     toast('Compte rendu supprimé');
     location.hash = `#/magasin/${encodeURIComponent(m.id)}/suivi`;
   });

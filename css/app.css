@@ -458,6 +458,9 @@ progress { width: 220px; vertical-align: middle; accent-color: var(--bleu); }
   overflow: hidden; animation: toast-entre .28s cubic-bezier(.2, .7, .3, 1); }
 .toast::after { content: ""; position: absolute; left: 0; bottom: 0; height: 3px; width: 100%; background: var(--jaune); transform-origin: left; animation: toast-temps var(--duree, 2400ms) linear .2s both; }
 .toast.warn { background: var(--orange); color: #fff; }
+.toast.avec-action { display: flex; align-items: center; gap: .9rem; }
+.toast-action { flex: none; background: none; border: 0; padding: .35rem .1rem; font: inherit; font-weight: 700; color: var(--jaune); text-decoration: underline; text-underline-offset: 3px; cursor: pointer; }
+.toast-action:focus-visible { outline: 2px solid var(--jaune); outline-offset: 2px; }
 .toast.out { opacity: 0; transform: translate(-50%, 8px); }
 @media (min-width: 900px) { .toast { bottom: 24px; } }
 @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
@@ -789,3 +792,19 @@ li.glisse { position: relative; z-index: 5; box-shadow: 0 10px 28px rgba(0,0,0,.
 /* bouton déjà utilisé (messagerie ouverte) */
 .btn.deja { background: var(--papier); color: var(--gris); border-color: var(--trait); }
 @media (prefers-color-scheme: dark) { .wday.auj > header strong::after { color: #0D1524; } }
+
+/* « Visité » : un seul geste, le même partout (jour, semaine, fiche magasin) */
+.btn-visite.fait { background: var(--vert); border-color: var(--vert); color: #fff; }
+.btn-visite.fait:hover { filter: brightness(1.08); }
+.stop-actions .btn-link, .actions .btn-visite + .btn { white-space: nowrap; }
+.wact .btn-visite { margin-right: .35rem; padding: .2rem .55rem; }
+/* petits téléphones : les 4 chiffres du bandeau tiennent sur la largeur */
+.tour-sum { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+@media (max-width: 420px) { .tour-sum > div { padding: .55rem .45rem; font-size: .74rem; } .tour-sum .big { font-size: clamp(1.05rem, 4.7vw, 1.4rem); } }
+/* étapes : la colonne de texte peut rétrécir (bouton « Partir à … pour être à l'heure au RDV » sur 2 lignes si besoin) */
+.stop { grid-template-columns: 46px 28px minmax(0, 1fr); }
+.stops .stop { grid-template-columns: 22px 46px 28px minmax(0, 1fr); }
+@media (max-width: 520px) { .stop { grid-template-columns: 40px 28px minmax(0, 1fr); } .stops .stop { grid-template-columns: 20px 40px 28px minmax(0, 1fr); } }
+.stop .btn { white-space: normal; text-align: left; }
+/* photo : appareil photo OU galerie (sur téléphone, « capture » seul n'ouvre que l'appareil photo) */
+.choix-photo { display: flex; flex-wrap: wrap; gap: .5rem; align-items: center; }

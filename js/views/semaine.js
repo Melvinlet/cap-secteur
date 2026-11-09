@@ -11,6 +11,7 @@ import { dateEnLettres, tousLesRdv } from '../services/rdv.js';
 import { haversine } from '../services/geo.js';
 import { estimate, optimiserOrdre, trajet, calculerTrajets } from '../services/routing.js';
 import { carte, repere, repereDepart, animerTrace } from '../carte.js';
+import { marquerVisite, annulerVisite, lienDetails, estVide } from '../services/visite.js';
 
 const COULEURS = ['#1E4FA0', '#C8371D', '#2E8540', '#6B4BA1', '#B25E09', '#0E7C86'];
 const JOURS = ['Lun.', 'Mar.', 'Mer.', 'Jeu.', 'Ven.', 'Sam.'];
@@ -37,6 +38,9 @@ export async function render(el, params) {
     if (chainer(veille, tours[i], mags) && (tours[i].etapes.length || tours[i].heureDebut)) await db.put('tournees', tours[i]);
   }
   const rdvs = await tousLesRdv();
+  // visites faites cette semaine (« visité » depuis le jour, la fiche magasin ou un compte rendu) → étapes cochées
+  const vus = new Map((await db.all('notes')).filter(n => n.type === 'Visite' && n.statut === 'Réalisée' && dates.includes(n.date)).map(n => [`${n.date}|${n.magasinId}`, n]));
+  for (const t of tours) if (t.etapes.some(e => !e.fait && vus.has(`${t.id}|${e.magasinId}`))) { t.etapes.forEach(e => { if (vus.has(`${t.id}|${e.magasinId}`)) e.fait = true; }); await db.put('tournees', t); }
   const est = tours.map(t => estimer(t, mags, s, rdvs));
   const tot = { n: tours.reduce((a, t) => a + t.etapes.length, 0), km: est.reduce((a, p) => a + p.km, 0),
     nuits: tours.filter(t => t.etapes.length && !t.retour).length, detours: tours.reduce((a, t) => a + t.etapes.filter(e => e.detour).length, 0) };
@@ -67,7 +71,7 @@ export async function render(el, params) {
       ${s.cleTomTom && echecTomTom && tours.some(t => t.etapes.length && t.calcul?.provider !== 'tomtom') ? '<button class="btn" id="reels" title="Remplace les temps estimés par les temps TomTom">Trajets réels (TomTom)</button>' : ''}
       <button class="btn ghost" id="vider" ${tot.n ? '' : 'disabled'}>Vider la semaine</button>
     </div>
-    <div class="week">${tours.map((t, i) => colonne(t, i, est[i], mags, s, dates, rdvs)).join('')}</div>
+    <div class="week">${tours.map((t, i) => colonne(t, i, est[i], mags, s, dates, rdvs, vus)).join('')}</div>
     <h2 class="h2">Carte de la semaine</h2>
     <p class="legend">${dates.map((d, i) => `<span><i style="background:${COULEURS[i]}"></i>${JOURS[i]} ${new Date(d + 'T12:00').getDate()}</span>`).join('')}</p>
     <div id="wmap" class="map-panel week-map"></div>
@@ -139,6 +143,14 @@ export async function render(el, params) {
     const t = tours[+b.dataset.add];
     if (await choisirMagasins(t, all, s, t.depart?.lat != null ? t.depart : s.depart)) { await save(t); render(el, { lundi }); }
   });
+  $$('[data-vu]').forEach(b => b.onclick = async () => {
+    const [i, k] = b.dataset.vu.split(':').map(Number);
+    const t = tours[i], e = t.etapes[k], nom = mags.get(e.magasinId)?.nom || '';
+    if (e.fait) { await annulerVisite(e.magasinId, t.id); render(el, { lundi }); return toast('Visite retirée'); }
+    const v = await marquerVisite(e.magasinId, t.id);
+    await render(el, { lundi });
+    toast(`${nom} : visité`, '', { label: 'Ajouter des détails', href: lienDetails(v) });
+  });
   $$('[data-del]').forEach(b => b.onclick = async () => {
     const [i, k] = b.dataset.del.split(':').map(Number);
     tours[i].etapes.splice(k, 1); await save(tours[i]); render(el, { lundi });
@@ -174,7 +186,7 @@ function rdvTxt(e, r, jour) {
   return '';
 }
 
-function colonne(t, i, p, mags, s, dates, rdvs) {
+function colonne(t, i, p, mags, s, dates, rdvs, vus = new Map()) {
   const last = t.etapes.length ? mags.get(t.etapes[t.etapes.length - 1].magasinId) : null;
   const auj = today();
   return `<section class="wday${t.id < auj ? ' passe' : ''}${t.id === auj ? ' auj' : ''}" style="--c:${COULEURS[i]}" data-jour="${t.id}">
@@ -190,7 +202,7 @@ function colonne(t, i, p, mags, s, dates, rdvs) {
       <div><a href="#/magasin/${encodeURIComponent(m.id)}">${esc(m.nom)}</a> ${prioTag(m.prio)}
         ${pe ? `<span class="hrs">${p.estime ? '≈ ' : ''}${fmtHeure(pe.arrivee)} – ${fmtHeure(pe.depart)} <button type="button" class="btn-link vis${e.duree ? ' modifiee' : ''}" data-duree="${i}:${k}" title="Changer le temps sur place">(${fmtDuree(pe.duree)} sur place)</button>${rdvTxt(e, rdvs.get(e.magasinId), t.id)}${pe.retardRdv ? ` <b class="late-txt">· arrivée ${pe.retardRdv} min après le RDV</b>` : ''}</span>` : ''}
         <small>${esc(m.ville)}${e.motif ? ` · <i>${esc(e.motif)}</i>` : ''}${e.detour ? ' · <b class="late-txt">détour : en retard</b>' : e.comble ? ' · <span class="chemin">en attendant le RDV</span>' : e.surChemin != null ? ` · <span class="chemin">sur le chemin${e.surChemin >= 1 ? ` (+${e.surChemin} min)` : ""}</span>` : m.enRetard ? ' · en retard' : ''}</small>
-        <span class="wact"><select data-move="${i}:${k}" aria-label="Déplacer ${esc(m.nom)}"><option value="${i}">Déplacer…</option>${dates.map((d, j) => j === i ? '' : `<option value="${j}">${JOURS[j]} ${new Date(d + 'T12:00').getDate()}</option>`).join('')}</select>
+        <span class="wact">${t.id <= auj ? (() => { const v = vus.get(`${t.id}|${m.id}`); return v && !estVide(v) ? `<a class="btn small btn-visite fait" href="${lienDetails(v)}">Visité ✓</a>` : `<button class="btn small btn-visite${e.fait ? ' fait' : ''}" data-vu="${i}:${k}"${e.fait ? ' aria-pressed="true" title="Appuyer pour retirer"' : ''}>${e.fait ? 'Visité ✓' : 'Visité'}</button>`; })() : ''}<select data-move="${i}:${k}" aria-label="Déplacer ${esc(m.nom)}"><option value="${i}">Déplacer…</option>${dates.map((d, j) => j === i ? '' : `<option value="${j}">${JOURS[j]} ${new Date(d + 'T12:00').getDate()}</option>`).join('')}</select>
         <button class="btn-icon" data-del="${i}:${k}" aria-label="Retirer">✕</button></span></div></li>`; }).join('')}</ol>
     ${p.retour ? `<p class="wleg fin"><span>retour maison</span>${p.estime ? '≈ ' : ''}${fmtKm(p.retour.km)} · ${fmtDuree(p.retour.min)}</p>` : ''}
     ${p.versHotel ? `<p class="wleg fin"><span>jusqu'à l'hôtel</span>${p.estime ? '≈ ' : ''}${fmtKm(p.versHotel.km)} · ${fmtDuree(p.versHotel.min)}</p>` : ''}

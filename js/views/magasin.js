@@ -11,6 +11,7 @@ import { ajouterEtape } from './tournee.js';
 import { getRdv, labelStatut, dateEnLettres } from '../services/rdv.js';
 import { carte, repere } from '../carte.js';
 import { imageURL } from '../services/images.js';
+import { marquerVisite, annulerVisite, lienDetails, estVide } from '../services/visite.js';
 
 const ONGLETS = [['infos', 'Infos'], ['suivi', 'Visites'], ['stock', 'Stock'], ['commandes', 'Commandes'], ['sav', 'SAV'], ['implantations', 'Implantations']];
 let map;
@@ -28,6 +29,7 @@ export async function render(el, { id, onglet = 'infos' }) {
   d.produits = await db.all('produits');
   const { m } = d;
   const stock = analyseStock(d.notes, d.commandes, d.produits);
+  const vuAuj = d.notes.find(n => n.type === 'Visite' && n.date === today() && n.statut === 'Réalisée');
   const rdv = await getRdv(m.id);
   const rdvDate = rdv.statut === 'autreDate' ? rdv.dateRetenue : rdv.date;
   const cnt = { suivi: d.notes.length, stock: stock.filter(x => x.rupture).length, commandes: d.commandes.length,
@@ -41,7 +43,9 @@ export async function render(el, { id, onglet = 'infos' }) {
         <p class="muted">${esc(m.adresse || '')}${m.adresse ? ', ' : ''}${esc(m.cp)} ${esc(m.ville)}${m.telMagasin ? ` · ${telLink(m.telMagasin)}` : ''}</p></div>
     </header>
     <div class="actions">
-      <button class="btn primary" id="visite">Noter une visite</button>
+      ${vuAuj ? `<button class="btn btn-visite fait" id="visite" aria-pressed="true" title="${estVide(vuAuj) ? 'Appuyer pour retirer' : 'Ouvrir le compte rendu'}">Visité aujourd'hui ✓</button>
+        <a class="btn ${estVide(vuAuj) ? 'primary' : ''}" href="${lienDetails(vuAuj)}">${estVide(vuAuj) ? 'Ajouter des détails' : 'Voir le compte rendu'}</a>`
+        : `<button class="btn primary btn-visite" id="visite">Visité</button>`}
       <a class="btn" href="#/rdv?m=${encodeURIComponent(m.id)}">${rdv.statut === 'aFaire' ? 'Demander un RDV' : `RDV : ${esc(labelStatut(rdv.statut))}${rdvDate && ['acceptee', 'autreDate'].includes(rdv.statut) ? ` le ${esc(dateEnLettres(rdvDate))}${(rdv.statut === 'autreDate' ? rdv.heureRetenue : rdv.heure) ? ' à ' + esc(rdv.statut === 'autreDate' ? rdv.heureRetenue : rdv.heure) : ''}` : ''}`}</a>
       <button class="btn" id="addTour">Ajouter à la tournée du jour</button>
       ${m.lat != null ? `<a class="btn" href="${lienGps(s.gps, m)}" target="_blank" rel="noopener">Y aller (${s.gps === 'google' ? 'Google Maps' : 'Waze'})</a>` : ''}
@@ -50,7 +54,17 @@ export async function render(el, { id, onglet = 'infos' }) {
     <section id="tab"></section></div>`;
 
   $('#addTour').onclick = async () => { const r = await ajouterEtape(today(), m.id); toast(r ? 'Ajouté à la tournée du jour' : 'Déjà dans la tournée du jour'); };
-  $('#visite').onclick = () => { location.hash = `#/cr/${encodeURIComponent(m.id)}`; };
+  $('#visite').onclick = async () => {
+    if (!vuAuj) {
+      const v = await marquerVisite(m.id);
+      rerender();
+      return toast('Visite notée pour aujourd\'hui', '', { label: 'Ajouter des détails', href: lienDetails(v) });
+    }
+    if (!estVide(vuAuj)) { location.hash = lienDetails(vuAuj); return; }   // un compte rendu existe : on l'ouvre (statut ou suppression là-bas)
+    await annulerVisite(m.id);
+    rerender();
+    toast('Visite retirée');
+  };
   ({ infos, suivi, stock: vueStock, commandes, sav, implantations })[onglet]?.($('#tab'), d, s, stock);
 }
 

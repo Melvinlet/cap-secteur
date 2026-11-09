@@ -111,9 +111,18 @@ async function editer(x, s, base) {
     <label>Statut<select name="statut">${Object.entries(STATUTS_FRAIS).map(([k, v]) => `<option value="${k}" ${(x.statut || 'aDeclarer') === k ? 'selected' : ''}>${v}</option>`).join('')}</select></label></div>
     <label class="check"><input type="checkbox" name="remboursable" ${x.remboursable !== false ? 'checked' : ''}> Remboursable</label>
     <fieldset><legend>Justificatif</legend>${just ? `<img src="${just}" class="just" alt="Justificatif">` : ''}
-      <input type="file" id="just" accept="image/*" capture="environment"></fieldset>
+      <div class="choix-photo">
+        <label class="btn" for="justCam">📷 Prendre une photo</label>
+        <label class="btn" for="justGal">🖼️ Choisir dans mes photos</label>
+        <span class="muted small" id="justNom"></span>
+      </div>
+      <input type="file" id="justCam" accept="image/*" capture="environment" hidden>
+      <input type="file" id="justGal" accept="image/*" hidden></fieldset>
     ${x.id ? '<button type="button" class="btn danger small" id="delF">Supprimer cette dépense</button>' : ''}` });
-  $('#just').onchange = e => { nouveauJust = e.target.files[0] || null; };
+  for (const id of ['#justCam', '#justGal']) $(id).onchange = e => {
+    nouveauJust = e.target.files[0] || null;
+    $('#justNom').textContent = nouveauJust ? `✓ ${nouveauJust.name || 'photo'} (enregistrée avec la dépense)` : '';
+  };
   const catDe = f => f.categorie.value === '__autre' ? (f.categorieAutre.value.trim() || 'Autre') : f.categorie.value;
   const majCol = () => { const f = $('#colNdf').closest('form');
     const estAutre = f.categorie.value === '__autre';

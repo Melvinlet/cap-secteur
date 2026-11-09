@@ -9,6 +9,7 @@ import { optimiserOrdre, calculerTrajets, lienGps, estimate, trajet, trajetBrut 
 import { geocodeMagasin, haversine } from '../services/geo.js';
 import { carte, repere, repereDepart, animerTrace } from '../carte.js';
 import { tousLesRdv } from '../services/rdv.js';
+import { marquerVisite, annulerVisite, visitesDuJour, lienDetails, estVide } from '../services/visite.js';
 
 let map;
 
@@ -62,6 +63,13 @@ export async function ajouterEtape(date, magasinId) {
   return true;
 }
 
+// Bouton « Visité » (et lien vers les détails, facultatifs) d'une étape
+export function boutonVisite(e, i, v, date) {
+  if (date > today()) return '';
+  if (!e.fait) return `<button class="btn small btn-visite" data-fait="${i}">Visité</button>`;
+  if (v && !estVide(v)) return `<a class="btn small btn-visite fait" href="${lienDetails(v)}">Visité ✓ · compte rendu</a>`;
+  return `<button class="btn small btn-visite fait" data-fait="${i}" aria-pressed="true" title="Appuyer pour retirer">Visité ✓</button>${v ? `<a class="btn-link" href="${lienDetails(v)}">ajouter des détails</a>` : ''}`;
+}
 let justeFait = null;   // magasin qu'on vient de marquer visité (petite animation)
 const decale = (date, n) => { const d = new Date(date + 'T12:00'); d.setDate(d.getDate() + n); return d.toISOString().slice(0, 10); };
 
@@ -210,6 +218,9 @@ export async function render(el, { date = today() }) {
   const veille = await db.get('tournees', decale(date, -1));
   if (chainer(veille, t, mags) && (t.etapes.length || t.heureDebut)) await db.put('tournees', t);
   const rdvs = await tousLesRdv();
+  const vus = await visitesDuJour(date);
+  // une visite notée ailleurs (fiche magasin, compte rendu) coche aussi l'étape
+  if (t.etapes.some(e => !e.fait && vus.has(e.magasinId))) { t.etapes.forEach(e => { if (vus.has(e.magasinId)) e.fait = true; }); await db.put('tournees', t); }
   const p = estimerJour(t, mags, s, rdvs);
   const dep = t.depart?.lat != null ? t.depart : s.depart;   // départ d'un hôtel (plan de secteur) ou du domicile
   const departOk = dep.lat != null && s.depart.lat != null;
@@ -263,7 +274,7 @@ export async function render(el, { date = today() }) {
               <p class="muted">${e.rdv ? `<span class="tag ok">RDV ${e.rdv.heure ? esc(e.rdv.heure) : 'confirmé'}</span> ` : e.rdvHeure ? `<span class="tag">RDV demandé ${esc(e.rdvHeure)}</span> ` : ''}${e.retardRdv ? `<span class="tag late">arrivée ${e.retardRdv} min après le RDV</span> ` : ''}${esc(m.ville)} · <button type="button" class="btn-link duree${t.etapes[i]?.duree ? ' modifiee' : ''}" data-duree="${i}" title="Changer le temps passé dans ce magasin">visite ${e.duree} min</button>${m.savOuverts ? ` · <span class="tag warn">${m.savOuverts} SAV</span>` : ''}${m.lat == null ? ' · <span class="tag late">non localisé</span>' : ''}</p>
               <div class="stop-actions">
                 ${m.lat != null ? `<a class="btn small" href="${lienGps(s.gps, m)}" target="_blank" rel="noopener">GPS</a>` : ''}
-                <button class="btn small" data-fait="${i}">${e.fait ? 'Visité ✓' : 'Marquer visité'}</button>
+                ${boutonVisite(e, i, vus.get(e.magasinId), date)}
                 <select class="objet" data-objet="${i}" aria-label="Objet de la visite">${OBJETS_VISITE.map(o => `<option ${o === (e.objet || s.objetDefaut) ? 'selected' : ''}>${o}</option>`).join('')}</select>
                 <input class="motif" data-motif="${i}" value="${esc(e.motif || '')}" placeholder="Pourquoi j'y vais (précision)" aria-label="Précision sur l'objet de la visite">
                 <span class="ordre"><button class="btn-icon" data-del="${i}" aria-label="Retirer de la tournée">✕</button></span>
@@ -309,7 +320,21 @@ export async function render(el, { date = today() }) {
   if (liste) glisser(liste, { onDeplace: (de, vers) => { const [x] = t.etapes.splice(de, 1); t.etapes.splice(vers, 0, x); save(); } });
   $$('[data-duree]').forEach(b => b.onclick = async () => { if (await modifierDuree(t, +b.dataset.duree, mags, s)) save(false); });
   setTimeout(() => { justeFait = null; }, 0);
-  $$('[data-fait]').forEach(b => b.onclick = () => { const e = t.etapes[+b.dataset.fait]; e.fait = !e.fait; justeFait = e.fait ? e.magasinId : null; save(false); });
+  $$('[data-fait]').forEach(b => b.onclick = async () => {
+    const e = t.etapes[+b.dataset.fait];
+    if (date > today()) return toast('Ce jour n\'est pas encore arrivé', 'warn');
+    if (!e.fait) {
+      const v = await marquerVisite(e.magasinId, date);
+      e.fait = true; justeFait = e.magasinId; await save(false);
+      toast(`${mags.get(e.magasinId).nom} : visité`, '', { label: 'Ajouter des détails', href: lienDetails(v) });
+    } else {
+      const v = vus.get(e.magasinId);
+      if (v && !estVide(v)) { location.hash = lienDetails(v); return; }   // un compte rendu existe : on l'ouvre
+      await annulerVisite(e.magasinId, date);
+      e.fait = false; justeFait = null; await save(false);
+      toast('Visite retirée');
+    }
+  });
   $$('[data-objet]').forEach(x => x.onchange = async () => { t.etapes[+x.dataset.objet].objet = x.value; await db.put('tournees', t); });
   $$('[data-motif]').forEach(x => x.onchange = async () => { t.etapes[+x.dataset.motif].motif = x.value.trim(); await db.put('tournees', t); });
   $('#expPlanning').onclick = () => exporterVersPlanning(date, s);

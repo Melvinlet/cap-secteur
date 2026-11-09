@@ -32,13 +32,21 @@ export const today = () => new Date().toISOString().slice(0, 10);
 export const joursDepuis = d => d ? Math.floor((Date.now() - new Date(d).getTime()) / 86400000) : null;
 export const norm = s => (s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
 
-export function toast(msg, type = '') {
+// action (facultatif) : { label, href } ou { label, onclick } → un bouton dans le message (« Ajouter des détails »)
+export function toast(msg, type = '', action = null) {
   document.querySelectorAll('.toast').forEach(x => x.remove());   // un seul message à la fois
   const t = document.createElement('div');
-  t.className = `toast ${type}`;
+  t.className = `toast ${type}${action ? ' avec-action' : ''}`;
   t.setAttribute('role', 'status');
   t.textContent = msg;
-  const duree = Math.min(6000, Math.max(2600, msg.length * 45));   // les messages longs restent plus longtemps
+  if (action) {
+    const a = document.createElement(action.href ? 'a' : 'button');
+    a.className = 'toast-action'; a.textContent = action.label;
+    if (action.href) a.href = action.href; else a.type = 'button';
+    a.onclick = () => { t.remove(); action.onclick?.(); };
+    t.append(a);
+  }
+  const duree = action ? 6500 : Math.min(6000, Math.max(2600, msg.length * 45));   // les messages longs restent plus longtemps
   t.style.setProperty('--duree', `${duree - 250}ms`);
   document.body.append(t);
   setTimeout(() => t.classList.add('out'), duree);

@@ -77,6 +77,8 @@ if (!window.__retourMail && /^#?\/?$/.test(location.hash)) {
 route();
 // synchronisation automatique entre appareils (si un compte est configuré)
 import('./services/synchro.js').then(({ demarrer }) => demarrer());
+// étapes cochées « visité » avant la v1.8.4 : la visite manquante est créée (une fois, puis plus rien à faire)
+import('./services/visite.js').then(({ rattraperVisites }) => rattraperVisites()).then(n => { if (n) route(null, { garder: true }); }).catch(() => {});
 // petit indicateur de synchronisation (visible seulement si elle dure ou si quelque chose a été échangé)
 {
   const ind = document.createElement('div');
