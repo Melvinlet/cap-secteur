@@ -12,6 +12,7 @@ import { haversine } from '../services/geo.js';
 import { estimate, optimiserOrdre, trajet, calculerTrajets } from '../services/routing.js';
 import { carte, repere, repereDepart, animerTrace } from '../carte.js';
 import { marquerVisite, annulerVisite, lienDetails, estVide } from '../services/visite.js';
+import { ferie, tagFerie } from '../services/feries.js';
 
 const COULEURS = ['#1E4FA0', '#C8371D', '#2E8540', '#6B4BA1', '#B25E09', '#0E7C86'];
 const JOURS = ['Lun.', 'Mar.', 'Mer.', 'Jeu.', 'Ven.', 'Sam.'];
@@ -189,9 +190,11 @@ function rdvTxt(e, r, jour) {
 function colonne(t, i, p, mags, s, dates, rdvs, vus = new Map()) {
   const last = t.etapes.length ? mags.get(t.etapes[t.etapes.length - 1].magasinId) : null;
   const auj = today();
-  return `<section class="wday${t.id < auj ? ' passe' : ''}${t.id === auj ? ' auj' : ''}" style="--c:${COULEURS[i]}" data-jour="${t.id}">
+  const fer = ferie(t.id);
+  return `<section class="wday${t.id < auj ? ' passe' : ''}${t.id === auj ? ' auj' : ''}${fer ? ' ferie' : ''}" style="--c:${COULEURS[i]}" data-jour="${t.id}">
     <header><a href="#/tournee/${t.id}"><strong>${JOURS[i]} ${new Date(t.id + 'T12:00').getDate()}</strong></a>
       <span class="muted">${t.etapes.length} magasin${t.etapes.length > 1 ? 's' : ''}</span></header>
+    ${fer ? `<p class="wday-ferie">Férié · ${esc(fer)}${t.etapes.length ? ' — vérifie que les magasins sont ouverts' : ''}</p>` : ''}
     <div class="wdep"><label>Départ <input type="time" data-hdep="${i}" value="${esc(t.heureDebut || s.heureDebut)}" class="${t.heureDebut ? 'modifiee' : ''}"></label>${t.heureDebut ? `<button class="btn-link" data-hrdv="${i}:${esc(s.heureDebut)}" title="Revenir à l'heure habituelle">habituel ${esc(s.heureDebut.replace(':', 'h'))}</button>` : ''}
       ${(() => { const h = t.etapes.length ? departPourRdv(t, mags, s, rdvs) : null; return h && h !== (t.heureDebut || s.heureDebut) ? `<button class="btn small ${p.rdvRates ? 'primary' : 'ghost'}" data-hrdv="${i}:${h}" title="Pour arriver à l'heure au RDV">${h.replace(':', 'h')} pour le RDV</button>` : ''; })()}</div>
     ${t.etapes.length ? `<p class="wday-sum ${p.depasse ? 'over' : ''}">${p.estime ? '≈ ' : ''}${fmtKm(p.km)} · ${fmtDuree(p.conduite)} de route${p.estime ? '' : ' (TomTom)'} · fin ${p.estime ? 'vers ' : ''}${fmtHeure(p.fin)}${p.attente >= 20 ? ` · ${fmtDuree(p.attente)} d'attente avant RDV` : ''}${p.depasse ? ' — trop chargé' : ''}</p>` : ''}
@@ -234,7 +237,8 @@ async function remplir(lundi, dates, tours, all, s, rdvs) {
       <p class="hint" id="maxHint" ${modeMax === 'variable' ? '' : 'hidden'}>Vide = sans limite · 0 = pas de tournée ce jour-là (les RDV restent).</p>
       <div class="row"><label>Fin du dernier jour <small class="muted">(vide = ${s.heureFin})</small><input type="time" name="finDernierJour" value="${esc(c.finDernierJour || '')}"></label></div>
       <p class="small">Jours sans tournée cette semaine <span class="muted">(bureau, réunion, congé… les RDV de ce jour restent)</span></p>
-      <div class="chips">${dates.map((d, i) => `<label class="chip-check"><input type="checkbox" name="off:${i}"><span>${JOURS[i]} ${new Date(d + 'T12:00').getDate()}</span></label>`).join('')}</div></fieldset>
+      <div class="chips">${dates.map((d, i) => `<label class="chip-check"${ferie(d) ? ` title="Férié : ${esc(ferie(d))}"` : ''}><input type="checkbox" name="off:${i}" ${ferie(d) ? 'checked' : ''}><span>${JOURS[i]} ${new Date(d + 'T12:00').getDate()}${ferie(d) ? ' · férié' : ''}</span></label>`).join('')}</div>
+      ${dates.some(ferie) ? `<p class="hint">Jour férié coché d'office : décoche-le si tu travailles ce jour-là.</p>` : ''}</fieldset>
     <fieldset><legend>Zone par jour</legend>
       <p class="hint">Pour rester dans le même coin toute la journée (ex. un RDV à Vannes : les autres magasins seront autour).</p>
       <div class="zones-jours">${dates.map((d, i) => { const t = tours[i]; const m0 = t.etapes.map(e => all.find(m => m.id === e.magasinId)).find(Boolean);
@@ -279,6 +283,7 @@ async function remplir(lundi, dates, tours, all, s, rdvs) {
   if (!cible.priorites.length) { toast('Coche au moins une priorité', 'warn'); return false; }
   if (r.memo === 'on') await saveSettings({ ciblage: { ...cible } });   // les jours sans tournée ne valent que pour cette semaine
   cible.joursOff = dates.map((_, i) => i).filter(i => r['off:' + i] === 'on' || (mode === 'variable' && parJour[i] === 0));
+  cible.feriesDecides = true;   // les fériés ont été proposés ci-dessus : le choix de l'utilisateur fait foi
   // limite effective par jour (null = sans limite), transmise au planificateur
   cible.debuts = tours.map(t => t.heureDebut || null);
   cible.limites = dates.map((_, i) => mode === 'fixe' ? cible.maxParJour : mode === 'variable' ? parJour[i] : null);

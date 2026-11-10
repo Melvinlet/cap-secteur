@@ -808,3 +808,20 @@ li.glisse { position: relative; z-index: 5; box-shadow: 0 10px 28px rgba(0,0,0,.
 .stop .btn { white-space: normal; text-align: left; }
 /* photo : appareil photo OU galerie (sur téléphone, « capture » seul n'ouvre que l'appareil photo) */
 .choix-photo { display: flex; flex-wrap: wrap; gap: .5rem; align-items: center; }
+
+/* jours fériés */
+.tag.ferie { background: var(--orange); color: #fff; border-color: transparent; }
+.banner.ferie { border-left: 4px solid var(--orange); }
+.wday.ferie > header { background: repeating-linear-gradient(135deg, transparent 0 6px, color-mix(in srgb, var(--orange) 14%, transparent) 6px 12px); }
+.wday-ferie { margin: .25rem .6rem 0; font-size: .8rem; font-weight: 600; color: var(--orange); }
+#cFer { display: inline-block; margin-top: .3rem; }
+#cFer[hidden] { display: none; }
+/* export planning : heure, magasin, statut, objet, interlocuteur, précision */
+.exp-row select[name^="h:"] { grid-column: auto; }
+.exp-row select[name^="st:"], .exp-row input[name^="i:"] { grid-column: 2 / -1; }
+@media (min-width: 760px) {
+  .exp-row { grid-template-columns: 78px 86px minmax(140px, 1fr) 112px 200px; }
+  .exp-row select[name^="st:"] { grid-column: auto; }
+  .exp-row input[name^="i:"] { grid-column: 2 / 4; }
+  .exp-row input[name^="p:"] { grid-column: 4 / -1; }
+}

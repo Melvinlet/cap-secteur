@@ -19,6 +19,7 @@ import { haversine } from './geo.js';
 import { optimiserOrdre, trajet } from './routing.js';
 import { dureeVisite, frequenceDe, prioriteDe } from '../data.js';
 import { parseHeure } from '../ui.js';
+import { ferie } from './feries.js';
 
 const JOUR = 86400000;
 
@@ -40,6 +41,9 @@ export function planifier(magasins, s, { debut, semaines = 8, fixes = new Map(),
   // magasins max : cible.limites[jour] (null = libre), sinon cible.maxParJour pour tous les jours
   const maxDu = d => { const l = cible?.limites?.[d]; return l != null ? (Number(l) || Infinity) : (cible?.limites ? Infinity : Number(cible?.maxParJour) || Infinity); };
   const joursOff = new Set((cible?.joursOff || []).map(Number));
+  // jours fériés : pas de tournée (la vue Semaine les coche déjà dans « jours sans tournée », modifiables)
+  const dateDu = o => { const x = new Date(t0 + o * JOUR); return `${x.getFullYear()}-${String(x.getMonth() + 1).padStart(2, '0')}-${String(x.getDate()).padStart(2, '0')}`; };
+  const ferieOff = o => !cible?.feriesDecides && !!ferie(dateDu(o));
   // heure de départ propre à certains jours (sinon celle des Réglages)
   const debutDu = d => parseHeure(cible?.debuts?.[d] || s.heureDebut);
   const pauseM = Number(s.pauseMidi) || 0;
@@ -89,7 +93,7 @@ export function planifier(magasins, s, { debut, semaines = 8, fixes = new Map(),
     let pos = H;
     for (let d = 0; d < nbJours; d++) {
       const o = w * 7 + d;                                               // jour du plan
-      const off = j => joursOff.has(j) && !(fixes.get(w * 7 + j) || []).length;   // jour sans tournée (sauf RDV imposé)
+      const off = j => (joursOff.has(j) || ferieOff(w * 7 + j)) && !(fixes.get(w * 7 + j) || []).length;   // jour sans tournée (sauf RDV imposé)
       if (off(d)) { jours.push(jourVide(w, d, o, null)); pos = H; continue; }
       let dernierTravaille = true;
       for (let j = d + 1; j < nbJours; j++) if (!off(j)) dernierTravaille = false;

@@ -190,25 +190,63 @@ export async function exporterCommande(cmd, magasin, contacts, produits, reglage
   return xlsxBlob(wb);
 }
 
-// Export des visites au format du planning de l'entreprise (colonnes du profil, copier-coller direct).
+// Export des visites au format du planning de l'entreprise : même mise en page que l'onglet « Planning »
+// (en-têtes ligne 5, données à partir de la ligne 6, colonnes B à J), mêmes formats de date et d'heure,
+// mêmes couleurs : on sélectionne le bloc, on copie, on colle à la première ligne libre, c'est rempli.
+export const HEURES_PLANNING = () => { const P = PROFIL.planning || {}, pas = Number(P.pasMinutes) || 15;
+  const [a, b] = [P.heureMin || '07:00', P.heureMax || '21:00'].map(h => { const [H, M] = h.split(':').map(Number); return H * 60 + M; });
+  return { pas, min: a, max: b }; };
+// « 10:07 » → « 10:00 » (pas de 15 min, entre 07:00 et 21:00 : les valeurs de la liste déroulante)
+export function heurePlanning(h) {
+  if (!h) return '';
+  const { pas, min, max } = HEURES_PLANNING();
+  const [H, M] = h.split(':').map(Number);
+  const t = Math.min(max, Math.max(min, Math.round((H * 60 + M) / pas) * pas));
+  return `${String(Math.floor(t / 60)).padStart(2, '0')}:${String(t % 60).padStart(2, '0')}`;
+}
 export async function exporterPlanning(lignes, titre, colMotif = false) {
+  const P = PROFIL.planning || {};
   const ExcelJS = await loadExcelJS();
   const wb = new ExcelJS.Workbook();
-  const ws = wb.addWorksheet('Planning');
-  ws.columns = [{ width: 12 }, { width: 8 }, { width: 22 }, { width: 16 }, { width: 52 }, { width: 13 }, { width: 24 }, { width: 10 }, { width: 24 }, { width: 3 }, { width: 45 }];
-  ws.addRow([titre]).font = { ...FONT, bold: true, size: 13 };
-  ws.addRow([PROFIL.planning.consigne || '']).font = { ...FONT, italic: true };
-  const head = ws.addRow([...PROFIL.planning.colonnes, ...(colMotif ? ['', 'Pourquoi j\'y vais (pour moi, ne pas coller)'] : [])]);
-  enTete(head);
+  const ws = wb.addWorksheet('Planning', { views: [{ state: 'frozen', ySplit: 5, showGridLines: false }] });
+  const L0 = Number(P.premiereLigne) || 6, C0 = Number(P.premiereColonne) || 2;   // B6
+  const st = { texte: P.couleurTexte || 'FF2F5597', fond: P.couleurFond || 'FFFFF7DE', entete: P.couleurEntete || 'FF3F6670', trait: 'FFBFBFBF' };
+  const police = { name: 'Arial', size: 9 };
+  const bord = { style: 'thin', color: { argb: st.trait } };
+  const cadre = { top: bord, left: bord, bottom: bord, right: bord };
+  const larg = [15, 8, 14, 20, 38, 12, 20, 8, 18];
+  for (let i = 1; i < C0; i++) ws.getColumn(i).width = 2;
+  larg.forEach((w, i) => { ws.getColumn(C0 + i).width = w; });
+  const t = ws.getCell(2, C0); t.value = titre; t.font = { ...police, size: 12, bold: true, color: { argb: st.entete } };
+  const n = lignes.length, fin = L0 + n - 1;
+  const ref = (l, c) => `${ws.getColumn(c).letter}${l}`;
+  const zone = n ? `${ref(L0, C0)}:${ref(fin, C0 + 8)}` : '';
+  const cons = ws.getCell(3, C0);
+  cons.value = n ? `À coller dans l'onglet Planning : sélectionne ${zone} (de Jour à Interlocuteur), Ctrl+C, clique dans la 1re case vide de la colonne Jour, puis clic droit › Collage spécial › Valeurs (123) pour garder tes listes déroulantes.` : '';
+  cons.font = { ...police, italic: true, color: { argb: 'FF595959' } };
+  const cols = P.colonnes?.length === 9 ? P.colonnes : ['Jour', 'Heure', 'Chef de secteur', 'Enseigne', 'Magasin', 'Statut visite', 'Objet de la visite', 'N° visite', 'Interlocuteur'];
+  cols.forEach((h, i) => { const c = ws.getCell(L0 - 1, C0 + i); c.value = h; c.font = { ...police, bold: true, color: { argb: 'FFFFFFFF' } };
+    c.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: st.entete } }; c.alignment = { horizontal: 'center', vertical: 'middle', wrapText: true }; c.border = cadre; });
   if (colMotif) {
-    head.getCell(10).value = null; head.getCell(10).fill = { type: 'pattern', pattern: 'none' };
-    head.getCell(11).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFE7EEF9' } };
-    head.getCell(11).font = { ...FONT, bold: true, italic: true, color: { argb: 'FF163B78' } };
+    ws.getColumn(C0 + 10).width = 44;
+    const c = ws.getCell(L0 - 1, C0 + 10); c.value = 'Pourquoi j\'y vais (pour moi, ne pas coller)';
+    c.font = { ...police, bold: true, italic: true, color: { argb: 'FF163B78' } }; c.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFE7EEF9' } };
   }
-  for (const l of lignes) {
-    const r = ws.addRow([jour(l.jour), l.heure || '', l.chef, l.enseigne, l.magasin, l.statut, l.objet, l.numero, l.interlocuteur || '', ...(colMotif ? ['', l.motif || ''] : [])]);
-    r.getCell(1).numFmt = 'dd/mm/yyyy';
-  }
-  ws.eachRow(r => r.eachCell(c => { c.font = { ...FONT, ...(c.font || {}) }; }));
+  ws.getRow(L0 - 1).height = 24;
+  lignes.forEach((l, k) => {
+    const L = L0 + k;
+    const h = heurePlanning(l.heure);
+    const val = [jour(l.jour), h ? (() => { const [H, M] = h.split(':').map(Number); return (H * 60 + M) / 1440; })() : null,
+      l.chef || null, l.enseigne || null, l.magasin || null, l.statut || null, l.objet || null, l.numero || null, l.interlocuteur || null];
+    val.forEach((v, i) => {
+      const c = ws.getCell(L, C0 + i);
+      c.value = v; c.font = { ...police, color: { argb: st.texte } }; c.border = cadre;
+      c.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: st.fond } };
+      if (i === 0) c.numFmt = P.formatJour || 'ddd dd/mm/yy';
+      if (i === 1) { c.numFmt = 'h:mm'; c.alignment = { horizontal: 'center' }; }
+      if (i === 7) c.alignment = { horizontal: 'center' };
+    });
+    if (colMotif && l.motif) { const c = ws.getCell(L, C0 + 10); c.value = l.motif; c.font = { ...police, italic: true, color: { argb: 'FF163B78' } }; }
+  });
   return xlsxBlob(wb);
 }

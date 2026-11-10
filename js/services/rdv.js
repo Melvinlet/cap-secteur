@@ -26,7 +26,9 @@ Bien cordialement,
 {email}` };
 export const modeles = s => Object.fromEntries(Object.entries({ ...MODELES_RDV, groupe: MODELES_RDV.groupe || GROUPE }).map(([k, m]) => [k, { ...m, ...((s.modelesRdv || {})[k] || {}) }]));
 // Lien mailto avec les destinataires en copie cachée (null si trop long pour une messagerie)
-export const lienMailCci = (emails, sujet, corps) => { const u = `mailto:?bcc=${emails.map(encodeURIComponent).join(',')}&subject=${encodeURIComponent(sujet)}&body=${encodeURIComponent(corps)}`; return u.length < 1900 ? u : null; };
+// Outlook sur PC Windows attend des « ; » entre les adresses ; les messageries des téléphones, des « , »
+export const separateurMails = () => (/Windows/i.test(navigator.userAgent) ? ';' : ',');
+export const lienMailCci = (emails, sujet, corps) => { const u = `mailto:?bcc=${emails.map(encodeURIComponent).join(separateurMails())}&subject=${encodeURIComponent(sujet)}&body=${encodeURIComponent(corps)}`; return u.length < 1900 ? u : null; };
 
 const JOURS = ['dimanche', 'lundi', 'mardi', 'mercredi', 'jeudi', 'vendredi', 'samedi'];
 const MOIS = ['janvier', 'février', 'mars', 'avril', 'mai', 'juin', 'juillet', 'août', 'septembre', 'octobre', 'novembre', 'décembre'];

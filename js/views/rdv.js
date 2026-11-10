@@ -5,9 +5,10 @@ import { db, getSettings } from '../db.js';
 import { magasinsEnrichis, trierContacts, roleDe } from '../data.js';
 import { $, $$, esc, borne, prioTag, fmtDate, fmtHeure, toast, modal, norm, today } from '../ui.js';
 import { STATUTS_RDV, OBJETS_VISITE } from '../config.js';
-import { getRdv, tousLesRdv, genererMessage, lienMail, lienSms, estMobile, changerStatut, aRelancer, modeles, dateEnLettres, lienMailCci } from '../services/rdv.js';
+import { getRdv, tousLesRdv, genererMessage, lienMail, lienSms, estMobile, changerStatut, aRelancer, modeles, dateEnLettres, lienMailCci, separateurMails } from '../services/rdv.js';
 import { planning } from './tournee.js';
 import { evenementRdv, proposerAgenda } from '../services/agenda.js';
+import { ferie } from '../services/feries.js';
 
 let etat = { mode: 'semaine', du: null, au: null, q: '', dep: '', statut: '' };
 
@@ -168,7 +169,7 @@ function rediger(file, s, fin) {
           <label>Civilité<select id="cCiv"></select></label>
           <label>Message<select id="cType">${Object.entries(mods).filter(([, m]) => !m.groupe).map(([k, m]) => `<option value="${k}" ${k === type0 ? 'selected' : ''}>${esc(m.label)}</option>`).join('')}</select></label></div>
         <div class="row">
-          <label>Date proposée<input type="date" id="cDate" value="${esc(r.date || '')}"></label>
+          <label>Date proposée<input type="date" id="cDate" value="${esc(r.date || '')}"><small class="tag ferie" id="cFer" hidden></small></label>
           <label>Heure<input type="time" id="cHeure" value="${esc(r.heure || '')}"></label>
           <label>Objet<select id="cObjet">${OBJETS_VISITE.map(o => `<option ${o === r.objet ? 'selected' : ''}>${o}</option>`).join('')}</select></label></div>
         <label id="lSujet">Objet du mail<input id="cSujet"></label>
@@ -204,6 +205,7 @@ function rediger(file, s, fin) {
       const type = $('#cType', d).value;
       const msg = genererMessage(type, { m: l.m, contact: contact(), rdv: r, s });
       $('#cSujet', d).value = msg.sujet; $('#cCorps', d).value = msg.corps;
+      const fer = ferie(r.date); $('#cFer', d).hidden = !fer; $('#cFer', d).textContent = fer ? `Férié · ${fer}` : '';
       $('#lSujet', d).hidden = type === 'sms';
       const c = contact() || {};
       const tel = c.tel || c.tel2 || l.m.telMagasin;
@@ -258,11 +260,11 @@ async function mailGroupe(lignes, s, fin) {
     <label>Texte<textarea id="gCorps" rows="11">${esc(msg.corps)}</textarea></label>
     <label class="check"><input type="checkbox" id="gMarquer" checked> Marquer ces demandes comme envoyées</label>
     <div class="actions"><a class="btn primary" id="gMail">Ouvrir dans ma messagerie</a><button type="button" class="btn" id="gCopie">Copier les adresses</button></div>
-    <p class="hint">Texte générique, sans prénom ni nom de magasin. Pour un message personnalisé, utilise « Écrire » sur chaque magasin, comme d'habitude.</p>` });
+    <p class="hint">Avant d'envoyer, vérifie que les adresses sont bien dans <strong>Cci</strong> et que « À » est vide. Texte générique, sans prénom ni nom de magasin. Pour un message personnalisé, utilise « Écrire » sur chaque magasin, comme d'habitude.</p>` });
   const dlg = document.querySelector('dialog[open]');
   const q = x => dlg.querySelector(x);
   q('#gObjet').onchange = () => { const m = genererMessage('groupe', { s, rdv: { objet: q('#gObjet').value } }); q('#gSujet').value = m.sujet; q('#gCorps').value = m.corps; };
-  const copier = async () => { try { await navigator.clipboard.writeText(emails.join('; ')); return true; } catch { return false; } };
+  const copier = async () => { try { await navigator.clipboard.writeText(emails.join(separateurMails() + ' ')); return true; } catch { return false; } };
   q('#gCopie').onclick = async () => toast(await copier() ? `${emails.length} adresses copiées : colle-les dans le champ Cci` : 'Copie impossible sur cet appareil', 'warn');
   q('#gMail').onclick = async e => {
     const b = e.currentTarget;

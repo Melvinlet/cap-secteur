@@ -2,14 +2,15 @@
 import { ongletsPlanning } from './onglets-planning.js';
 import { db, getSettings, saveSettings } from '../db.js';
 import { magasinsEnrichis, dureeVisite, numeroVisite } from '../data.js';
-import { OBJETS_VISITE, ENSEIGNES_LISTE, PRIORITES, PROFIL } from '../config.js';
-import { exporterPlanning } from '../services/excel.js';
+import { OBJETS_VISITE, STATUTS_VISITE, ENSEIGNES_LISTE, PRIORITES, PROFIL } from '../config.js';
+import { exporterPlanning, heurePlanning, HEURES_PLANNING } from '../services/excel.js';
 import { downloadBlob, $, $$, esc, borne, prioTag, enseigneColor, fmtKm, fmtDuree, fmtHeure, parseHeure, fmtDateLong, today, toast, modal, norm, fmtDate, glisser } from '../ui.js';
 import { optimiserOrdre, calculerTrajets, lienGps, estimate, trajet, trajetBrut } from '../services/routing.js';
 import { geocodeMagasin, haversine } from '../services/geo.js';
 import { carte, repere, repereDepart, animerTrace } from '../carte.js';
 import { tousLesRdv } from '../services/rdv.js';
 import { marquerVisite, annulerVisite, visitesDuJour, lienDetails, estVide } from '../services/visite.js';
+import { ferie } from '../services/feries.js';
 
 let map;
 
@@ -236,6 +237,7 @@ export async function render(el, { date = today() }) {
         <a class="btn-icon" href="#/tournee/${decale(date, 1)}" aria-label="Jour suivant">›</a>
         <input type="date" id="pickDate" value="${date}" aria-label="Choisir une date">
       </div>
+      ${ferie(date) ? `<p class="banner ferie">Jour férié : ${esc(ferie(date))}.${t.etapes.length ? ' Vérifie que les magasins sont ouverts avant d\'y aller.' : ' Pas de tournée prévue par défaut.'}</p>` : ''}
       <a class="btn ghost" href="#/rdv?du=${lundiDe(date)}&au=${vendrediDe(date)}">Demander les RDV de la semaine</a>
       <button class="btn ghost" id="expPlanning">Exporter le ${esc(PROFIL.planning.nom || 'planning')}</button>
     </header>
@@ -410,6 +412,10 @@ export async function render(el, { date = today() }) {
   if (!t.calcul && t.etapes.length && departOk) calculer(false);
 }
 
+// Heures proposées : celles de la liste déroulante du planning (07:00 → 21:00 par quarts d'heure)
+const heuresListe = h => { const { pas, min, max } = HEURES_PLANNING(), r = [];
+  for (let x = min; x <= max; x += pas) r.push(`${String(Math.floor(x / 60)).padStart(2, '0')}:${String(x % 60).padStart(2, '0')}`);
+  return h && !r.includes(h) ? [h, ...r] : r; };
 // Export des tournées d'une période au format du planning de l'entreprise (colonnes du profil)
 export async function exporterVersPlanning(date, s, periode = null) {
   const d = new Date(date + 'T12:00'); d.setDate(d.getDate() - ((d.getDay() + 6) % 7));
@@ -422,10 +428,21 @@ export async function exporterVersPlanning(date, s, periode = null) {
     <div class="row"><label>Du<input type="date" name="du" value="${lundi}" required></label><label>Au<input type="date" name="au" value="${d.toISOString().slice(0, 10)}" required></label></div>
     ${s.commercial ? '' : '<p class="hint">Astuce : renseigne ton nom dans les Réglages pour remplir la colonne « Chef de secteur ».</p>'}` });
   if (!r) return;
-  const [mags, notes, tournees, rdvs] = await Promise.all([magasinsEnrichis(s), db.all('notes'), db.all('tournees'), tousLesRdv()]);
+  const [mags, notes, tournees, rdvs, contacts] = await Promise.all([magasinsEnrichis(s), db.all('notes'), db.all('tournees'), tousLesRdv(), db.all('contacts')]);
   const byId = new Map(mags.map(m => [m.id, m]));
+  const ctById = new Map(contacts.map(c => [c.id, c]));
   const lignes = [];
-  const arrondi = min => fmtHeure(Math.round(min / 5) * 5);
+  const arrondi = min => heurePlanning(fmtHeure(min));   // au quart d'heure, comme la liste déroulante du planning
+  // enseigne telle que la liste du planning la connaît (« Sans enseigne » → réseau d'origine, sinon vide)
+  const enseigneDe = m => ENSEIGNES_LISTE.includes(m.enseigne) && !/^Sans enseigne$|^Briconautes$/.test(m.enseigne) ? m.enseigne
+    : ENSEIGNES_LISTE.find(x => new RegExp(`Réseau ${x.replace('.', '\\.')}\\b`).test(m.statut || '')) || '';
+  // statut du RDV → statut de visite du planning (Planifiée, Confirmée, Réalisée, Reportée, Annulée)
+  const statutRdv = (rv, jour) => {
+    if (!rv) return null;
+    const date = rv.statut === 'autreDate' ? rv.dateRetenue : rv.date;
+    if (date !== jour) return rv.statut === 'autreDate' && rv.date === jour ? 'Reportée' : null;
+    return { acceptee: 'Confirmée', autreDate: 'Confirmée', refusee: 'Annulée' }[rv.statut] || 'Planifiée';
+  };
   const jours = tournees.filter(x => x.id >= r.du && x.id <= r.au && x.etapes.length).sort((a, b) => a.id.localeCompare(b.id));
   for (const t of jours) {
     const p = estimerJour(t, byId, s, rdvs);
@@ -434,33 +451,43 @@ export async function exporterVersPlanning(date, s, periode = null) {
       if (!m) return;
       const nm = notes.filter(n => n.magasinId === m.id);
       const v = nm.find(n => n.type === 'Visite' && n.date === t.id);
-      lignes.push({ t, k, jour: t.id, heure: e.heureFixee || e.rdvHeure || (e.arrivee != null ? arrondi(e.arrivee) : ''), chef: s.commercial || '',
-        enseigne: ENSEIGNES_LISTE.find(x => m.enseigne.startsWith(x.split('.')[0])) || m.enseigne,
-        magasin: m.libellePlanning || `${m.cp} ${m.ville.toUpperCase()} – ${m.nom}`, nom: m.nom,
-        statut: v?.statut || (e.fait ? 'Réalisée' : e.rdv ? 'Confirmée' : 'Planifiée'), objet: v?.objet || e.objet || s.objetDefaut,
-        motif: e.motif || '', numero: v?.numero || numeroVisite(nm, t.id), interlocuteur: v?.contact || '', rdv: !!e.rdvHeure });
+      const rv = rdvs.get(m.id);
+      const rvJour = rv && (rv.statut === 'autreDate' ? rv.dateRetenue : rv.date) === t.id ? rv : null;
+      const ct = rvJour && ctById.get(rvJour.contactId);
+      lignes.push({ t, k, jour: t.id, heure: heurePlanning(e.heureFixee || e.rdvHeure || '') || (e.arrivee != null ? arrondi(e.arrivee) : ''), chef: s.commercial || '',
+        enseigne: enseigneDe(m), magasin: m.libellePlanning || `${m.cp} ${m.ville.toUpperCase()} – ${m.nom}`, nom: m.nom,
+        statut: v?.statut || (e.fait ? 'Réalisée' : e.statutPlanning || statutRdv(rv, t.id) || (e.rdv ? 'Confirmée' : 'Planifiée')),
+        objet: v?.objet || e.objet || rvJour?.objet || s.objetDefaut,
+        motif: e.motif || '', numero: v?.numero || numeroVisite(nm, t.id),
+        interlocuteur: e.interlocuteur ?? (v?.contact || ct?.nom || ''), rdv: !!e.rdvHeure, ferie: ferie(t.id) });
     });
   }
   if (!lignes.length) return toast('Aucune visite prévue sur cette période', 'warn');
+  lignes.sort((a, b) => a.jour.localeCompare(b.jour) || (a.heure || '99').localeCompare(b.heure || '99'));   // comme le planning : par jour puis par heure
   // vérification ligne par ligne : heure, objet et « pourquoi j'y vais »
   const v = await modal({ titre: `Planning du ${fmtDate(r.du)} au ${fmtDate(r.au)}`, valider: 'Créer le fichier Excel', large: true, corps: `
     ${s.commercial ? '' : '<p class="hint">Astuce : renseigne ton nom dans les Réglages pour remplir la colonne « Chef de secteur ».</p>'}
-    <p class="hint">Heures estimées d'après ta tournée (arrondies à 5 min) ; les heures de RDV sont reprises telles quelles. Tout est modifiable ici et gardé dans tes tournées.</p>
+    <p class="hint">Heures au quart d'heure, comme dans ton planning. Statut et interlocuteur viennent de tes RDV (accepté → Confirmée, refusé → Annulée, autre date → Reportée le jour prévu). Tout est modifiable ici et gardé dans tes tournées.</p>
     <div class="exp-list">${lignes.map((l, i) => `<div class="exp-row ${i && lignes[i - 1].jour !== l.jour ? 'new-day' : ''}">
-      <span class="exp-j">${fmtDate(l.jour)}</span>
-      <input type="time" name="h:${i}" value="${esc(l.heure)}" aria-label="Heure">
+      <span class="exp-j">${fmtDate(l.jour)}${l.ferie ? ` <span class="tag ferie" title="${esc(l.ferie)}">férié</span>` : ''}</span>
+      <select name="h:${i}" aria-label="Heure"><option value="">—</option>${heuresListe(l.heure).map(h => `<option ${h === l.heure ? 'selected' : ''}>${h}</option>`).join('')}</select>
       <span class="exp-m"><strong>${esc(l.nom)}</strong>${l.rdv ? ' <span class="tag ok">RDV</span>' : ''}</span>
+      <select name="st:${i}" aria-label="Statut">${STATUTS_VISITE.map(o => `<option ${o === l.statut ? 'selected' : ''}>${o}</option>`).join('')}</select>
       <select name="o:${i}" aria-label="Objet">${[...new Set([...OBJETS_VISITE, l.objet])].map(o => `<option ${o === l.objet ? 'selected' : ''}>${esc(o)}</option>`).join('')}</select>
+      <input name="i:${i}" value="${esc(l.interlocuteur)}" placeholder="Interlocuteur" aria-label="Interlocuteur" list="ctl-${i}">
+      <datalist id="ctl-${i}">${contacts.filter(c => c.magasinId === l.t.etapes[l.k].magasinId && c.nom).map(c => `<option value="${esc(c.nom)}">`).join('')}</datalist>
       <input name="p:${i}" value="${esc(l.motif)}" placeholder="Pourquoi j'y vais (précision)" aria-label="Précision"></div>`).join('')}</div>
     <label class="check"><input type="checkbox" name="colMotif" checked> Ajouter les précisions dans une colonne à part (à droite, hors zone à coller)</label>` });
   if (!v) return;
   const modifiees = new Set();
   lignes.forEach((l, i) => {
     const e = l.t.etapes[l.k];
-    const h = v['h:' + i] || '', o = v['o:' + i], pr = (v['p:' + i] || '').trim();
+    const h = v['h:' + i] || '', o = v['o:' + i], pr = (v['p:' + i] || '').trim(), stt = v['st:' + i] || l.statut, it = (v['i:' + i] || '').trim();
     if (h !== l.heure) e.heureFixee = h; if (o !== (e.objet || s.objetDefaut)) e.objet = o; if (pr !== (e.motif || '')) e.motif = pr;
-    if (h !== l.heure || o !== l.objet || pr !== l.motif) modifiees.add(l.t);
-    Object.assign(l, { heure: h, objet: o, motif: pr });
+    if (it !== l.interlocuteur) e.interlocuteur = it;
+    if (stt !== l.statut) e.statutPlanning = stt;
+    if (h !== l.heure || o !== l.objet || pr !== l.motif || it !== l.interlocuteur || stt !== l.statut) modifiees.add(l.t);
+    Object.assign(l, { heure: h, objet: o, motif: pr, statut: stt, interlocuteur: it });
   });
   for (const t of modifiees) await db.put('tournees', t);
   downloadBlob(await exporterPlanning(lignes, `Planning ${s.commercial || ''} du ${fmtDate(r.du)} au ${fmtDate(r.au)}`.replace('  ', ' '), v.colMotif === 'on'), `Planning ${r.du} au ${r.au}.xlsx`);
@@ -473,7 +500,7 @@ const vendrediDe = date => { const d = new Date(lundiDe(date) + 'T12:00'); d.set
 // Prochain jour de terrain (lundi → jours de terrain par semaine)
 export function prochainJour(date, s) {
   const d = new Date(date + 'T12:00');
-  do { d.setDate(d.getDate() + 1); } while (d.getDay() === 0 || d.getDay() > Number(s.joursTerrain || 5));
+  do { d.setDate(d.getDate() + 1); } while (d.getDay() === 0 || d.getDay() > Number(s.joursTerrain || 5) || ferie(d.toISOString().slice(0, 10)));
   return d.toISOString().slice(0, 10);
 }
 

@@ -3,7 +3,7 @@
 // IMPORTANT : à chaque mise en ligne d'une nouvelle version, change VERSION
 // (sinon les téléphones garderont l'ancienne version en cache).
 // ─────────────────────────────────────────────────────────────────────────────
-const VERSION = 'cap-secteur-1.8.5';
+const VERSION = 'cap-secteur-1.8.7';
 const TUILES = 'cap-secteur-tuiles';
 const IMAGES_WEB = 'cap-secteur-images-web';
 const MAX_TUILES = 3000;
@@ -42,6 +42,7 @@ const APP = [
   './js/services/planificateur.js',
   './js/services/rdv.js',
   './js/services/visite.js',
+  './js/services/feries.js',
   './js/services/routing.js',
   './js/services/synchro.js',
   './js/ui.js',

@@ -5,6 +5,8 @@ import { esc, borne, fmtDateLong, fmtDate, today, fmtHeure } from '../ui.js';
 import { getTournee, planning } from './tournee.js';
 import { aRelancer, dateEnLettres } from '../services/rdv.js';
 import { lienGps } from '../services/routing.js';
+import { ferie } from '../services/feries.js';
+const demain = () => { const d = new Date(today() + 'T12:00'); d.setDate(d.getDate() + 1); return d.toISOString().slice(0, 10); };
 
 export async function render(el) {
   const s = await getSettings();
@@ -39,7 +41,7 @@ export async function render(el) {
     .filter(r => r.j && r.j >= today()).sort((a, b) => (a.j + a.h).localeCompare(b.j + b.h)).slice(0, 6);
 
   el.innerHTML = `<div class="page">
-    <header class="hello"><a class="btn-icon settings-link" href="#/reglages" aria-label="Réglages" style="float:right">⚙</a><p class="muted">${fmtDateLong(today())}</p><h1>${prenom ? `Bonjour ${esc(prenom)}` : 'Bonjour'}</h1></header>
+    <header class="hello"><a class="btn-icon settings-link" href="#/reglages" aria-label="Réglages" style="float:right">⚙</a><p class="muted">${fmtDateLong(today())}${ferie(today()) ? ` · <span class="tag ferie">Férié · ${esc(ferie(today()))}</span>` : ''}${!ferie(today()) && ferie(demain()) ? ` · <span class="muted">demain férié (${esc(ferie(demain()))})</span>` : ''}</p><h1>${prenom ? `Bonjour ${esc(prenom)}` : 'Bonjour'}</h1></header>
     ${aPlacer.length ? `<section class="alerte-retard" role="status">
       <h2 class="h2">${aPlacer.length} magasin${aPlacer.length > 1 ? 's' : ''} en retard de visite, pas encore planifié${aPlacer.length > 1 ? 's' : ''}</h2>
       <ul class="plain">${aPlacer.slice(0, 3).map(m => `<li><a href="#/magasin/${encodeURIComponent(m.id)}">${esc(m.nom)}</a> <span class="muted">dernière visite il y a ${m.joursDepuisVisite} j (tous les ${m.frequenceEff} j prévu)</span></li>`).join('')}</ul>
