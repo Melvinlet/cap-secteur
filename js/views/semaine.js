@@ -21,6 +21,15 @@ let echecTomTom = null;   // TomTom en échec pendant cette session : on n'insis
 
 const decale = (iso, n) => { const d = new Date(iso + 'T12:00'); d.setDate(d.getDate() + n); return d.toISOString().slice(0, 10); };
 
+// Le calcul TomTom gardé correspond-il encore à la journée (mêmes étapes, même départ, même arrivée) ?
+const proche = (a, b) => a && b && Math.abs(a[0] - b.lat) < 0.05 && Math.abs(a[1] - b.lon) < 0.05;
+// trajets déjà demandés à TomTom pendant cette session : jamais deux fois le même (pas de boucle de calculs)
+const demandes = new Set();
+const cleTrajet = (t, pts) => t.id + pts.map(p => `${p.lat.toFixed(3)},${p.lon.toFixed(3)}`).join(';');
+const aCalculer = (t, pts) => t.etapes.length && pts.length >= 2 && !traceTomTom(t, pts) && !demandes.has(cleTrajet(t, pts));
+const traceTomTom = (t, pts) => { const legs = t.calcul?.legs;
+  return t.calcul?.provider === 'tomtom' && legs?.length === pts.length - 1 && legs.every((l, k) => l.points?.length > 1 && proche(l.points[0], pts[k]) && proche(l.points.at(-1), pts[k + 1])); };
+
 export async function render(el, params) {
   destroy();
   const s = await getSettings();
@@ -87,13 +96,13 @@ export async function render(el, params) {
   // changer l'heure de départ ne change pas les trajets : on garde le calcul TomTom
   const depart = async (i, h) => { const t = tours[i]; if (!h || h === s.heureDebut) delete t.heureDebut; else t.heureDebut = h; await db.put('tournees', t); render(el, { lundi }); };
   // trajets réels TomTom : calculés automatiquement pour les jours qui n'en ont pas (une seule fois, gardés ensuite)
-  if (s.cleTomTom && s.itineraire === 'tomtom' && departOk && navigator.onLine && !echecTomTom && tours.some(t => t.etapes.length && t.calcul?.provider !== 'tomtom')) {
+  if (s.cleTomTom && s.itineraire === 'tomtom' && departOk && navigator.onLine && !echecTomTom && tours.some(t => aCalculer(t, pointsJour(t, mags, s)))) {
     (async () => {
       const hash = location.hash;
       for (const t of tours) {
-        if (!t.etapes.length || t.calcul?.provider === 'tomtom') continue;
         const pts = pointsJour(t, mags, s);
-        if (pts.length < 2) continue;
+        if (!aCalculer(t, pts)) continue;
+        demandes.add(cleTrajet(t, pts));
         const emp = empreinte(t);
         const r = await calculerTrajets(pts, s);
         if (r.provider !== 'tomtom') { echecTomTom = r.erreur || 'indisponible'; break; }
@@ -110,9 +119,9 @@ export async function render(el, params) {
     const b = e.currentTarget; b.disabled = true;
     let n = 0, err = null;
     for (const t of tours) {
-      if (!t.etapes.length || t.calcul?.provider === 'tomtom') continue;
-      b.textContent = `Calcul… ${++n}`;
       const pts = pointsJour(t, mags, s);
+      if (!t.etapes.length || pts.length < 2 || traceTomTom(t, pts)) continue;
+      b.textContent = `Calcul… ${++n}`;
       const emp = empreinte(t);
       const r = await calculerTrajets(pts, s);
       if (r.erreur || r.sansCle) { err = r.erreur || 'clé TomTom manquante'; break; }
@@ -172,7 +181,12 @@ export async function render(el, params) {
   const layers = departOk ? [repereDepart(s.depart)] : [];
   tours.forEach((t, i) => {
     const pts = pointsJour(t, mags, s);
-    if (departOk && pts.length > 2) layers.push(L.polyline(pts.map(p => [p.lat, p.lon]), { color: COULEURS[i], weight: 3, opacity: .8 }));
+    if (departOk && t.etapes.length && pts.length >= 2) {
+      // tracé réel TomTom (routes) s'il correspond bien à la journée affichée ; sinon pointillés à vol d'oiseau en attendant le calcul
+      const legs = t.calcul?.legs;
+      if (traceTomTom(t, pts)) legs.forEach(l => layers.push(L.polyline(l.points, { color: COULEURS[i], weight: 3, opacity: .85 })));
+      else layers.push(L.polyline(pts.map(p => [p.lat, p.lon]), { color: COULEURS[i], weight: 3, opacity: .7, dashArray: '6 8' }));
+    }
     t.etapes.forEach((e, k) => { const m = mags.get(e.magasinId); if (m?.lat != null) layers.push(repere(m, k + 1, COULEURS[i]).bindPopup(`<strong>${esc(m.nom)}</strong><br>${dateEnLettres(t.id)}`)); });
   });
   if (layers.length) { const g = L.featureGroup(layers).addTo(map); map.fitBounds(g.getBounds().pad(0.08), { animate: false }); }
