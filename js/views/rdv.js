@@ -38,7 +38,8 @@ export async function render(el, params = {}) {
       p.etapes.forEach(e => { const m = byId.get(e.magasinId); if (m) lignes.push({ m, date: t.id, heure: t.calcul ? fmtHeure(e.arrivee) : '', objet: e.objet }); });
     }
   } else {
-    lignes = mags.filter(m => ![0, 4, 5].includes(m.prio)).sort((a, b) => b.urgence - a.urgence || a.prio - b.prio).map(m => ({ m, date: '', heure: '' }));
+    // (un magasin déjà contacté reste dans la liste, même s'il n'est plus prioritaire)
+    lignes = mags.filter(m => ![0, 4, 5].includes(m.prio) || rdvs.has(m.id)).sort((a, b) => b.urgence - a.urgence || a.prio - b.prio).map(m => ({ m, date: '', heure: '' }));
   }
   if (params.m) lignes = lignes.filter(l => l.m.id === decodeURIComponent(params.m));
   // un magasin présent sur plusieurs jours n'apparaît qu'une fois (le jour du rendez-vous s'il est fixé)
@@ -55,8 +56,19 @@ export async function render(el, params = {}) {
     l.contacts = trierContacts(ctBy.get(l.m.id) || []);
   });
   const q = norm(etat.q);
+  // recherche : magasin, ville, code postal… et aussi nom, prénom, e-mail ou téléphone des contacts (dont celui à qui la demande est partie)
+  const correspond = l => {
+    if (!q) return true;
+    l.trouve = null;
+    if (norm(`${l.m.nom} ${l.m.ville} ${l.m.cp} ${l.m.enseigne}`).includes(q)) return true;
+    const mots = q.split(' ').filter(Boolean);
+    const ct = [...l.contacts].sort((a, b) => (b.id === l.rdv.contactId) - (a.id === l.rdv.contactId))
+      .find(c => { const t = norm(`${c.nom || ''} ${c.email || ''} ${c.tel || ''} ${(c.tel || '').replace(/\D/g, '')}`); return mots.every(w => t.includes(w)); });
+    if (ct) { l.trouve = ct; return true; }
+    return false;
+  };
   const compte = st => lignes.filter(l => st === 'relancer' ? l.relance : l.rdv.statut === st).length;
-  const visibles = lignes.filter(l => (!q || norm(`${l.m.nom} ${l.m.ville} ${l.m.cp}`).includes(q)) && (!etat.dep || l.m.departement === etat.dep)
+  const visibles = lignes.filter(l => correspond(l) && (!etat.dep || l.m.departement === etat.dep)
     && (!etat.statut || (etat.statut === 'relancer' ? l.relance : l.rdv.statut === etat.statut)));
   const deps = [...new Set(lignes.map(l => l.m.departement))].sort();
 
@@ -66,7 +78,7 @@ export async function render(el, params = {}) {
     ${params.m ? `<p><a href="#/rdv">Voir tous les rendez-vous</a></p>` : ''}
     <div class="rdv-f">
       ${etat.mode === 'semaine' ? `<div class="row"><label>Du<input type="date" id="du" value="${etat.du}"></label><label>Au<input type="date" id="au" value="${etat.au}"></label></div>` : ''}
-      <input type="search" id="q" placeholder="Rechercher un magasin, une ville…" value="${esc(etat.q)}" aria-label="Rechercher">
+      <input type="search" id="q" placeholder="Magasin, ville, nom ou e-mail d'un contact…" value="${esc(etat.q)}" aria-label="Rechercher">
       <select id="dep" aria-label="Département"><option value="">Tous départements</option>${deps.map(d => `<option ${etat.dep === d ? 'selected' : ''}>${d}</option>`).join('')}</select>
     </div>
     <div class="chips" role="group" aria-label="Statut">
@@ -78,10 +90,12 @@ export async function render(el, params = {}) {
     ${visibles.length ? `<div class="actions"><label class="check"><input type="checkbox" id="all"> Tout sélectionner</label>
       <button class="btn primary" id="lot" disabled>Préparer les demandes</button>
       <button class="btn" id="tous" title="Un seul mail générique (sans prénom ni adresse), tous les contacts en copie cachée">Un seul mail à tous</button></div>` : ''}
+    ${q && !visibles.length ? `<div class="empty"><p>Rien ne correspond à « ${esc(etat.q)} »${etat.mode === 'semaine' ? ' dans tes tournées de cette période' : ''}.</p>${etat.mode === 'semaine' ? '<button class="btn" id="chTous">Chercher dans tous les magasins</button>' : ''}</div>` : ''}
     <ul class="rdv-list">${visibles.map((l, i) => ligneHTML(l, i)).join('')}</ul>
   </div>`;
 
   $$('[data-mode]').forEach(b => b.onclick = () => { etat.mode = b.dataset.mode; location.hash = '#/rdv'; render(el); });
+  $('#chTous')?.addEventListener('click', () => { etat.mode = 'tous'; render(el); });
   $('#du')?.addEventListener('change', e => { etat.du = e.target.value; if (etat.au < etat.du) etat.au = etat.du; render(el); });
   $('#au')?.addEventListener('change', e => { etat.au = e.target.value; render(el); });
   $('#q').oninput = e => { etat.q = e.target.value; clearTimeout(etat.t); etat.t = setTimeout(() => render(el).then(() => { const i = $('#q'); i.focus(); i.setSelectionRange(i.value.length, i.value.length); }), 250); };
@@ -105,13 +119,13 @@ function ligneHTML(l, i) {
   const r = l.rdv, m = l.m;
   const date = r.statut === 'autreDate' ? r.dateRetenue : (r.date || l.date);
   const heure = r.statut === 'autreDate' ? r.heureRetenue : (r.heure || l.heure);
-  const c = l.contacts.find(x => x.id === r.contactId) || l.contacts[0];
+  const c = l.trouve || l.contacts.find(x => x.id === r.contactId) || l.contacts[0];   // le contact recherché d'abord
   return `<li class="rdv st-${r.statut}">
     <input type="checkbox" class="rdv-sel" data-i="${i}" aria-label="Sélectionner ${esc(m.nom)}">
     ${borne(m.departement)}
     <div class="rdv-main">
       <span class="rdv-nom"><a href="#/magasin/${encodeURIComponent(m.id)}"><strong>${esc(m.nom)}</strong></a> ${prioTag(m.prio)}</span>
-      <small>${c ? `${esc(c.nom || 'Contact')}${c.email ? ` · ${esc(c.email)}` : ''}${c.tel ? ` · ${esc(c.tel)}` : ''}` : m.telMagasin ? `Magasin · ${esc(m.telMagasin)}` : '<span class="late-txt">Aucun contact</span>'}</small>
+      <small>${c ? `${l.trouve ? '<mark>' : ''}${esc(c.nom || 'Contact')}${l.trouve ? '</mark>' : ''}${l.trouve && l.trouve.id === r.contactId && r.dateEnvoi ? ' <span class="tag ok">destinataire</span>' : ''}${c.email ? ` · ${esc(c.email)}` : ''}${c.tel ? ` · ${esc(c.tel)}` : ''}` : m.telMagasin ? `Magasin · ${esc(m.telMagasin)}` : '<span class="late-txt">Aucun contact</span>'}</small>
       <small>${date ? `${r.statut === 'autreDate' ? 'Nouvelle date : ' : ''}${esc(dateEnLettres(date))}${heure ? ` · ${esc(heure)}` : ''}` : 'Date à proposer'}
         ${r.dateEnvoi ? ` · envoyée le ${fmtDate(r.dateEnvoi)}` : ''}${r.relances ? ` · ${r.relances} relance${r.relances > 1 ? 's' : ''}` : ''}${l.relance ? ' · <b class="late-txt">à relancer</b>' : ''}</small>
     </div>
@@ -141,7 +155,7 @@ async function reponse(l, statut, s) {
   if (statut === 'acceptee' || statut === 'autreDate') await agenda(l, rdv, s, 'Rendez-vous confirmé : l\'ajouter à ton agenda ?');
 }
 function agenda(l, r, s, titre) {
-  const c = l.contacts.find(x => x.id === r.contactId) || l.contacts[0];
+  const c = l.trouve || l.contacts.find(x => x.id === r.contactId) || l.contacts[0];   // le contact recherché d'abord
   const objet = OBJETS_VISITE.find(o => (o.id || o) === r.objet);
   return proposerAgenda(evenementRdv(l.m, r, s, c, objet?.label || objet || r.objet || ''), titre ? { titre } : {});
 }
