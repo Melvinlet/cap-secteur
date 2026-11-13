@@ -141,6 +141,10 @@ export async function genererNdf(frais, images, s, { date, bareme = null }) {
       const c = wj.getCell(`B${row}`);
       c.value = `Justificatif ${num} — ${x.date.split('-').reverse().join('/')} — ${x.libelle || x.categorie} — ${colonneNdf(x.categorie)} — ${(Number(x.montant) || 0).toFixed(2).replace('.', ',')} €`;
       c.font = { ...F, bold: true }; c.fill = GRIS; c.border = CADRE;
+      if (estPdf(img.blob)) {   // un PDF ne s'insère pas dans Excel : il est dans la note en PDF
+        const d = wj.getCell(`B${row + 1}`); d.value = 'Justificatif au format PDF : voir la note de frais en PDF (pages jointes).'; d.font = { ...F, italic: true };
+        row += 3; continue;
+      }
       const { buffer, w, h } = await prepImage(img.blob);
       const largeur = 480, hauteur = Math.round(h / w * largeur);
       const id = wb.addImage({ buffer, extension: 'jpeg' });
@@ -179,16 +183,23 @@ export async function baremeProfil() {
 }
 
 // ── PDF : le tableau de la note (comme l'Excel) puis tous les justificatifs, dans l'ordre des dates ──
-let chargement;
+let chargement, chargementPdfLib;
+const charger = src => new Promise((res, rej) => {
+  const s = document.createElement('script'); s.src = new URL(src, import.meta.url).href;
+  s.onload = res; s.onerror = () => rej(new Error('Impossible de charger le module PDF')); document.head.append(s);
+});
 function loadJsPDF() {
   if (window.jspdf?.jsPDF?.API?.autoTable) return Promise.resolve(window.jspdf.jsPDF);
-  const charger = src => new Promise((res, rej) => {
-    const s = document.createElement('script'); s.src = new URL(src, import.meta.url).href;
-    s.onload = res; s.onerror = () => rej(new Error('Impossible de charger le module PDF')); document.head.append(s);
-  });
   chargement ||= charger('../../vendor/jspdf/jspdf.umd.min.js').then(() => charger('../../vendor/jspdf/jspdf.plugin.autotable.min.js')).then(() => window.jspdf.jsPDF);
   return chargement;
 }
+// pdf-lib : seulement quand un justificatif est lui-même un PDF (ses pages sont insérées dans la note)
+function loadPdfLib() {
+  if (window.PDFLib) return Promise.resolve(window.PDFLib);
+  chargementPdfLib ||= charger('../../vendor/pdf-lib/pdf-lib.min.js').then(() => window.PDFLib);
+  return chargementPdfLib;
+}
+export const estPdf = blob => blob?.type === 'application/pdf';
 // police standard du PDF : on remplace les caractères qu'elle ne sait pas écrire
 const txt = v => String(v ?? '').replace(/[\u202F\u00A0]/g, ' ').replace(/[→⇒]/g, '->').replace(/[’]/g, "'").replace(/[^\x20-\x7E\u00A0-\u00FF€—–«»…œŒ]/g, '');
 const eur = v => (Math.round((Number(v) || 0) * 100) / 100).toFixed(2).replace('.', ',').replace(/\B(?=(\d{3})+(?!\d))/g, ' ') + ' €';
@@ -261,7 +272,12 @@ export async function genererNdfPdf(frais, images, s, { date }) {
 
   // justificatifs : une page chacun, dans l'ordre chronologique
   const avec = frais.filter(x => x.justificatif && images.get(x.justificatif)).sort((a, b) => numero.get(a.id) - numero.get(b.id));
+  const insertions = [];   // justificatifs PDF : leurs pages sont insérées ici après coup (avec pdf-lib)
   for (const x of avec) {
+    if (estPdf(images.get(x.justificatif).blob)) {
+      insertions.push({ apres: doc.getNumberOfPages(), x, titre: txt(`Justificatif ${numero.get(x.id)} — ${dfr(x.date)} — ${x.libelle || x.categorie} — ${eur(x.montant)}`) });
+      continue;
+    }
     doc.addPage();
     doc.setFillColor(...gris); doc.rect(M, 10, W - 2 * M, 9, 'F');
     doc.setFont('helvetica', 'bold'); doc.setFontSize(10); doc.setTextColor(0, 0, 0);
@@ -272,11 +288,52 @@ export async function genererNdfPdf(frais, images, s, { date }) {
     const k = Math.min(maxW / w, maxH / h);
     doc.addImage(new Uint8Array(buffer), 'JPEG', M + (maxW - w * k) / 2, 23, w * k, h * k);
   }
-  // pied de page
-  const n = doc.getNumberOfPages();
-  for (let i = 1; i <= n; i++) {
-    doc.setPage(i); doc.setFont('helvetica', 'normal'); doc.setFontSize(7.5); doc.setTextColor(90, 90, 90);
-    doc.text(txt(`Note de frais ${nom} du ${dfr(date)} — page ${i} / ${n}`), W / 2, 292, { align: 'center' });
+  const pied = (i, n) => txt(`Note de frais ${nom} du ${dfr(date)} — page ${i} / ${n}`);
+  if (!insertions.length) {
+    // pied de page
+    const n = doc.getNumberOfPages();
+    for (let i = 1; i <= n; i++) {
+      doc.setPage(i); doc.setFont('helvetica', 'normal'); doc.setFontSize(7.5); doc.setTextColor(90, 90, 90);
+      doc.text(pied(i, n), W / 2, 292, { align: 'center' });
+    }
+    return doc.output('blob');
   }
-  return doc.output('blob');
+  return insererPdfs(doc.output('arraybuffer'), insertions, images, pied);
+}
+
+// Insère les pages des justificatifs PDF à leur place (ordre des dates), avec un bandeau « Justificatif n » et la numérotation des pages
+async function insererPdfs(base, insertions, images, pied) {
+  const { PDFDocument, StandardFonts, rgb } = await loadPdfLib();
+  const out = await PDFDocument.load(base);
+  const police = await out.embedFont(StandardFonts.Helvetica), gras = await out.embedFont(StandardFonts.HelveticaBold);
+  const ecrire = t => t.replace(/[^\x20-\x7E\u00A0-\u00FF€—–…œŒ’]/g, '');   // police standard : alphabet latin (WinAnsi)
+  let decalage = 0;
+  for (const ins of insertions) {
+    let pages;
+    try {
+      const src = await PDFDocument.load(await images.get(ins.x.justificatif).blob.arrayBuffer(), { ignoreEncryption: true });
+      pages = await out.copyPages(src, src.getPageIndices());
+    } catch {
+      // PDF illisible ou protégé : une page qui le signale, pour ne rien perdre en silence
+      const pg = out.insertPage(ins.apres + decalage, [595.28, 841.89]);
+      pg.drawText(ecrire(ins.titre), { x: 28, y: 800, size: 10, font: gras });
+      pg.drawText(ecrire('Ce justificatif PDF n\'a pas pu être intégré (fichier protégé ou abîmé) : joins-le à part.'), { x: 28, y: 780, size: 10, font: police, color: rgb(.6, .1, .1) });
+      decalage += 1; continue;
+    }
+    pages.forEach((pg, k) => {
+      out.insertPage(ins.apres + decalage + k, pg);
+      if (k) return;
+      const { width, height } = pg.getSize();
+      const t = ecrire(ins.titre), taille = 9, l = Math.min(width - 20, gras.widthOfTextAtSize(t, taille) + 12);
+      pg.drawRectangle({ x: 10, y: height - 24, width: l, height: 16, color: rgb(.9, .9, .9), opacity: .95 });
+      pg.drawText(t, { x: 16, y: height - 19, size: taille, font: gras, color: rgb(0, 0, 0), maxWidth: width - 32 });
+    });
+    decalage += pages.length;
+  }
+  const n = out.getPageCount();
+  out.getPages().forEach((pg, i) => {
+    const { width } = pg.getSize(), t = ecrire(pied(i + 1, n));
+    pg.drawText(t, { x: (width - police.widthOfTextAtSize(t, 7.5)) / 2, y: 12, size: 7.5, font: police, color: rgb(.35, .35, .35) });
+  });
+  return new Blob([await out.save()], { type: 'application/pdf' });
 }

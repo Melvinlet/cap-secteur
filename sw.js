@@ -3,7 +3,7 @@
 // IMPORTANT : à chaque mise en ligne d'une nouvelle version, change VERSION
 // (sinon les téléphones garderont l'ancienne version en cache).
 // ─────────────────────────────────────────────────────────────────────────────
-const VERSION = 'cap-secteur-1.9.0';
+const VERSION = 'cap-secteur-1.9.1';
 const TUILES = 'cap-secteur-tuiles';
 const IMAGES_WEB = 'cap-secteur-images-web';
 const MAX_TUILES = 3000;
@@ -71,6 +71,7 @@ const APP = [
   './vendor/exceljs.min.js',
   './vendor/jspdf/jspdf.plugin.autotable.min.js',
   './vendor/jspdf/jspdf.umd.min.js',
+  './vendor/pdf-lib/pdf-lib.min.js',
   './vendor/leaflet/images/layers-2x.png',
   './vendor/leaflet/images/layers.png',
   './vendor/leaflet/images/marker-icon-2x.png',

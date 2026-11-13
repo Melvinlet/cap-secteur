@@ -5,11 +5,12 @@ import { STATUTS_FRAIS, DEFAULT_SETTINGS, PROFIL } from '../../config.js';
 import { periode, decaler, libellePeriode } from '../../services/activite.js';
 import { reduireImage, imageURL } from '../../services/images.js';
 import { loadExcelJS } from '../../services/excel.js';
-import { genererNdf, genererNdfPdf, nomFichierNdf, colonneNdf, estIkm, baremeProfil } from '../../services/ndf.js';
+import { genererNdf, genererNdfPdf, nomFichierNdf, colonneNdf, estIkm, baremeProfil, estPdf } from '../../services/ndf.js';
 
 const today = () => new Date().toISOString().slice(0, 10);
 const euros = v => `${(Math.round((Number(v) || 0) * 100) / 100).toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} €`;
 let f = { type: 'mois', du: null, au: null, statut: '', cat: '', ouverts: new Set() };
+const pdfDe = f => f.type === 'application/pdf' || /\.pdf$/i.test(f.name || '');
 const du = x => x.payeur === 'moi' && x.remboursable && !['remboursee', 'refusee'].includes(x.statut);
 
 // La liste est rangée par étape : à déclarer → déclarées (en attente de remboursement) → remboursées / refusées (repliées)
@@ -115,7 +116,8 @@ export async function render(el) {
 async function editer(x, s, base) {
   const cats = (base.length ? base : DEFAULT_SETTINGS.categoriesFrais).filter(c => !/^autres?$/i.test(c));
   const autre = !!x.categorie && !cats.includes(x.categorie);   // catégorie hors liste : « Autre » + le texte saisi
-  const just = x.justificatif ? await imageURL(db, x.justificatif) : '';
+  const justRec = x.justificatif ? await db.get('images', x.justificatif) : null;
+  const just = justRec?.blob ? (estPdf(justRec.blob) ? { pdf: URL.createObjectURL(justRec.blob) } : await imageURL(db, x.justificatif)) : '';
   let nouveauJust = null;
   const p = modal({ titre: x.id ? 'Modifier la dépense' : 'Nouvelle dépense', corps: `
     <div class="row"><label>Date<input type="date" name="date" value="${esc(x.date || today())}" required></label>
@@ -130,18 +132,19 @@ async function editer(x, s, base) {
     <div class="row"><label>Payé par<select name="payeur"><option value="moi" ${x.payeur !== 'societe' ? 'selected' : ''}>Moi (avance)</option><option value="societe" ${x.payeur === 'societe' ? 'selected' : ''}>Carte société</option></select></label>
     <label>Statut<select name="statut">${Object.entries(STATUTS_FRAIS).map(([k, v]) => `<option value="${k}" ${(x.statut || 'aDeclarer') === k ? 'selected' : ''}>${v}</option>`).join('')}</select></label></div>
     <label class="check"><input type="checkbox" name="remboursable" ${x.remboursable !== false ? 'checked' : ''}> Remboursable</label>
-    <fieldset><legend>Justificatif</legend>${just ? `<img src="${just}" class="just" alt="Justificatif">` : ''}
+    <fieldset><legend>Justificatif</legend>${just?.pdf ? `<p><a class="btn small" href="${just.pdf}" target="_blank" rel="noopener">📄 Ouvrir le justificatif PDF</a></p>` : just ? `<img src="${just}" class="just" alt="Justificatif">` : ''}
       <div class="choix-photo">
         <label class="btn" for="justCam">📷 Prendre une photo</label>
-        <label class="btn" for="justGal">🖼️ Choisir dans mes photos</label>
+        <label class="btn" for="justGal">🖼️ Choisir une photo ou un PDF</label>
         <span class="muted small" id="justNom"></span>
       </div>
       <input type="file" id="justCam" accept="image/*" capture="environment" hidden>
-      <input type="file" id="justGal" accept="image/*" hidden></fieldset>
+      <input type="file" id="justGal" accept="image/*,application/pdf,.pdf" hidden></fieldset>
     ${x.id ? '<button type="button" class="btn danger small" id="delF">Supprimer cette dépense</button>' : ''}` });
   for (const id of ['#justCam', '#justGal']) $(id).onchange = e => {
     nouveauJust = e.target.files[0] || null;
-    $('#justNom').textContent = nouveauJust ? `✓ ${nouveauJust.name || 'photo'} (enregistrée avec la dépense)` : '';
+    if (nouveauJust && pdfDe(nouveauJust) && nouveauJust.size > 4e6) { nouveauJust = null; e.target.value = ''; return toast('PDF trop lourd (plus de 4 Mo) : prends plutôt une photo du ticket', 'warn'); }
+    $('#justNom').textContent = nouveauJust ? `✓ ${nouveauJust.name || 'photo'} (enregistré${pdfDe(nouveauJust) ? '' : 'e'} avec la dépense)` : '';
   };
   const catDe = f => f.categorie.value === '__autre' ? (f.categorieAutre.value.trim() || 'Autre') : f.categorie.value;
   const majCol = () => { const f = $('#colNdf').closest('form');
@@ -159,7 +162,11 @@ async function editer(x, s, base) {
   if (supprime) return true;
   if (!r) return false;
   let justificatif = x.justificatif;
-  if (nouveauJust) { justificatif = uid('jf'); await db.put('images', { id: justificatif, blob: await reduireImage(nouveauJust, 1800, 0.8), type: 'justificatif' }); }
+  if (nouveauJust) {
+    // un PDF est gardé tel quel (ses pages iront dans la note) ; une photo est allégée
+    const blob = pdfDe(nouveauJust) ? new Blob([await nouveauJust.arrayBuffer()], { type: 'application/pdf' }) : await reduireImage(nouveauJust, 1800, 0.8);
+    justificatif = uid('jf'); await db.put('images', { id: justificatif, blob, type: 'justificatif' });
+  }
   const km = Number(r.km) || 0;
   const montant = r.montant === '' && km && Number(s.tauxKm) ? km * Number(s.tauxKm) : Number(r.montant) || 0;
   await db.put('frais', { ...x, id: x.id || uid('f'), date: r.date, categorie: (r.categorie === '__autre' ? r.categorieAutre : r.categorie).trim() || 'Autre', libelle: r.libelle, montant, tva: r.tva === '' ? '' : Number(r.tva), km: km || '',
