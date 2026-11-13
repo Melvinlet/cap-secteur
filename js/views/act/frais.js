@@ -9,8 +9,18 @@ import { genererNdf, genererNdfPdf, nomFichierNdf, colonneNdf, estIkm, baremePro
 
 const today = () => new Date().toISOString().slice(0, 10);
 const euros = v => `${(Math.round((Number(v) || 0) * 100) / 100).toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} €`;
-let f = { type: 'mois', du: null, au: null, statut: '', cat: '' };
+let f = { type: 'mois', du: null, au: null, statut: '', cat: '', ouverts: new Set() };
 const du = x => x.payeur === 'moi' && x.remboursable && !['remboursee', 'refusee'].includes(x.statut);
+
+// La liste est rangée par étape : à déclarer → déclarées (en attente de remboursement) → remboursées / refusées (repliées)
+const GROUPES = [['aDeclarer', 'À déclarer', 'Tout marquer « Déclarée »'], ['declaree', 'Déclarées · en attente de remboursement', 'Tout marquer « Remboursée »'],
+  ['remboursee', 'Remboursées', ''], ['refusee', 'Refusées', '']];
+const ligne = x => `<tr class="${du(x) ? 'du' : ''}"><td>${fmtDate(x.date)}</td><td>${esc(x.categorie)}${x.km ? ` <small class="muted">${x.km} km</small>` : ''}</td>
+      <td>${esc(x.libelle || '')}${x.justificatif ? ' <span title="Justificatif joint">📎</span>' : ''}</td>
+      <td>${x.payeur === 'moi' ? 'Moi' : 'Carte société'}${x.payeur === 'moi' && !x.remboursable ? ' <small class="muted">(non remb.)</small>' : ''}</td>
+      <td class="num">${euros(x.montant)}</td>
+      <td><select data-st="${x.id}" aria-label="Statut">${Object.entries(STATUTS_FRAIS).map(([k, v]) => `<option value="${k}" ${x.statut === k ? 'selected' : ''}>${v}</option>`).join('')}</select></td>
+      <td><button class="btn-icon" data-ed="${x.id}" aria-label="Modifier">✎</button></td></tr>`;
 
 export async function render(el) {
   const s = await getSettings();
@@ -39,18 +49,18 @@ export async function render(el) {
       <button class="btn primary" id="add">Ajouter une dépense</button>
       <button class="btn primary" id="ndf" ${liste.length ? '' : 'disabled'}>${esc(PROFIL.ndf.nom || 'Note de frais')} (Excel)</button>
       <button class="btn primary" id="ndfPdf" ${liste.length ? '' : 'disabled'}>Note de frais en PDF</button>
-      <button class="btn" id="declarer" ${liste.some(x => x.statut === 'aDeclarer') ? '' : 'disabled'}>Marquer la période comme déclarée</button>
       <button class="btn" id="xls" ${liste.length ? '' : 'disabled'}>Export simple (Excel)</button>
       <select id="fst" aria-label="Statut"><option value="">Tous les statuts</option>${Object.entries(STATUTS_FRAIS).map(([k, v]) => `<option value="${k}" ${f.statut === k ? 'selected' : ''}>${v}</option>`).join('')}</select>
       <select id="fcat" aria-label="Catégorie"><option value="">Toutes catégories</option>${cats.map(c => `<option ${f.cat === c ? 'selected' : ''}>${esc(c)}</option>`).join('')}</select>
     </div>
-    <table class="table frais"><thead><tr><th>Date</th><th>Catégorie</th><th>Détail</th><th>Payé par</th><th class="num">Montant</th><th>Statut</th><th></th></tr></thead><tbody>
-    ${liste.map(x => `<tr class="${du(x) ? 'du' : ''}"><td>${fmtDate(x.date)}</td><td>${esc(x.categorie)}${x.km ? ` <small class="muted">${x.km} km</small>` : ''}</td>
-      <td>${esc(x.libelle || '')}${x.justificatif ? ' <span title="Justificatif joint">📎</span>' : ''}</td>
-      <td>${x.payeur === 'moi' ? 'Moi' : 'Carte société'}${x.payeur === 'moi' && !x.remboursable ? ' <small class="muted">(non remb.)</small>' : ''}</td>
-      <td class="num">${euros(x.montant)}</td>
-      <td><select data-st="${x.id}" aria-label="Statut">${Object.entries(STATUTS_FRAIS).map(([k, v]) => `<option value="${k}" ${x.statut === k ? 'selected' : ''}>${v}</option>`).join('')}</select></td>
-      <td><button class="btn-icon" data-ed="${x.id}" aria-label="Modifier">✎</button></td></tr>`).join('') || '<tr><td colspan="7" class="muted">Aucune dépense sur cette période.</td></tr>'}</tbody></table>
+    <table class="table frais"><thead><tr><th>Date</th><th>Catégorie</th><th>Détail</th><th>Payé par</th><th class="num">Montant</th><th>Statut</th><th></th></tr></thead>
+    ${GROUPES.map(([st, titre, bouton]) => { const g = liste.filter(x => x.statut === st); if (!g.length) return '';
+      const ferme = ['remboursee', 'refusee'].includes(st) && !f.ouverts.has(st);
+      return `<tbody class="frais-grp${ferme ? ' ferme' : ''}" data-grp="${st}">
+        <tr class="grp"><th colspan="7"><div class="grp-l"><button class="grp-tete" data-tog="${st}" aria-expanded="${!ferme}"><span class="grp-fl">▾</span> ${titre} <small class="muted">${g.length} · ${euros(somme(g))}</small></button>
+          ${bouton ? `<button class="btn small" data-tout="${st}">${bouton}</button>` : ''}</div></th></tr>
+        ${g.map(ligne).join('')}</tbody>`; }).join('')
+      || '<tbody><tr><td colspan="7" class="muted">Aucune dépense sur cette période.</td></tr></tbody>'}</table>
     <p class="hint">« On me doit » = dépenses avancées par toi, remboursables, pas encore remboursées. Les catégories se modifient dans les Réglages.</p>`;
 
   $$('[data-type]', el).forEach(b => b.onclick = () => { f.type = b.dataset.type; if (f.type !== 'perso') [f.du, f.au] = periode(f.type, today() >= f.du && today() <= f.au ? today() : f.du); render(el); });
@@ -67,12 +77,22 @@ export async function render(el) {
     await db.put('frais', { ...x, statut: sel.value, maj: new Date().toISOString(), ...(sel.value === 'remboursee' ? { rembourseLe: today() } : {}) });
     render(el);
   });
-  $('#declarer', el).onclick = async () => {
-    const n = liste.filter(x => x.statut === 'aDeclarer');
-    if (!(await confirmer('Déclarer la période', `${n.length} dépense(s) passeront en « Déclarée ».`, 'Déclarer'))) return;
-    for (const x of n) await db.put('frais', { ...x, statut: 'declaree', declareLe: today(), maj: new Date().toISOString() });
+  $$('[data-tog]', el).forEach(b => b.onclick = () => { const st = b.dataset.tog; f.ouverts.has(st) ? f.ouverts.delete(st) : f.ouverts.add(st);
+    const g = b.closest('tbody'); const ferme = g.classList.toggle('ferme'); b.setAttribute('aria-expanded', !ferme); });
+  // tout le bloc de la période d'un coup (le mois affiché par défaut)
+  $$('[data-tout]', el).forEach(b => b.onclick = async () => {
+    const de = b.dataset.tout, vers = de === 'aDeclarer' ? 'declaree' : 'remboursee';
+    const n = liste.filter(x => x.statut === de && (vers === 'declaree' || du(x)));   // remboursé : seulement ce qu'on me doit
+    if (!n.length) return toast('Rien à marquer remboursé : ces dépenses sont non remboursables ou payées par la carte société', 'warn');
+    const per = libellePeriode(f.type, f.du, f.au);
+    const ok = await modal({ titre: vers === 'declaree' ? 'Tout déclarer' : 'Tout marquer remboursé', valider: 'Valider',
+      corps: `<p>${n.length} dépense${n.length > 1 ? 's' : ''} (${esc(per)}) passe${n.length > 1 ? 'nt' : ''} en « ${STATUTS_FRAIS[vers]} ».</p>` });
+    if (ok === null) return;
+    const maj = new Date().toISOString();
+    for (const x of n) await db.put('frais', { ...x, statut: vers, maj, ...(vers === 'declaree' ? { declareLe: today() } : { rembourseLe: today() }) });
+    toast(`${n.length} dépense${n.length > 1 ? 's' : ''} : ${STATUTS_FRAIS[vers]}`);
     render(el);
-  };
+  });
   $('#ndf', el).onclick = () => noteEntreprise(liste, s, 'xlsx').then(ok => ok && render(el));
   $('#ndfPdf', el).onclick = () => noteEntreprise(liste, s, 'pdf').then(ok => ok && render(el));
   $('#xls', el).onclick = async () => {
@@ -159,9 +179,9 @@ async function noteEntreprise(liste, s, format = 'xlsx') {
     ${s.commercial ? '' : '<p class="banner">Renseigne ton nom dans les Réglages : il remplit « NOM » et le nom du fichier.</p>'}
     <label>Date de la note<input type="date" name="date" value="${today()}" required></label>
     <div class="ndf-list">${tri.map(x => `<label class="pick"><input type="checkbox" name="f:${x.id}" ${defaut(x) ? 'checked' : ''}>
-      <span class="pick-info"><strong>${esc(x.libelle || x.categorie)}</strong><small>${fmtDate(x.date)} · ${esc(estIkm(x) ? 'Indemnités km' : colonneNdf(x.categorie))}${x.justificatif ? ' · 📎 justificatif' : ' · <b class="late-txt">sans justificatif</b>'}${x.payeur === 'societe' ? ' · carte société' : ''}</small></span>
+      <span class="pick-info"><strong>${esc(x.libelle || x.categorie)}</strong><small>${fmtDate(x.date)} · ${esc(estIkm(x) ? 'Indemnités km' : colonneNdf(x.categorie))}${x.justificatif ? ' · 📎 justificatif' : ' · <b class="late-txt">sans justificatif</b>'}${x.payeur === 'societe' ? ' · carte société' : ''}${x.payeur === 'moi' && x.remboursable === false ? ' · <b>non remboursable</b>' : ''}${x.statut === 'declaree' ? ' · déjà déclarée' : x.statut === 'remboursee' ? ' · déjà remboursée' : ''}</small></span>
       <span class="pick-det">${euros(x.montant)}</span></label>`).join('')}</div>
-    <p class="hint">Cochées par défaut : les dépenses que tu as avancées, remboursables et pas encore remboursées.</p>
+    <p class="hint">Cochées par défaut : les dépenses que tu as avancées, remboursables et pas encore remboursées. Dans le fichier, elles sont classées par date de la dépense (pas par date d'ajout).</p>
     <label class="check"><input type="checkbox" name="declarer" checked> Passer ces dépenses en « Déclarée »</label>` });
   if (!r) return false;
   const choisis = tri.filter(x => r['f:' + x.id] === 'on');
