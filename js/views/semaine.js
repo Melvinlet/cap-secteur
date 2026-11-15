@@ -75,6 +75,7 @@ export async function render(el, params) {
     </div>
     <div class="actions">
       <button class="btn primary" id="auto" ${departOk ? '' : 'disabled'}>Remplir automatiquement</button>
+      <a class="btn" href="#/simulation/${lundi}" title="Essayer un remplissage sans toucher à cette semaine, puis comparer">Simuler une tournée</a>
       <button class="btn" id="optSem" ${departOk && tot.n > 1 ? '' : 'disabled'}>Optimiser la semaine</button>
       <a class="btn" href="#/rdv?du=${lundi}&au=${dates[dates.length - 1]}">Demander les RDV</a>
       <button class="btn" id="exp">Exporter le ${esc(PROFIL.planning.nom || 'planning')}</button>
@@ -232,7 +233,8 @@ function colonne(t, i, p, mags, s, dates, rdvs, vus = new Map()) {
 }
 
 // Remplissage automatique : priorités + échéances, détour pour les retards, RDV conservés
-async function remplir(lundi, dates, tours, all, s, rdvs) {
+// opts.sortie : au lieu d'enregistrer la semaine, rend le résultat (simulation : brouillon qui ne touche pas la vraie semaine)
+export async function remplir(lundi, dates, tours, all, s, rdvs, opts = {}) {
   const deja = tours.some(t => t.etapes.length);
   const c = { ...DEFAULT_SETTINGS.ciblage, ...(s.ciblage || {}) };
   const enseignes = [...new Set(all.map(m => m.enseigne).filter(Boolean))]
@@ -242,7 +244,7 @@ async function remplir(lundi, dates, tours, all, s, rdvs) {
   const modeMax = c.modeMax || (c.maxParJour ? 'fixe' : 'libre');
   const maxJours = Array.isArray(c.maxJours) ? c.maxJours : [];
   const etiq = m => `${m.nom} — ${m.cp || ''} ${m.ville || ''}`.trim();
-  const p = modal({ titre: 'Remplir la semaine automatiquement', valider: 'Remplir la semaine', large: true, corps: `
+  const p = modal({ titre: opts.titre || 'Remplir la semaine automatiquement', valider: opts.valider || 'Remplir la semaine', large: true, corps: `
     <fieldset><legend>Magasins à inclure obligatoirement</legend>
       <p class="hint">La semaine se construit autour : choisis le jour, ou laisse « le meilleur jour » et l'appli le place là où il fait le moins de route. L'heure est facultative (comme un RDV).</p>
       <div id="imposes" class="imposes"></div>
@@ -399,9 +401,11 @@ async function remplir(lundi, dates, tours, all, s, rdvs) {
     && (cible.autres !== 'aucun' || !cible.enseignes.length || cible.enseignes.includes(m.enseigne)));
   for (const t of tours) if (!limite(t.offset) || t.etapes.length < limite(t.offset)) combles += comblerAttente(t, magsMap, sDu(t.offset), rdvs, pool, prevus, limite(t.offset));
   tours.forEach((t, i) => chainer(i ? tours[i - 1] : null, t, magsMap));
-  for (const t of tours) { delete t.offset; if (t.etapes.length || t.heureDebut) await db.put('tournees', t); else await db.del('tournees', t.id); }
+  tours.forEach(t => delete t.offset);
   const n = plan.jours.reduce((a, j) => a + j.etapes.length, 0), d = plan.jours.reduce((a, j) => a + j.detours.length, 0);
   const pc = plan.jours.reduce((a, j) => a + Object.keys(j.ajouts || {}).length, 0);
+  if (opts.sortie) { await opts.sortie(tours, { n, pc, d, combles, retires }); return true; }
+  for (const t of tours) { if (t.etapes.length || t.heureDebut) await db.put('tournees', t); else await db.del('tournees', t.id); }
   toast(`Semaine remplie : ${n} visites${pc ? `, dont ${pc} petit${pc > 1 ? 's' : ''} magasin${pc > 1 ? 's' : ''} sur le chemin` : ''}${d ? `, ${d} détour${d > 1 ? 's' : ''} pour retard` : ''}${combles ? `. ${combles} magasin${combles > 1 ? 's' : ''} ajouté${combles > 1 ? 's' : ''} pour remplir l'attente avant un RDV` : ''}${retires ? `. ${retires} magasin${retires > 1 ? 's' : ''} retiré${retires > 1 ? 's' : ''} pour tenir les heures de RDV` : ''}`);
   return true;
 }

@@ -852,3 +852,21 @@ li.glisse { position: relative; z-index: 5; box-shadow: 0 10px 28px rgba(0,0,0,.
   #ov-clip { opacity: 0; }
   #ouverture svg line.vitesse { opacity: 0; transform-box: fill-box; transform-origin: right center; }   /* s'étire depuis son bout droit */
 
+
+/* Planning › Simulation : comparaison semaine actuelle / simulée */
+.ko-txt { color: var(--rouge, #C8371D); }
+.sim-actions { flex-wrap: wrap; margin: .6rem 0 1rem; }
+.sim-comp .table th[scope=row] { text-align: left; font-weight: 500; }
+.sim-comp .table td.num, .sim-comp .table th.num { text-align: right; }
+.sim-comp .ok-txt { margin-left: 0; }
+.sim-jours { display: grid; gap: .8rem; margin-top: 1rem; }
+.sim-jour { background: var(--surface); border: 1px solid var(--trait); border-radius: 12px; padding: .8rem 1rem; }
+.sim-jour h3 { margin: 0 0 .5rem; font-size: 1rem; }
+.sim-cols { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; }
+.sim-cols > div + div { border-left: 1px dashed var(--trait); padding-left: 1rem; }
+.sim-titre { margin: 0; font-size: .75rem; font-weight: 700; color: var(--texte-2, #5B6472); }
+.sim-liste { margin: .35rem 0 0; display: grid; gap: .2rem; font-size: .9rem; }
+.sim-liste .diff-plus { color: var(--vert); }
+.sim-liste .diff-moins { color: var(--rouge, #C8371D); text-decoration: line-through; text-decoration-thickness: 1px; }
+.sim-liste .diff-moins small, .sim-liste .diff-plus small { color: inherit; opacity: .8; }
+@media (max-width: 640px) { .sim-cols { grid-template-columns: 1fr; } .sim-cols > div + div { border-left: 0; border-top: 1px dashed var(--trait); padding: .6rem 0 0; } }
