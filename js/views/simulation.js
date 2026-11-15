@@ -4,7 +4,7 @@
 import { ongletsPlanning } from './onglets-planning.js';
 import { db, getSettings } from '../db.js';
 import { magasinsEnrichis } from '../data.js';
-import { esc, fmtKm, fmtDuree, fmtHeure, toast, modal, today, prioTag } from '../ui.js';
+import { esc, fmtKm, fmtDuree, fmtHeure, toast, modal, today, prioTag, tagSemaine, numSemaine } from '../ui.js';
 import { getTournee, lundiDe, estimerJour as estimer, chainer } from './tournee.js';
 import { remplir } from './semaine.js';
 import { tousLesRdv } from '../services/rdv.js';
@@ -81,7 +81,7 @@ export async function render(el, params = {}) {
     <header class="page-head">
       <div class="day-nav">
         <a class="btn-icon" href="#/simulation/${decale(lundi, -7)}" aria-label="Semaine précédente">‹</a>
-        <h1>Simulation · semaine du ${new Date(lundi + 'T12:00').toLocaleDateString('fr-FR', { day: 'numeric', month: 'long' })}</h1>
+        <h1>${tagSemaine(lundi)} Simulation · semaine du ${new Date(lundi + 'T12:00').toLocaleDateString('fr-FR', { day: 'numeric', month: 'long' })}</h1>
         <a class="btn-icon" href="#/simulation/${decale(lundi, 7)}" aria-label="Semaine suivante">›</a>
       </div>
     </header>
@@ -135,7 +135,7 @@ export async function render(el, params = {}) {
   el.querySelector('#exporter')?.addEventListener('click', async () => {
     const faits = reels.reduce((a, t) => a + t.etapes.filter(e => e.fait).length, 0);
     const ok = await modal({ titre: 'Exporter vers la semaine', valider: 'Remplacer ma semaine',
-      corps: `<p>La semaine du ${new Date(lundi + 'T12:00').toLocaleDateString('fr-FR', { day: 'numeric', month: 'long' })} sera remplacée par la simulation (${B.visites} visites).</p>
+      corps: `<p>La semaine ${numSemaine(lundi)} (du ${new Date(lundi + 'T12:00').toLocaleDateString('fr-FR', { day: 'numeric', month: 'long' })}) sera remplacée par la simulation (${B.visites} visites).</p>
         ${faits ? `<p>Les ${faits} magasin${faits > 1 ? 's' : ''} déjà marqué${faits > 1 ? 's' : ''} « visité » sont gardé${faits > 1 ? 's' : ''}.</p>` : ''}
         <p class="hint">Tes RDV sont déjà dans la simulation. Pour revenir en arrière, il faudra refaire ta semaine à la main.</p>` });
     if (ok === null) return;

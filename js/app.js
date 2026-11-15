@@ -4,7 +4,7 @@
 // puis ajoute une ligne dans ROUTES.
 // ─────────────────────────────────────────────────────────────────────────────
 import { persistStorage, chargerProfil } from './db.js';
-import { $, $$, esc, animerEntree } from './ui.js';
+import { $, $$, esc, animerEntree, toast } from './ui.js';
 
 const ROUTES = [
   [/^\/?$/, 'aujourdhui', () => import('./views/aujourdhui.js')],
@@ -112,7 +112,15 @@ addEventListener('cap-synchro', async () => {
 });
 // positions : affinage à l'adresse en arrière-plan (quelques secondes après l'ouverture, puis au retour du réseau)
 import('./services/affinage.js').then(({ affinerPositions }) => {
-  setTimeout(() => affinerPositions(), 8000);
+  // positions : d'abord l'emplacement réel des magasins (une fois par appareil), puis l'adresse pour les autres
+  setTimeout(async () => {
+    try {
+      const { recalerUneFois } = await import('./services/emplacements.js');
+      const r = await recalerUneFois();
+      if (r?.recales.length) toast(`${r.recales.length} magasins placés sur leur emplacement exact`);
+    } catch { /* hors ligne ou OpenStreetMap indisponible : réessayé au prochain lancement */ }
+    affinerPositions();
+  }, 8000);
   addEventListener('online', () => setTimeout(() => affinerPositions(), 5000));
 });
 

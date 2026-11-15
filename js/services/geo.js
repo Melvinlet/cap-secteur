@@ -14,7 +14,7 @@ const geojsonProvider = base => async (q, opts = {}) => {
   const f = (await r.json()).features?.[0];
   if (!f) return null;
   const [lon, lat] = f.geometry.coordinates;
-  return { lat, lon, score: f.properties.score ?? 0, cp: f.properties.postcode, ville: f.properties.city, label: f.properties.label };
+  return { lat, lon, score: f.properties.score ?? 0, cp: f.properties.postcode, ville: f.properties.city, label: f.properties.label, type: f.properties.type };
 };
 
 const PROVIDERS = {
@@ -52,7 +52,8 @@ export async function geocodeMagasin(m, cle) {
   const q = adr && !adr.includes(m.cp) ? `${adr} ${m.cp} ${m.ville}` : (adr || `${m.cp} ${m.ville}`);
   const res = await chain(q, { cle });
   const sameDep = r => r && (!r.cp || r.cp.slice(0, 2) === String(m.cp).slice(0, 2));
-  if (res && res.score >= 0.45 && sameDep(res)) return { ...res, precision: 'adresse' };
+  // sans numéro (« Route de Dinard », « ZA … ») le point tombe au milieu de la rue ou de la zone : précision « rue »
+  if (res && res.score >= 0.45 && sameDep(res)) return { ...res, precision: !res.type || res.type === 'housenumber' ? 'adresse' : 'rue' };
   const ville = await chain(`${m.cp} ${m.ville}`, { cle, type: 'municipality' });
   if (ville) return { ...ville, precision: 'ville' };
   return res && sameDep(res) ? { ...res, precision: 'approx' } : null;

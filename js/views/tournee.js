@@ -4,7 +4,7 @@ import { db, getSettings, saveSettings } from '../db.js';
 import { magasinsEnrichis, dureeVisite, numeroVisite } from '../data.js';
 import { OBJETS_VISITE, STATUTS_VISITE, ENSEIGNES_LISTE, PRIORITES, PROFIL } from '../config.js';
 import { exporterPlanning, heurePlanning, HEURES_PLANNING } from '../services/excel.js';
-import { downloadBlob, $, $$, esc, borne, prioTag, enseigneColor, fmtKm, fmtDuree, fmtHeure, parseHeure, fmtDateLong, today, toast, modal, norm, fmtDate, glisser } from '../ui.js';
+import { downloadBlob, $, $$, esc, borne, prioTag, enseigneColor, fmtKm, fmtDuree, fmtHeure, parseHeure, fmtDateLong, today, toast, modal, norm, fmtDate, glisser, tagSemaine } from '../ui.js';
 import { optimiserOrdre, calculerTrajets, lienGps, estimate, trajet, trajetBrut } from '../services/routing.js';
 import { geocodeMagasin, haversine } from '../services/geo.js';
 import { carte, repere, repereDepart, animerTrace } from '../carte.js';
@@ -238,7 +238,7 @@ export async function render(el, { date = today() }) {
     <header class="page-head">
       <div class="day-nav">
         <a class="btn-icon" href="#/tournee/${decale(date, -1)}" aria-label="Jour précédent">‹</a>
-        <h1>${fmtDateLong(date)}</h1>
+        <h1>${fmtDateLong(date)} ${tagSemaine(date)}</h1>
         <a class="btn-icon" href="#/tournee/${decale(date, 1)}" aria-label="Jour suivant">›</a>
         <input type="date" id="pickDate" value="${date}" aria-label="Choisir une date">
       </div>

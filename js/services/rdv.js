@@ -6,6 +6,7 @@ import { bonjourDe } from './civilite.js';
 import { db } from '../db.js';
 import { MODELES_RDV, OBJET_PHRASE, STATUTS_RDV, PROFIL } from '../config.js';
 import { ajouterEtape } from '../views/tournee.js';
+import { numSemaine } from '../ui.js';
 
 export const rdvId = magasinId => `rdv-${magasinId}`;
 export const getRdv = async magasinId => (await db.get('rdv', rdvId(magasinId))) || { id: rdvId(magasinId), magasinId, statut: 'aFaire', historique: [] };
@@ -48,7 +49,7 @@ const heureEnLettres = (h, arrondi = false) => {
 // « le mardi 10 novembre vers 10 h 30 » / « le mardi 10 novembre » / « prochainement »
 export function quand(date, heure, approx = true) {
   if (!date) return 'prochainement';
-  return `le ${dateEnLettres(date)}${heure ? ` ${approx ? 'vers' : 'à'} ${heureEnLettres(heure, approx)}` : ''}`;
+  return `le ${dateEnLettres(date)} (semaine ${numSemaine(date)})${heure ? ` ${approx ? 'vers' : 'à'} ${heureEnLettres(heure, approx)}` : ''}`;
 }
 
 // Remplit un modèle avec les infos du magasin, du contact et de la demande
@@ -58,13 +59,15 @@ export function genererMessage(type, { m = {}, contact, rdv = {}, s }) {
   const heure = rdv.statut === 'autreDate' ? rdv.heureRetenue : rdv.heure;
   const nom = (contact?.nom || '').trim();
   const v = {
-    bonjour: bonjourDe(contact), contact: nom,   // « Bonjour Monsieur / Madame », jamais le prénom magasin: m.nom, enseigne: m.enseigne, ville: m.ville,
+    bonjour: bonjourDe(contact), contact: nom,   // « Bonjour Monsieur / Madame », jamais le prénom
+    magasin: m.nom, enseigne: m.enseigne, ville: m.ville,
     quand: quand(date, heure, type !== 'confirmation'), date: dateEnLettres(date), heure: heureEnLettres(heure),
+    semaine: date ? `semaine ${numSemaine(date)}` : '',   // « semaine 48 », plus simple à caler au téléphone
     objet: OBJET_PHRASE[rdv.objet || s.objetDefaut] || OBJET_PHRASE.Autre,
     chef: s.commercial || '[ton nom]', telephone: s.telPro || '', email: s.emailPro || '',
     poste: PROFIL.poste || 'Commercial', societe: PROFIL.societe || '', marques: (PROFIL.marques || []).join(' & '),
   };
-  const fill = t => t.replace(/\{(\w+)\}/g, (_, k) => v[k] ?? '').replace(/\n{3,}/g, '\n\n').replace(/[ \t]+\n/g, '\n').trim();
+  const fill = t => t.replace(/\{(\w+)\}/g, (_, k) => v[k] ?? '').replace(/ \(\s*\)/g, '').replace(/\n{3,}/g, '\n\n').replace(/[ \t]+\n/g, '\n').trim();   // « ( ) » vide retiré (pas de date)
   return { sujet: fill(md.sujet), corps: fill(md.corps) };
 }
 

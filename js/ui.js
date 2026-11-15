@@ -20,6 +20,16 @@ export const borne = (dep, extra = '') => `<span class="borne ${extra}" title="D
 
 export const fmtDate = d => d ? new Date(d).toLocaleDateString('fr-FR', { day: 'numeric', month: 'short', year: 'numeric' }) : '';
 export const fmtDateLong = d => new Date(d).toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long' });
+// Numéro de semaine ISO 8601 (celui des calendriers français) : '2026-11-23' → 48
+export function numSemaine(d) {
+  const x = new Date(String(d).slice(0, 10) + 'T12:00:00Z');
+  const j = (x.getUTCDay() + 6) % 7;            // lundi = 0
+  x.setUTCDate(x.getUTCDate() - j + 3);          // jeudi de la même semaine
+  const an = x.getUTCFullYear(), jeudi1 = new Date(Date.UTC(an, 0, 4, 12));
+  return 1 + Math.round((x - jeudi1) / 864e5 / 7 + ((jeudi1.getUTCDay() + 6) % 7 - 3) / 7);
+}
+// Étiquette « S48 » prête à afficher
+export const tagSemaine = d => `<span class="tag-sem" title="Semaine ${numSemaine(d)} de l'année">S${numSemaine(d)}</span>`;
 export const fmtKm = km => km == null ? '–' : (km < 10 ? km.toFixed(1) : Math.round(km)) + ' km';
 export const fmtDuree = min => {
   if (min == null) return '–';

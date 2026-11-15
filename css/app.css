@@ -909,3 +909,15 @@ li.glisse { position: relative; z-index: 5; box-shadow: 0 10px 28px rgba(0,0,0,.
 .agenda-liste { display: grid; gap: .45rem; margin: 0 0 .8rem; }
 .agenda-liste li { display: flex; justify-content: space-between; align-items: center; gap: .8rem; border-bottom: 1px solid var(--trait); padding-bottom: .45rem; }
 .agenda-liste .btn.ok { background: var(--vert); border-color: var(--vert); color: #fff; }
+
+/* numéro de semaine (S48) à côté des dates */
+.tag-sem { display: inline-block; vertical-align: middle; font-size: .62em; font-weight: 700; line-height: 1; letter-spacing: .02em;
+  padding: .32em .5em; border-radius: 6px; background: var(--bleu); color: #fff; position: relative; top: -.08em; }
+h1 .tag-sem { margin-right: .15em; }
+h2 .tag-sem { font-size: .7em; }
+.rdv-sem { align-self: flex-end; padding-bottom: .55rem; font-size: 1.1rem; }
+.rdv-periode { flex-wrap: wrap; }
+.rdv-periode > label { min-width: 0; flex: 1 1 120px; }
+.rdv-periode input[type=date] { width: 100%; min-width: 0; }
+.rdv-periode .rdv-sem { flex: 0 0 auto; }
+.rdv-f > .rdv-periode { min-width: 0; flex: 1 1 260px; }

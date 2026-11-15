@@ -2,7 +2,7 @@
 import { ongletsPlanning } from './onglets-planning.js';
 import { db, getSettings } from '../db.js';
 import { magasinsEnrichis } from '../data.js';
-import { $, $$, esc, borne, fmtKm, fmtDuree, fmtHeure, fmtDate, toast, confirmer } from '../ui.js';
+import { $, $$, esc, borne, fmtKm, fmtDuree, fmtHeure, fmtDate, toast, confirmer, tagSemaine } from '../ui.js';
 import { planifier, dateDuJour, prochainLundi } from '../services/planificateur.js';
 import { PRIORITES } from '../config.js';
 import { carte, repere, repereDepart } from '../carte.js';
@@ -102,7 +102,7 @@ function vuePlan(plan, byId, s) {
     <p class="hint">Calculé le ${fmtDate(plan.cree)}. Trajets estimés${plan.parametres.calibration !== 1 ? `, corrigés d'après tes tournées TomTom (×${plan.parametres.calibration.toFixed(2)})` : ''} ; les temps réels sont recalculés à l'ouverture de chaque journée. Clique sur une journée pour la voir sur la carte.</p>
     <div class="tour-grid">
       <section class="plan-list">
-        ${semaines.map(w => `<h2 class="h2">Semaine ${w} <small class="muted">du ${fmtDate(dateDuJour(plan.debut, (w - 1) * 7))}</small></h2><ol class="days">
+        ${semaines.map(w => `<h2 class="h2">Semaine ${w} ${tagSemaine(dateDuJour(plan.debut, (w - 1) * 7))} <small class="muted">du ${fmtDate(dateDuJour(plan.debut, (w - 1) * 7))}</small></h2><ol class="days">
           ${plan.jours.map((j, i) => [j, i]).filter(([j]) => j.semaine === w).map(([j, i]) => {
             const ms = j.etapes.map(id => byId.get(id)).filter(Boolean);
             const date = dateDuJour(plan.debut, j.offset);

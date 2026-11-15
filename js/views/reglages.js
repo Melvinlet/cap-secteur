@@ -34,7 +34,7 @@ export async function render(el) {
           <label>Ton e-mail pro (signature)<input name="emailPro" type="email" value="${esc(s.emailPro)}"></label>
           <label>Proposer une relance après (jours)<input name="relanceApres" type="number" min="1" value="${s.relanceApres}"></label></div>
         <details><summary>Messages de rendez-vous (modifiables)</summary>
-          <p class="hint">Variables : {bonjour} {contact} {magasin} {enseigne} {ville} {quand} {date} {heure} {objet} {chef} {telephone} {email}.
+          <p class="hint">Variables : {bonjour} {contact} {magasin} {enseigne} {ville} {quand} {date} {heure} {semaine} {objet} {chef} {telephone} {email}.
           « {quand} » donne par exemple « le mardi 10 novembre vers 10 h 30 », « {objet} » la phrase liée à l'objet de la visite.</p>
           ${Object.entries(MODELES_RDV).map(([k, m]) => { const v = { ...m, ...((s.modelesRdv || {})[k] || {}) }; return `<fieldset><legend>${esc(m.label)}</legend>
             ${k === 'sms' ? '' : `<label>Objet du mail<input name="mod:${k}:sujet" value="${esc(v.sujet)}"></label>`}
@@ -77,6 +77,8 @@ export async function render(el) {
           <span class="row"><input name="cleTomTom" type="password" value="${esc(s.cleTomTom)}" autocomplete="off" spellcheck="false" class="grow" placeholder="Colle ta clé ici">
           <button type="button" class="btn" id="showKey">Afficher</button><button type="button" class="btn" id="testKey">Tester</button></span>
           <small class="hint">Gratuite sur developer.tomtom.com. Elle reste sur cet appareil et n'est jamais incluse dans les sauvegardes.</small></label>
+        <div class="emplacements"><p><strong>Emplacement des magasins</strong><br><small class="muted">Place chaque magasin sur son bâtiment (OpenStreetMap, puis TomTom si besoin) au lieu du milieu de la rue ou de la commune. Fait automatiquement une fois ; les magasins placés à la main ne bougent jamais.</small></p>
+          <button type="button" class="btn" id="recaler">Vérifier les emplacements</button></div>
         <label>Fond de carte<select name="fondCarte"><option value="osm" ${s.fondCarte === 'osm' ? 'selected' : ''}>OpenStreetMap</option><option value="tomtom" ${s.fondCarte === 'tomtom' ? 'selected' : ''}>TomTom (utilise ta clé)</option></select></label>
         <p class="hint">${s.calibration?.n && s.calibration.modele === 2 ? `Calibrage automatique : d'après tes ${s.calibration.n} dernière(s) tournée(s) TomTom, les trajets réels prennent ×${s.calibration.temps.toFixed(2)} le temps estimé. Le plan de secteur en tient compte.` : 'Le plan de secteur se calibrera tout seul sur tes tournées calculées par TomTom.'}</p>
         <details><summary>Estimation sans service</summary><div class="row">
@@ -163,6 +165,22 @@ export async function render(el) {
     toast('Texte d\'origine remis : pense à enregistrer');
   });
   $('#showKey').onclick = e => { const i = f.cleTomTom; i.type = i.type === 'password' ? 'text' : 'password'; e.target.textContent = i.type === 'password' ? 'Afficher' : 'Masquer'; };
+  $('#recaler').onclick = async () => {
+    const b = $('#recaler'); b.disabled = true;
+    try {
+      const { recalerMagasins } = await import('../services/emplacements.js');
+      const r = await recalerMagasins({ forcer: true, progression: t => { b.textContent = t; } });
+      const tri = [...r.recales].sort((a, c) => c.ecart - a.ecart);
+      const moyen = r.recales.length ? Math.round(r.recales.reduce((a, x) => a + x.ecart, 0) / r.recales.length) : 0;
+      modal({ titre: 'Emplacement des magasins', valider: 'Fermer', large: true, corps: `
+        <p><strong>${r.recales.length}</strong> magasin${r.recales.length > 1 ? 's' : ''} sur ${r.total} placé${r.recales.length > 1 ? 's' : ''} sur leur emplacement exact${r.recales.length ? ` (déplacement moyen : ${moyen} m)` : ''}.</p>
+        ${tri.filter(x => x.ecart >= 150).length ? `<details><summary>Les plus gros déplacements</summary><ul class="plain small">${tri.filter(x => x.ecart >= 150).slice(0, 25).map(x => `<li><a href="#/magasin/${encodeURIComponent(x.id)}">${esc(x.nom)}</a> : ${x.ecart >= 1000 ? (x.ecart / 1000).toFixed(1) + ' km' : x.ecart + ' m'}</li>`).join('')}</ul></details>` : ''}
+        ${r.nonTrouves.length ? `<p>${r.nonTrouves.length} magasin${r.nonTrouves.length > 1 ? 's' : ''} pas trouvé${r.nonTrouves.length > 1 ? 's' : ''} sur la carte : ils gardent leur position actuelle. Pour en corriger un, ouvre sa fiche et déplace son repère sur la carte.</p>
+          <details><summary>Voir la liste</summary><ul class="plain small">${r.nonTrouves.map(x => `<li><a href="#/magasin/${encodeURIComponent(x.id)}">${esc(x.nom)}</a> <span class="muted">${esc(x.ville || '')}</span></li>`).join('')}</ul></details>` : ''}
+        ${s.cleTomTom ? '' : '<p class="hint">Avec une clé TomTom, l\'appli cherche aussi ceux qu\'OpenStreetMap ne connaît pas.</p>'}` });
+    } catch (e) { toast(`Vérification impossible : ${e.message}. Réessaie avec du réseau.`, 'warn'); }
+    finally { b.disabled = false; b.textContent = 'Vérifier les emplacements'; }
+  };
   $('#testKey').onclick = async () => {
     const k = f.cleTomTom.value.trim();
     if (!k) return toast('Colle d\'abord ta clé', 'warn');

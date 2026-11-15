@@ -98,7 +98,7 @@ function infos(el, { m, contacts, rangVentes }, s) {
           ${kv('Priorité', `${PRIORITES[p].label}${m.prioriteManuelle ? ' (choisie par toi)' : m.prioriteRaison && m.prioriteRaison.toLowerCase() !== PRIORITES[p].label.toLowerCase() ? ` (${m.prioriteRaison})` : ''}`)}
           ${kv('Visite', frequenceDe(m, s) ? `tous les ${frequenceDe(m, s)} jours` : 'hors tournées')}
           ${kv('Durée de visite', `${dureeVisite(m, s)} min${m.dureeVisite ? '' : ' (selon l’enseigne)'}`)}${kv('Commentaire', m.commentaire)}${kv('Livraisons', m.livraisons)}
-          ${kv('Position', m.lat != null ? (m.precision === 'ville' ? 'Centre de la ville (approximatif)' : m.precision === 'commune' ? 'Centre de la commune (affinée automatiquement à l\'adresse dès que tu as du réseau)' : m.positionManuelle ? 'Placée à la main' : 'Adresse trouvée') : 'Pas encore localisé')}
+          ${kv('Position', m.lat != null ? (m.positionManuelle ? 'Placée à la main' : m.precision === 'magasin' ? `Emplacement du magasin (${m.positionSource === 'tomtom' ? 'TomTom' : 'OpenStreetMap'})` : m.precision === 'ville' ? 'Centre de la ville (approximatif)' : m.precision === 'commune' ? 'Centre de la commune (affinée automatiquement dès que tu as du réseau)' : m.precision === 'rue' ? 'Milieu de la rue ou de la zone (approximatif : déplace le repère si besoin)' : 'Adresse trouvée') : 'Pas encore localisé')}
         </dl>
         <div id="miniMap" class="mini-map"></div>
         <p class="hint">Mauvaise position ? Clique sur la carte à l'endroit exact du magasin.</p>

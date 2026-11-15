@@ -4,7 +4,7 @@ import { ongletsPlanning } from './onglets-planning.js';
 import { db, getSettings, saveSettings } from '../db.js';
 import { DEFAULT_SETTINGS, PRIORITES, PROFIL } from '../config.js';
 import { magasinsEnrichis, prioriteDe } from '../data.js';
-import { $, $$, esc, prioTag, enseigneColor, fmtKm, fmtDuree, fmtHeure, parseHeure, toast, modal, confirmer, fmtDate , glisser , today, norm } from '../ui.js';
+import { $, $$, esc, prioTag, enseigneColor, fmtKm, fmtDuree, fmtHeure, parseHeure, toast, modal, confirmer, fmtDate, glisser, today, norm, tagSemaine, numSemaine } from '../ui.js';
 import { getTournee, heureRdv, choisirMagasins, exporterVersPlanning, lundiDe, estimerJour as estimer, placerRendezVous, departPourRdv, calibrer, empreinte, modifierDuree, chainer, lieuNuit, pointsJour, choisirNuit } from './tournee.js';
 import { planifier } from '../services/planificateur.js';
 import { dateEnLettres, tousLesRdv } from '../services/rdv.js';
@@ -61,7 +61,7 @@ export async function render(el, params) {
     <header class="page-head">
       <div class="day-nav">
         <a class="btn-icon" href="#/semaine/${decale(lundi, -7)}" aria-label="Semaine précédente">‹</a>
-        <h1>Semaine du ${dateEnLettres(lundi).replace(/^lundi /, '')}</h1>
+        <h1>${tagSemaine(lundi)} Semaine du ${dateEnLettres(lundi).replace(/^lundi /, '')}</h1>
         <a class="btn-icon" href="#/semaine/${decale(lundi, 7)}" aria-label="Semaine suivante">›</a>
         <input type="date" id="pick" value="${lundi}" aria-label="Choisir une semaine">
       </div>
@@ -162,7 +162,7 @@ export async function render(el, params) {
     const evs = [...rdvs.values()].filter(r => ['acceptee', 'autreDate'].includes(r.statut) && mags.has(r.magasinId))
       .map(r => evenementRdv(mags.get(r.magasinId), r, s, cts.get(r.contactId), r.objet || ''))
       .filter(ev => dates.includes(ev.date)).sort((a, b) => (a.date + (a.heure || '')).localeCompare(b.date + (b.heure || '')));
-    proposerAgendaSemaine(evs, `RDV acceptés · semaine du ${new Date(lundi + 'T12:00').toLocaleDateString('fr-FR', { day: 'numeric', month: 'long' })}`);
+    proposerAgendaSemaine(evs, `RDV acceptés · S${numSemaine(lundi)} · semaine du ${new Date(lundi + 'T12:00').toLocaleDateString('fr-FR', { day: 'numeric', month: 'long' })}`);
   });
   $$('[data-vu]').forEach(b => b.onclick = async () => {
     const [i, k] = b.dataset.vu.split(':').map(Number);

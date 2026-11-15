@@ -24,7 +24,7 @@ export async function affinerPositions({ silencieux = false } = {}) {
         if (!actuel || actuel.positionManuelle) continue;
         // garde-fou : un résultat à plus de 25 km du centre de la commune est sûrement une erreur
         const loin = g && actuel.lat != null && haversine(actuel, g) > 25;
-        if (g && g.precision === 'adresse' && !loin) { await db.put('magasins', { ...actuel, lat: g.lat, lon: g.lon, precision: 'adresse' }); ok++; }
+        if (g && ['adresse', 'rue'].includes(g.precision) && !loin && actuel.precision !== 'magasin') { await db.put('magasins', { ...actuel, lat: g.lat, lon: g.lon, precision: g.precision }); ok++; }
         else if (g && actuel.lat == null) { await db.put('magasins', { ...actuel, lat: g.lat, lon: g.lon, precision: g.precision }); ok++; }
         else { await db.put('magasins', { ...actuel, affinageEchec: new Date().toISOString().slice(0, 10) }); ko++; }
       } catch { ko++; if (!navigator.onLine) break; }

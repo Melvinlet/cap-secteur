@@ -3,7 +3,7 @@
 import { civiliteDevinee } from '../services/civilite.js';
 import { db, getSettings } from '../db.js';
 import { magasinsEnrichis, trierContacts, roleDe } from '../data.js';
-import { $, $$, esc, borne, prioTag, fmtDate, fmtHeure, toast, modal, norm, today } from '../ui.js';
+import { $, $$, esc, borne, prioTag, fmtDate, fmtHeure, toast, modal, norm, today, tagSemaine, numSemaine } from '../ui.js';
 import { STATUTS_RDV, OBJETS_VISITE } from '../config.js';
 import { getRdv, tousLesRdv, genererMessage, lienMail, lienSms, estMobile, changerStatut, aRelancer, modeles, dateEnLettres, lienMailCci, separateurMails } from '../services/rdv.js';
 import { planning } from './tournee.js';
@@ -81,7 +81,7 @@ export async function render(el, params = {}) {
       <div class="seg" role="tablist" aria-label="Magasins"><button role="tab" data-mode="semaine" aria-selected="${etat.mode === 'semaine'}">Mes tournées</button><button role="tab" data-mode="tous" aria-selected="${etat.mode === 'tous'}">Tous les magasins</button></div></header>
     ${params.m ? `<p><a href="#/rdv">Voir tous les rendez-vous</a></p>` : ''}
     <div class="rdv-f">
-      ${etat.mode === 'semaine' ? `<div class="row"><label>Du<input type="date" id="du" value="${etat.du}"></label><label>Au<input type="date" id="au" value="${etat.au}"></label></div>` : ''}
+      ${etat.mode === 'semaine' ? `<div class="row rdv-periode"><label>Du<input type="date" id="du" value="${etat.du}"></label><label>Au<input type="date" id="au" value="${etat.au}"></label><span class="rdv-sem">${numSemaine(etat.du) === numSemaine(etat.au) ? tagSemaine(etat.du) : `${tagSemaine(etat.du)} → ${tagSemaine(etat.au)}`}</span></div>` : ''}
       <input type="search" id="q" placeholder="Magasin, ville, nom ou e-mail d'un contact…" value="${esc(etat.q)}" aria-label="Rechercher">
       <select id="dep" aria-label="Département"><option value="">Tous départements</option>${deps.map(d => `<option ${etat.dep === d ? 'selected' : ''}>${d}</option>`).join('')}</select>
     </div>

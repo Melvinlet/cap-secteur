@@ -5,7 +5,7 @@
 // Aucune donnée d'entreprise ici : voir « Profil entreprise » en bas de fichier.
 // ─────────────────────────────────────────────────────────────────────────────
 
-export const APP_VERSION = '1.9.6';
+export const APP_VERSION = '1.9.8';
 
 export const DEFAULT_SETTINGS = {
   commercial: '',                 // ton nom, utilisé dans les exports
@@ -113,7 +113,7 @@ export const OBJET_PHRASE = {
 };
 
 // Modèles de messages. Variables : {bonjour} {contact} {magasin} {quand} {date} {heure} {objet}
-// {chef} {poste} {societe} {marques} {telephone} {email} {enseigne} {ville}. Modifiables dans Réglages.
+// {chef} {poste} {societe} {marques} {telephone} {email} {enseigne} {ville} {semaine}. Modifiables dans Réglages.
 export const MODELES_RDV = {
   demande: {
     label: 'Demande de rendez-vous',
