@@ -99,7 +99,9 @@ export function planning(t, mags, s, rdvs = null) {
     if (cible != null && cible > h) { attente += cible - h; h = cible; }   // on attend l'heure du rendez-vous
     const arrivee = h; h += duree;
     const retardRdv = cible != null && arrivee > cible + 10 ? Math.round(arrivee - cible) : 0;
-    return { ...e, leg, arrivee, depart: h, duree, rdvHeure: rv?.heure, rdvConfirme: rv?.confirme, retardRdv, hors: !!t.calcul && h > finJour };
+    const rr = rdvs?.get(e.magasinId);
+    const rdvAttente = !rv && rr && rr.date === t.id && ['envoyee', 'relancee'].includes(rr.statut);   // demande partie, sans heure : on attend la réponse
+    return { ...e, leg, arrivee, depart: h, duree, rdvHeure: rv?.heure, rdvConfirme: rv?.confirme, rdvAttente, retardRdv, hors: !!t.calcul && h > finJour };
   });
   const finLeg = legs[t.etapes.length];   // retour maison, ou route du soir jusqu'à l'hôtel
   const retour = t.retour && finLeg, versHotel = !t.retour && finLeg;
@@ -274,7 +276,7 @@ export async function render(el, { date = today() }) {
             <span class="pin num" style="--c:${enseigneColor(m.enseigne)}">${i + 1}</span>
             <div class="stop-body">
               <a href="#/magasin/${encodeURIComponent(m.id)}"><strong>${esc(m.nom)}</strong></a>
-              <p class="muted">${e.rdv ? `<span class="tag ok">RDV ${e.rdv.heure ? esc(e.rdv.heure) : 'confirmé'}</span> ` : e.heureImposee ? `<span class="tag ok">à ${esc(e.heureImposee)}</span> ` : e.rdvHeure ? `<span class="tag">RDV demandé ${esc(e.rdvHeure)}</span> ` : ''}${e.retardRdv ? `<span class="tag late">arrivée ${e.retardRdv} min après le RDV</span> ` : ''}${esc(m.ville)} · <button type="button" class="btn-link duree${t.etapes[i]?.duree ? ' modifiee' : ''}" data-duree="${i}" title="Changer le temps passé dans ce magasin">visite ${e.duree} min</button>${m.savOuverts ? ` · <span class="tag warn">${m.savOuverts} SAV</span>` : ''}${m.lat == null ? ' · <span class="tag late">non localisé</span>' : ''}</p>
+              <p class="muted">${e.rdv ? `<span class="tag ok">RDV ${e.rdv.heure ? esc(e.rdv.heure) : 'confirmé'}</span> ` : e.heureImposee ? `<span class="tag ok">à ${esc(e.heureImposee)}</span> ` : e.rdvHeure ? `<span class="tag">RDV demandé ${esc(e.rdvHeure)}</span> ` : e.rdvAttente ? '<span class="tag">RDV demandé · en attente</span> ' : ''}${e.retardRdv ? `<span class="tag late">arrivée ${e.retardRdv} min après le RDV</span> ` : ''}${esc(m.ville)} · <button type="button" class="btn-link duree${t.etapes[i]?.duree ? ' modifiee' : ''}" data-duree="${i}" title="Changer le temps passé dans ce magasin">visite ${e.duree} min</button>${m.savOuverts ? ` · <span class="tag warn">${m.savOuverts} SAV</span>` : ''}${m.lat == null ? ' · <span class="tag late">non localisé</span>' : ''}</p>
               <div class="stop-actions">
                 ${m.lat != null ? `<a class="btn small" href="${lienGps(s.gps, m)}" target="_blank" rel="noopener">GPS</a>` : ''}
                 ${boutonVisite(e, i, vus.get(e.magasinId), date)}

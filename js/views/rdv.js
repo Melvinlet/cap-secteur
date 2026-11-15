@@ -50,7 +50,11 @@ export async function render(el, params = {}) {
     if (!vus.has(l.m.id) || l.date === jourRdv) vus.set(l.m.id, l);
   }
   lignes = [...vus.values()];
+  // prochain jour où le magasin est prévu dans une tournée (pour rattacher une demande envoyée à ce jour-là)
+  const auj = new Date().toISOString().slice(0, 10), prochain = new Map();
+  for (const t of tournees.filter(x => x.id >= auj).sort((a, b) => a.id.localeCompare(b.id))) for (const e of t.etapes || []) if (!prochain.has(e.magasinId)) prochain.set(e.magasinId, t.id);
   lignes.forEach(l => {
+    l.jourTournee = l.date || prochain.get(l.m.id) || '';
     l.rdv = rdvs.get(l.m.id) || { id: `rdv-${l.m.id}`, magasinId: l.m.id, statut: 'aFaire', historique: [] };
     l.relance = aRelancer(l.rdv, s.relanceApres);
     l.contacts = trierContacts(ctBy.get(l.m.id) || []);
@@ -272,7 +276,7 @@ async function mailGroupe(lignes, s, fin) {
     <label>Objet<select id="gObjet">${OBJETS_VISITE.map(o => `<option ${o === s.objetDefaut ? 'selected' : ''}>${esc(o)}</option>`).join('')}</select></label>
     <label>Objet du mail<input id="gSujet" value="${esc(msg.sujet)}"></label>
     <label>Texte<textarea id="gCorps" rows="11">${esc(msg.corps)}</textarea></label>
-    <label class="check"><input type="checkbox" id="gMarquer" checked> Marquer ces demandes comme envoyées</label>
+    <label class="check"><input type="checkbox" id="gMarquer" checked> Marquer ces demandes comme envoyées (« RDV demandé » dans le planning, le jour où le magasin est prévu)</label>
     <div class="actions"><a class="btn primary" id="gMail">Ouvrir dans ma messagerie</a><button type="button" class="btn" id="gCopie">Copier les adresses</button></div>
     <p class="hint">Avant d'envoyer, vérifie que les adresses sont bien dans <strong>Cci</strong> et que « À » est vide. Texte générique, sans prénom ni nom de magasin. Pour un message personnalisé, utilise « Écrire » sur chaque magasin, comme d'habitude.</p>` });
   const dlg = document.querySelector('dialog[open]');
@@ -291,9 +295,12 @@ async function mailGroupe(lignes, s, fin) {
       const jour = new Date().toISOString().slice(0, 10);
       for (const { l } of avecMail) {
         const r = l.rdv, st = r.statut === 'aFaire' ? 'envoyee' : ['envoyee', 'relancee'].includes(r.statut) ? 'relancee' : null;
-        if (st) { const res = await changerStatut(r, st, { objet: q('#gObjet').value }); await db.put('rdv', { ...res.rdv, mailOuvert: jour }); }
+        // rattachée au jour prévu dans la tournée : le planning affiche « RDV demandé » ce jour-là
+        const date = (r.date && r.date >= jour ? r.date : '') || l.jourTournee || undefined;   // une vieille date passée est remplacée
+        if (st) { const res = await changerStatut(r, st, { objet: q('#gObjet').value, ...(date ? { date } : {}) }); await db.put('rdv', { ...res.rdv, mailOuvert: jour }); }
       }
-      toast(`${avecMail.length} demande${avecMail.length > 1 ? 's' : ''} marquée${avecMail.length > 1 ? 's' : ''} comme envoyée${avecMail.length > 1 ? 's' : ''}`);
+      const dates = avecMail.filter(({ l }) => l.rdv.date || l.jourTournee).length;
+      toast(`${avecMail.length} demande${avecMail.length > 1 ? 's' : ''} marquée${avecMail.length > 1 ? 's' : ''} comme envoyée${avecMail.length > 1 ? 's' : ''}${dates ? ` · ${dates} en attente dans le planning` : ''}`);
     }
   };
   await p;
