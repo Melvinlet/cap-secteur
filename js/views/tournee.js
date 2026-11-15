@@ -79,6 +79,7 @@ const decale = (date, n) => { const d = new Date(date + 'T12:00'); d.setDate(d.g
 const EN_COURS = ['aFaire', 'envoyee', 'relancee', 'autreDate', 'acceptee'];
 export function heureRdv(e, r, jour) {
   if (e.rdv?.heure) return { heure: e.rdv.heure, confirme: true };
+  if (e.heureImposee) return { heure: e.heureImposee, confirme: true };   // « doit contenir ce magasin à telle heure » (remplissage auto)
   if (r && r.date === jour && r.heure && EN_COURS.includes(r.statut)) return { heure: r.heure, confirme: false };
   return null;
 }
@@ -273,7 +274,7 @@ export async function render(el, { date = today() }) {
             <span class="pin num" style="--c:${enseigneColor(m.enseigne)}">${i + 1}</span>
             <div class="stop-body">
               <a href="#/magasin/${encodeURIComponent(m.id)}"><strong>${esc(m.nom)}</strong></a>
-              <p class="muted">${e.rdv ? `<span class="tag ok">RDV ${e.rdv.heure ? esc(e.rdv.heure) : 'confirmé'}</span> ` : e.rdvHeure ? `<span class="tag">RDV demandé ${esc(e.rdvHeure)}</span> ` : ''}${e.retardRdv ? `<span class="tag late">arrivée ${e.retardRdv} min après le RDV</span> ` : ''}${esc(m.ville)} · <button type="button" class="btn-link duree${t.etapes[i]?.duree ? ' modifiee' : ''}" data-duree="${i}" title="Changer le temps passé dans ce magasin">visite ${e.duree} min</button>${m.savOuverts ? ` · <span class="tag warn">${m.savOuverts} SAV</span>` : ''}${m.lat == null ? ' · <span class="tag late">non localisé</span>' : ''}</p>
+              <p class="muted">${e.rdv ? `<span class="tag ok">RDV ${e.rdv.heure ? esc(e.rdv.heure) : 'confirmé'}</span> ` : e.heureImposee ? `<span class="tag ok">à ${esc(e.heureImposee)}</span> ` : e.rdvHeure ? `<span class="tag">RDV demandé ${esc(e.rdvHeure)}</span> ` : ''}${e.retardRdv ? `<span class="tag late">arrivée ${e.retardRdv} min après le RDV</span> ` : ''}${esc(m.ville)} · <button type="button" class="btn-link duree${t.etapes[i]?.duree ? ' modifiee' : ''}" data-duree="${i}" title="Changer le temps passé dans ce magasin">visite ${e.duree} min</button>${m.savOuverts ? ` · <span class="tag warn">${m.savOuverts} SAV</span>` : ''}${m.lat == null ? ' · <span class="tag late">non localisé</span>' : ''}</p>
               <div class="stop-actions">
                 ${m.lat != null ? `<a class="btn small" href="${lienGps(s.gps, m)}" target="_blank" rel="noopener">GPS</a>` : ''}
                 ${boutonVisite(e, i, vus.get(e.magasinId), date)}
@@ -454,7 +455,7 @@ export async function exporterVersPlanning(date, s, periode = null) {
       const rv = rdvs.get(m.id);
       const rvJour = rv && (rv.statut === 'autreDate' ? rv.dateRetenue : rv.date) === t.id ? rv : null;
       const ct = rvJour && ctById.get(rvJour.contactId);
-      lignes.push({ t, k, jour: t.id, heure: heurePlanning(e.heureFixee || e.rdvHeure || '') || (e.arrivee != null ? arrondi(e.arrivee) : ''), chef: s.commercial || '',
+      lignes.push({ t, k, jour: t.id, heure: heurePlanning(e.heureFixee || e.rdv?.heure || e.heureImposee || e.rdvHeure || '') || (e.arrivee != null ? arrondi(e.arrivee) : ''), chef: s.commercial || '',
         enseigne: enseigneDe(m), magasin: m.libellePlanning || `${m.cp} ${m.ville.toUpperCase()} – ${m.nom}`, nom: m.nom,
         statut: v?.statut || (e.fait ? 'Réalisée' : e.statutPlanning || statutRdv(rv, t.id) || (e.rdv ? 'Confirmée' : 'Planifiée')),
         objet: v?.objet || e.objet || rvJour?.objet || s.objetDefaut,

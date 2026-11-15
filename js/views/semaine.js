@@ -4,7 +4,7 @@ import { ongletsPlanning } from './onglets-planning.js';
 import { db, getSettings, saveSettings } from '../db.js';
 import { DEFAULT_SETTINGS, PRIORITES, PROFIL } from '../config.js';
 import { magasinsEnrichis, prioriteDe } from '../data.js';
-import { $, $$, esc, prioTag, enseigneColor, fmtKm, fmtDuree, fmtHeure, parseHeure, toast, modal, confirmer, fmtDate , glisser , today } from '../ui.js';
+import { $, $$, esc, prioTag, enseigneColor, fmtKm, fmtDuree, fmtHeure, parseHeure, toast, modal, confirmer, fmtDate , glisser , today, norm } from '../ui.js';
 import { getTournee, heureRdv, choisirMagasins, exporterVersPlanning, lundiDe, estimerJour as estimer, placerRendezVous, departPourRdv, calibrer, empreinte, modifierDuree, chainer, lieuNuit, pointsJour, choisirNuit } from './tournee.js';
 import { planifier } from '../services/planificateur.js';
 import { dateEnLettres, tousLesRdv } from '../services/rdv.js';
@@ -196,6 +196,8 @@ export async function render(el, params) {
 // Heure de RDV : confirmée (étape) ou demandée au magasin pour ce jour-là (en attente de réponse)
 function rdvTxt(e, r, jour) {
   if (e.rdv) return ` <b class="ok-txt">· RDV ${esc(e.rdv.heure || 'confirmé')}</b>`;
+  if (e.heureImposee) return ` <b class="ok-txt">· à ${esc(e.heureImposee)}</b>`;
+  if (e.impose) return ` <span class="muted">· imposé</span>`;
   if (r && ['envoyee', 'relancee'].includes(r.statut) && r.date === jour) return ` <b class="wait-txt">· RDV demandé${r.heure ? ' ' + esc(r.heure) : ''}</b>`;
   if (r && r.statut === 'aFaire' && r.date === jour && r.heure) return ` <span class="muted">· RDV souhaité ${esc(r.heure)}</span>`;
   return '';
@@ -239,7 +241,13 @@ async function remplir(lundi, dates, tours, all, s, rdvs) {
   const nb = e => all.filter(m => m.enseigne === e && PRIORITES[prioriteDe(m)]?.freq != null).length;
   const modeMax = c.modeMax || (c.maxParJour ? 'fixe' : 'libre');
   const maxJours = Array.isArray(c.maxJours) ? c.maxJours : [];
+  const etiq = m => `${m.nom} — ${m.cp || ''} ${m.ville || ''}`.trim();
   const p = modal({ titre: 'Remplir la semaine automatiquement', valider: 'Remplir la semaine', large: true, corps: `
+    <fieldset><legend>Magasins à inclure obligatoirement</legend>
+      <p class="hint">La semaine se construit autour : choisis le jour, ou laisse « le meilleur jour » et l'appli le place là où il fait le moins de route. L'heure est facultative (comme un RDV).</p>
+      <div id="imposes" class="imposes"></div>
+      <datalist id="magsDL">${all.filter(m => m.lat != null).map(m => `<option value="${esc(etiq(m))}">`).join('')}</datalist>
+      <button type="button" class="btn small" id="addImp">+ Ajouter un magasin</button></fieldset>
     <fieldset><legend>Nombre de magasins par jour</legend>
       <div class="radio-col">
         <label class="check"><input type="radio" name="modeMax" value="libre" ${modeMax === 'libre' ? 'checked' : ''}> Pas de limite (autant que les horaires le permettent)</label>
@@ -283,10 +291,31 @@ async function remplir(lundi, dates, tours, all, s, rdvs) {
       <p class="hint">Les rendez-vous (confirmés ou demandés pour un jour précis) sont toujours gardés, à leur jour et à leur heure : la journée s'organise autour, et si un RDV est tôt et loin, la veille se termine dans sa direction avec une nuit sur place. Horaires : ${s.heureDebut}–${s.heureFin}.</p>
       <label class="check"><input type="checkbox" name="memo" checked> Mémoriser ces choix pour les prochaines semaines</label></fieldset>` });
   const dlg = document.querySelector('dialog[open]');
+  let nImp = 0;
+  const ligneImp = () => { const i = nImp++; const d = document.createElement('div'); d.className = 'imp-ligne';
+    d.innerHTML = `<input name="impM:${i}" list="magsDL" placeholder="Tape le nom ou la ville du magasin" aria-label="Magasin" autocomplete="off">
+      <select name="impJ:${i}" aria-label="Jour"><option value="auto">Le meilleur jour</option>${dates.map((dd, k) => `<option value="${k}">${JOURS[k]} ${new Date(dd + 'T12:00').getDate()}${ferie(dd) ? ' (férié)' : ''}</option>`).join('')}</select>
+      <input type="time" name="impH:${i}" aria-label="Heure (facultatif)" title="Heure (facultatif)">
+      <button type="button" class="btn-icon" aria-label="Retirer">✕</button>`;
+    d.querySelector('button').onclick = () => d.remove();
+    dlg.querySelector('#imposes').append(d); d.querySelector('input').focus(); };
+  dlg.querySelector('#addImp').onclick = ligneImp;
   dlg.querySelectorAll('input[name=modeMax]').forEach(x => x.onchange = () => { const v = dlg.querySelector('input[name=modeMax]:checked').value === 'variable'; dlg.querySelector('#maxJours').hidden = !v; dlg.querySelector('#maxHint').hidden = !v; });
   dlg.querySelector('input[name=maxParJour]').onfocus = () => { dlg.querySelector('input[name=modeMax][value=fixe]').checked = true; dlg.querySelector('#maxJours').hidden = true; dlg.querySelector('#maxHint').hidden = true; };
   const r = await p;
   if (!r) return false;
+  // magasins imposés : étiquette du champ → magasin (ou recherche souple sur le nom / la ville)
+  const parEtiq = new Map(all.filter(m => m.lat != null).map(m => [norm(etiq(m)), m]));
+  const imposes = [], inconnus = [];
+  for (const k of Object.keys(r).filter(k => k.startsWith('impM:'))) {
+    const i = k.slice(5), txt = (r[k] || '').trim();
+    if (!txt) continue;
+    let m = parEtiq.get(norm(txt));
+    if (!m) { const c = all.filter(x => x.lat != null && norm(etiq(x)).includes(norm(txt))); if (c.length === 1) m = c[0]; }
+    if (!m) { inconnus.push(txt); continue; }
+    imposes.push({ m, jour: r['impJ:' + i] === 'auto' ? null : Number(r['impJ:' + i]), heure: r['impH:' + i] || '' });
+  }
+  if (inconnus.length) { toast(`Magasin introuvable : ${inconnus.join(', ')}. Choisis-le dans la liste proposée.`, 'warn'); return false; }
   const mode = r.modeMax || 'libre';
   const parJour = dates.map((_, i) => r['maxJ:' + i] === '' || r['maxJ:' + i] == null ? null : Math.max(0, Number(r['maxJ:' + i])));
   const cible = {
@@ -305,7 +334,7 @@ async function remplir(lundi, dates, tours, all, s, rdvs) {
   const garder = !deja || r.garder === 'on';
   const fixes = new Map(), exclus = new Set(), heures = new Map();
   tours.forEach((t, i) => {
-    const ids = t.etapes.filter(e => garder || heureRdv(e, rdvs.get(e.magasinId), t.id) || e.rdv).map(e => e.magasinId);
+    const ids = t.etapes.filter(e => garder || heureRdv(e, rdvs.get(e.magasinId), t.id) || e.rdv || e.impose).map(e => e.magasinId);
     t.etapes.forEach(e => { const h = heureRdv(e, rdvs.get(e.magasinId), t.id); if (h) heures.set(e.magasinId, h.heure); });
     if (ids.length) fixes.set(i, ids);
     ids.forEach(id => exclus.add(id));
@@ -322,8 +351,28 @@ async function remplir(lundi, dates, tours, all, s, rdvs) {
   });
   if (r.memo === 'on') await saveSettings({ ciblage: { ...(await getSettings()).ciblage, rayonZone: rayon } });
   let retires = 0;
-  const plan = planifier(loc, { ...s, decoucher: r.nuits === 'on', detourRetard: Number(r.detour) || 0, joursTerrain: dates.length },
-    { debut: lundi, semaines: 1, fixes, exclus, cible, heures });
+  const sPlan = { ...s, decoucher: r.nuits === 'on', detourRetard: Number(r.detour) || 0, joursTerrain: dates.length };
+  // magasins imposés : un jour choisi → fixé ce jour-là ; « le meilleur jour » → placé là où il est le plus près de ce qui est prévu
+  const fixer = (j, im) => { fixes.set(j, [...(fixes.get(j) || []).filter(id => id !== im.m.id), im.m.id]); exclus.add(im.m.id); if (im.heure) heures.set(im.m.id, im.heure); };
+  for (const im of imposes) for (const ids of fixes.values()) { const k = ids.indexOf(im.m.id); if (k >= 0) ids.splice(k, 1); }   // déjà prévu ailleurs : il bouge
+  imposes.filter(im => im.jour != null).forEach(im => fixer(im.jour, im));
+  const flottants = imposes.filter(im => im.jour == null);
+  if (flottants.length) {
+    const essai = planifier(loc, sPlan, { debut: lundi, semaines: 1, fixes, exclus: new Set([...exclus, ...flottants.map(im => im.m.id)]), cible, heures });
+    const byIdL = new Map(loc.map(m => [m.id, m]));
+    const ouverts = dates.map((_, j) => j).filter(j => !cible.joursOff.includes(j));
+    for (const im of flottants) {
+      const cout = j => { const pj = essai.jours.find(x => x.offset === j);
+        const pts = [...(fixes.get(j) || []), ...(pj?.etapes || [])].map(id => byIdL.get(id)).filter(Boolean);
+        if (pj?.depart?.lat != null) pts.push(pj.depart);
+        const d = pts.length ? Math.min(...pts.map(x => haversine(x, im.m))) : 9e9;
+        const plein = cible.limites[j] && (fixes.get(j) || []).length >= cible.limites[j];
+        return d + (plein ? 1e6 : 0); };
+      const j = (ouverts.length ? ouverts : dates.map((_, k) => k)).reduce((a, b) => cout(b) < cout(a) ? b : a);
+      fixer(j, im); im.jour = j;
+    }
+  }
+  const plan = planifier(loc, sPlan, { debut: lundi, semaines: 1, fixes, exclus, cible, heures });
   const magsMap = new Map(all.map(m => [m.id, m]));
   let combles = 0;
   const travailles = plan.jours.filter(j => j.etapes.length).map(j => j.offset);
@@ -333,6 +382,10 @@ async function remplir(lundi, dates, tours, all, s, rdvs) {
     if (!t) continue;
     const anciens = new Map(t.etapes.map(e => [e.magasinId, e]));
     t.etapes = j.etapes.map(id => anciens.get(id) || { magasinId: id, fait: false, auto: true, detour: j.detours.includes(id), ...(id in (j.ajouts || {}) ? { surChemin: j.ajouts[id] } : {}) });
+    for (const im of imposes.filter(x => x.jour === j.offset)) {   // repère les magasins imposés (et leur heure) pour les prochains remplissages
+      const e = t.etapes.find(x => x.magasinId === im.m.id);
+      if (e) { e.impose = true; if (im.heure) e.heureImposee = im.heure; else delete e.heureImposee; }
+    }
     t.retour = j.retour; t.depart = j.depart; t.nuit = j.nuit || null; t.calcul = null; delete t.hotel;
     const jl = plan.jours.find(x => x.offset === j.offset + 1);   // nuit choisie près du RDV du lendemain (pas au dernier magasin)
     if (!j.retour && j.nuit && jl?.depart?.lat != null) t.hotel = { lat: jl.depart.lat, lon: jl.depart.lon, ville: j.nuit.replace(/^Nuit (près de|à) /, '') };
