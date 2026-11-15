@@ -11,6 +11,7 @@ import { carte, repere, repereDepart, animerTrace } from '../carte.js';
 import { tousLesRdv } from '../services/rdv.js';
 import { marquerVisite, annulerVisite, visitesDuJour, lienDetails, estVide } from '../services/visite.js';
 import { ferie } from '../services/feries.js';
+import { aFaireOuverts } from '../services/afaire.js';
 
 let map;
 
@@ -223,6 +224,7 @@ export async function render(el, { date = today() }) {
   if (chainer(veille, t, mags) && (t.etapes.length || t.heureDebut)) await db.put('tournees', t);
   const rdvs = await tousLesRdv();
   const vus = await visitesDuJour(date);
+  const afaires = await aFaireOuverts();   // magasin → « à faire » encore ouverts (notés lors des visites précédentes)
   // une visite notée ailleurs (fiche magasin, compte rendu) coche aussi l'étape
   if (t.etapes.some(e => !e.fait && vus.has(e.magasinId))) { t.etapes.forEach(e => { if (vus.has(e.magasinId)) e.fait = true; }); await db.put('tournees', t); }
   const p = estimerJour(t, mags, s, rdvs);
@@ -276,9 +278,11 @@ export async function render(el, { date = today() }) {
             <span class="pin num" style="--c:${enseigneColor(m.enseigne)}">${i + 1}</span>
             <div class="stop-body">
               <a href="#/magasin/${encodeURIComponent(m.id)}"><strong>${esc(m.nom)}</strong></a>
+              ${afaires.get(e.magasinId)?.length ? `<p class="afaire-rappel">📌 À faire : ${afaires.get(e.magasinId).map(n => esc(n.aFaire)).join(' · ')}</p>` : ''}
               <p class="muted">${e.rdv ? `<span class="tag ok">RDV ${e.rdv.heure ? esc(e.rdv.heure) : 'confirmé'}</span> ` : e.heureImposee ? `<span class="tag ok">à ${esc(e.heureImposee)}</span> ` : e.rdvHeure ? `<span class="tag">RDV demandé ${esc(e.rdvHeure)}</span> ` : e.rdvAttente ? '<span class="tag">RDV demandé · en attente</span> ' : ''}${e.retardRdv ? `<span class="tag late">arrivée ${e.retardRdv} min après le RDV</span> ` : ''}${esc(m.ville)} · <button type="button" class="btn-link duree${t.etapes[i]?.duree ? ' modifiee' : ''}" data-duree="${i}" title="Changer le temps passé dans ce magasin">visite ${e.duree} min</button>${m.savOuverts ? ` · <span class="tag warn">${m.savOuverts} SAV</span>` : ''}${m.lat == null ? ' · <span class="tag late">non localisé</span>' : ''}</p>
               <div class="stop-actions">
                 ${m.lat != null ? `<a class="btn small" href="${lienGps(s.gps, m)}" target="_blank" rel="noopener">GPS</a>` : ''}
+                <button class="btn small" data-avant="${i}" title="Contact, RDV, à faire, dernier compte rendu, chiffres">Avant d'entrer${afaires.get(e.magasinId)?.length ? ` <span class="badge">${afaires.get(e.magasinId).length}</span>` : ''}</button>
                 ${boutonVisite(e, i, vus.get(e.magasinId), date)}
                 <select class="objet" data-objet="${i}" aria-label="Objet de la visite">${OBJETS_VISITE.map(o => `<option ${o === (e.objet || s.objetDefaut) ? 'selected' : ''}>${o}</option>`).join('')}</select>
                 <input class="motif" data-motif="${i}" value="${esc(e.motif || '')}" placeholder="Pourquoi j'y vais (précision)" aria-label="Précision sur l'objet de la visite">
@@ -325,6 +329,12 @@ export async function render(el, { date = today() }) {
   if (liste) glisser(liste, { onDeplace: (de, vers) => { const [x] = t.etapes.splice(de, 1); t.etapes.splice(vers, 0, x); save(); } });
   $$('[data-duree]').forEach(b => b.onclick = async () => { if (await modifierDuree(t, +b.dataset.duree, mags, s)) save(false); });
   setTimeout(() => { justeFait = null; }, 0);
+  $$('[data-avant]').forEach(b => b.onclick = async () => {
+    const e = t.etapes[+b.dataset.avant];
+    const { ouvrirFicheAvant } = await import('./fiche-avant.js');
+    if (await ouvrirFicheAvant(e.magasinId, date)) { e.fait = true; justeFait = e.magasinId; await save(false); }
+    else render(el, { date });   // des « à faire » ont pu être cochés
+  });
   $$('[data-fait]').forEach(b => b.onclick = async () => {
     const e = t.etapes[+b.dataset.fait];
     if (date > today()) return toast('Ce jour n\'est pas encore arrivé', 'warn');

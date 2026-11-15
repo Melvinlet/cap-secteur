@@ -12,6 +12,7 @@ import { getRdv, labelStatut, dateEnLettres } from '../services/rdv.js';
 import { carte, repere } from '../carte.js';
 import { imageURL } from '../services/images.js';
 import { marquerVisite, annulerVisite, lienDetails, estVide } from '../services/visite.js';
+import { brancherCoches } from '../services/afaire.js';
 
 const ONGLETS = [['infos', 'Infos'], ['suivi', 'Visites'], ['stock', 'Stock'], ['commandes', 'Commandes'], ['sav', 'SAV'], ['implantations', 'Implantations']];
 let map;
@@ -182,7 +183,7 @@ function suivi(el, d) {
       ${n.actions?.length ? `<p class="acts">${n.actions.map(a => `<span class="tag">${esc(a)}</span>`).join(' ')}</p>` : ''}
       ${n.arrivee || n.depart ? `<p class="muted small">En magasin ${esc(n.arrivee || '?')} – ${esc(n.depart || '?')}</p>` : ''}
       ${n.photos?.length ? `<div class="thumbs-row">${n.photos.slice(0, 6).map(p => `<img data-ph="${esc(p.id)}" alt="${esc(p.etiquette || '')}">`).join('')}${n.photos.length > 6 ? `<span class="muted">+${n.photos.length - 6}</span>` : ''}</div>` : ''}
-      ${n.aFaire ? `<p class="todo">À faire : ${esc(n.aFaire)}${n.echeance ? ` (pour le ${fmtDate(n.echeance)})` : ''}</p>` : ''}</li>`).join('') ||
+      ${n.aFaire ? `<p class="todo${n.aFaireFait ? ' fait' : ''}"><label class="check"><input type="checkbox" data-afaire="${esc(n.id)}" ${n.aFaireFait ? 'checked' : ''}> <span>À faire : ${esc(n.aFaire)}${n.echeance ? ` (pour le ${fmtDate(n.echeance)})` : ''}</span></label>${n.aFaireFait ? ` <small class="muted">fait le ${fmtDate(n.aFaireFait)}</small>` : ''}</p>` : ''}</li>`).join('') ||
       '<li class="muted">Rien de noté pour ce magasin. Après ta visite, note ce qui s\'est dit, le stock relevé et ce qu\'il reste à faire.</li>'}</ol>`;
   $('#addNote').onclick = () => editNote(d, { type: 'Note' });
   $$('[data-id]', el).forEach(b => b.onclick = () => {
@@ -190,6 +191,7 @@ function suivi(el, d) {
     if (n.type === 'Visite') location.hash = `#/cr/${encodeURIComponent(d.m.id)}/${n.id}`; else editNote(d, n);
   });
   $$('[data-ph]', el).forEach(async img => { img.src = await imageURL(db, img.dataset.ph); });
+  brancherCoches(el, () => {});   // cocher un « à faire » le ferme : il ne revient plus dans la tournée ni dans Aujourd'hui
 }
 
 async function editNote(d, n) {

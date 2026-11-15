@@ -76,6 +76,7 @@ export async function render(el, params) {
     <div class="actions">
       <button class="btn primary" id="auto" ${departOk ? '' : 'disabled'}>Remplir automatiquement</button>
       <a class="btn" href="#/simulation/${lundi}" title="Essayer un remplissage sans toucher à cette semaine, puis comparer">Simuler une tournée</a>
+      <button class="btn" id="versAgenda" title="Mettre les RDV acceptés de la semaine dans Google Agenda">RDV → Agenda</button>
       <button class="btn" id="optSem" ${departOk && tot.n > 1 ? '' : 'disabled'}>Optimiser la semaine</button>
       <a class="btn" href="#/rdv?du=${lundi}&au=${dates[dates.length - 1]}">Demander les RDV</a>
       <button class="btn" id="exp">Exporter le ${esc(PROFIL.planning.nom || 'planning')}</button>
@@ -153,6 +154,15 @@ export async function render(el, params) {
   $$('[data-add]').forEach(b => b.onclick = async () => {
     const t = tours[+b.dataset.add];
     if (await choisirMagasins(t, all, s, t.depart?.lat != null ? t.depart : s.depart)) { await save(t); render(el, { lundi }); }
+  });
+  // RDV acceptés (date confirmée dans la semaine) → Google Agenda : uniquement ceux-là
+  $('#versAgenda')?.addEventListener('click', async () => {
+    const { evenementRdv, proposerAgendaSemaine } = await import('../services/agenda.js');
+    const cts = new Map((await db.all('contacts')).map(c => [c.id, c]));
+    const evs = [...rdvs.values()].filter(r => ['acceptee', 'autreDate'].includes(r.statut) && mags.has(r.magasinId))
+      .map(r => evenementRdv(mags.get(r.magasinId), r, s, cts.get(r.contactId), r.objet || ''))
+      .filter(ev => dates.includes(ev.date)).sort((a, b) => (a.date + (a.heure || '')).localeCompare(b.date + (b.heure || '')));
+    proposerAgendaSemaine(evs, `RDV acceptés · semaine du ${new Date(lundi + 'T12:00').toLocaleDateString('fr-FR', { day: 'numeric', month: 'long' })}`);
   });
   $$('[data-vu]').forEach(b => b.onclick = async () => {
     const [i, k] = b.dataset.vu.split(':').map(Number);
@@ -268,8 +278,9 @@ export async function remplir(lundi, dates, tours, all, s, rdvs, opts = {}) {
       <div class="zones-jours">${dates.map((d, i) => { const t = tours[i]; const m0 = t.etapes.map(e => all.find(m => m.id === e.magasinId)).find(Boolean);
         return `<label>${JOURS[i]} ${new Date(d + 'T12:00').getDate()}<select name="zone:${i}">
           <option value="libre">Libre</option>
-          ${m0 ? `<option value="autour" selected>Autour de ${esc(m0.nom)}${t.etapes.length > 1 ? ' et des magasins prévus' : ''}</option>` : ''}
-          ${deps.map(dp => `<option value="dep:${dp}">Département ${dp}</option>`).join('')}</select></label>`; }).join('')}</div>
+          ${opts.zone?.lat != null ? `<option value="point" selected>Autour de ${esc(opts.zone.nom)}</option>` : ''}
+          ${m0 ? `<option value="autour" ${opts.zone ? '' : 'selected'}>Autour de ${esc(m0.nom)}${t.etapes.length > 1 ? ' et des magasins prévus' : ''}</option>` : ''}
+          ${deps.map(dp => `<option value="dep:${dp}" ${opts.zone?.dep === String(dp) ? 'selected' : ''}>Département ${dp}</option>`).join('')}</select></label>`; }).join('')}</div>
       <label class="mini-ligne">Autour = à moins de <input type="number" name="rayon" min="15" max="120" step="5" value="${c.rayonZone || 45}" class="mini-num"> min de route</label></fieldset>
     <fieldset><legend>Enseignes prioritaires</legend>
       <div class="chips">${enseignes.map(e => `<label class="chip-check"><input type="checkbox" name="ens:${esc(e)}" ${c.enseignes.includes(e) ? 'checked' : ''}><span>${esc(e)} <small>${nb(e)}</small></span></label>`).join('')}</div>
@@ -348,6 +359,7 @@ export async function remplir(lundi, dates, tours, all, s, rdvs, opts = {}) {
   cible.zones = dates.map((_, i) => {
     const v = r['zone:' + i] || 'libre';
     if (v === 'autour') { const c0 = centre(tours[i].etapes.map(e => loc.find(m => m.id === e.magasinId)).filter(Boolean)); return c0 ? { ...c0, rayon } : null; }
+    if (v === 'point' && opts.zone?.lat != null) return { lat: opts.zone.lat, lon: opts.zone.lon, rayon };   // depuis la carte de couverture
     if (v.startsWith('dep:')) { const dep = v.slice(4); const c0 = centre(loc.filter(m => String(m.departement) === dep)); return c0 ? { ...c0, dep } : null; }
     return null;
   });

@@ -27,7 +27,7 @@ export async function render(el) {
 
   el.innerHTML = `<div class="page wide">
     ${ongletsPlanning('secteur')}
-    <header class="page-head"><h1>Plan de secteur</h1></header>
+    <header class="page-head"><h1>Plan de secteur</h1><a class="btn" href="#/couverture">Carte de couverture</a></header>
     <p class="muted">Les visites sont programmées selon la priorité de chaque magasin :
       ${[1, 2, 3].map(n => `<b>${PRIORITES[n].label}</b> tous les ${freqP(n)} j (${nbP(n)})`).join(' · ')}${[0, 5, 4].filter(nbP).map(n => ` · ${nbP(n)} ${PRIORITES[n].label.toLowerCase()}`).join('')} (hors tournées).
       Journées de ${plan?.heureDebut || s.heureDebut} à ${s.heureFin}, ${s.joursTerrain} jours par semaine${s.decoucher ? `, nuit sur place quand le retour dépasse ${s.seuilDecoucher} min (retour le ${JOURS[s.joursTerrain - 1].toLowerCase()})` : ', retour chaque soir'}.

@@ -8,6 +8,7 @@ import { evenementRdv, proposerAgenda } from '../services/agenda.js';
 import { STATUTS_VISITE, OBJETS_VISITE, ACTIONS_VISITE, ETIQUETTES_PHOTO, MARQUES_CONCURRENTES, TYPES_CONCURRENCE } from '../config.js';
 import { reduireImage, imageURL, oublierImage } from '../services/images.js';
 import { estVide } from '../services/visite.js';
+import { estOuvert, listeAFaire, brancherCoches } from '../services/afaire.js';
 
 const maintenant = () => { const d = new Date(); return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`; };
 
@@ -22,6 +23,7 @@ export async function render(el, { magasin, note }) {
   const n = note ? (await db.get('notes', note)) : d.notes.find(x => x.type === 'Visite' && x.date === today() && x.statut === 'Réalisée' && estVide(x)) || null;
   const neuf = !n || estVide(n);   // une visite « visité » sans détails se remplit comme un nouveau compte rendu
   const cr = n || { id: uid('n'), type: 'Visite', magasinId: m.id, date: today(), statut: 'Réalisée', objet: s.objetDefaut, actions: [], photos: [], interlocuteurs: [] };
+  const anciensAF = d.notes.filter(x => estOuvert(x) && x.id !== cr.id).sort((a, b) => a.date.localeCompare(b.date));   // à faire des visites précédentes
   if (neuf) { cr.numero = cr.numero || numeroVisite(d.notes, cr.date); const t = await db.get('tournees', cr.date); const e = t?.etapes.find(x => x.magasinId === m.id); if (e?.objet) cr.objet = e.objet; }
   const concur = (await db.byMagasin('concurrence', m.id)).filter(c => c.noteId === cr.id);
   const photos = [...(cr.photos || [])];          // [{ id, etiquette, legende }]
@@ -78,6 +80,7 @@ export async function render(el, { magasin, note }) {
       </section>
 
       <section class="cr-sec"><h2 class="h2">Suite à donner</h2>
+        ${anciensAF.length ? `<div class="afaire-cr"><p class="small"><strong>Encore à faire</strong> (visites précédentes) : coche ce qui est réglé.</p>${listeAFaire(anciensAF)}</div>` : ''}
         <div class="row"><label class="grow">À faire / prochaine étape<input name="aFaire" value="${esc(cr.aFaire || '')}"></label>
         <label>Pour le<input type="date" name="echeance" value="${esc(cr.echeance || '')}"></label></div>
       </section>
@@ -88,6 +91,7 @@ export async function render(el, { magasin, note }) {
         <button class="btn primary" type="submit" name="suite" value="">Enregistrer le compte rendu</button>
       </div>
     </form></div>`;
+  brancherCoches(el);
 
   // horaires
   $$('[data-now]').forEach(b => b.onclick = () => { $(`[name=${b.dataset.now}]`).value = maintenant(); });

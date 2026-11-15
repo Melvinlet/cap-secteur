@@ -110,12 +110,15 @@ export async function render(el, params = {}) {
     : `<div class="empty"><p>Aucune simulation pour cette semaine.</p><p class="muted">« Simuler une tournée » ouvre les mêmes réglages que « Remplir automatiquement » (magasins imposés, nombre par jour, zones, enseignes…), mais le résultat reste ici, à part.</p></div>`}
   </div>`;
 
-  el.querySelector('#simuler')?.addEventListener('click', async () => {
+  // arrivée depuis la carte de couverture : zone déjà choisie (autour d'un magasin, ou un département)
+  const mz = params.autour && mags.get(params.autour);
+  const zone = mz?.lat != null ? { lat: mz.lat, lon: mz.lon, nom: mz.nom } : params.dep ? { dep: String(params.dep) } : null;
+  const simuler = async () => {
     if (enCours) return; enCours = true;
     try {
       const base = copie(reels);   // la simulation part de la semaine actuelle (RDV et magasins déjà prévus compris)
       const ok = await remplir(lundi, dates, base, all, s, rdvs, {
-        titre: 'Simuler la semaine', valider: 'Lancer la simulation',
+        titre: 'Simuler la semaine', valider: 'Lancer la simulation', zone,
         sortie: async (tours, r) => {
           await ecrireBrouillon(lundi, { cree: new Date().toISOString(), tours: copie(tours), resume: r });
           toast(`Simulation prête : ${r.n} visites. Compare avec ta semaine actuelle.`);
@@ -123,7 +126,9 @@ export async function render(el, params = {}) {
       });
       if (ok) render(el, { lundi });
     } finally { enCours = false; }
-  });
+  };
+  el.querySelector('#simuler')?.addEventListener('click', simuler);
+  if (zone && departOk) { history.replaceState(null, '', `#/simulation/${lundi}`); simuler(); }
   el.querySelector('#effacer')?.addEventListener('click', async () => {
     await effacerBrouillon(lundi); toast('Simulation effacée'); render(el, { lundi });
   });

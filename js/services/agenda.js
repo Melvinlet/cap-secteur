@@ -21,16 +21,17 @@ export function lienGoogleAgenda(ev) {
   return u.toString();
 }
 
-export function fichierIcs(ev) {
+// Un ou plusieurs rendez-vous dans un même fichier .ics (Google Agenda : Paramètres › Importer ; téléphone : ouvrir le fichier)
+export function fichierIcs(evs) {
   const echap = s => String(s || '').replace(/\\/g, '\\\\').replace(/[,;]/g, m => '\\' + m).replace(/\n/g, '\\n');
-  const fin = ev.heure ? plusMinutes(ev.date, ev.heure, ev.duree || 60) : [lendemain(ev.date), ''];
   const quand = (d, h) => h ? `:${compact(d, h)}` : `;VALUE=DATE:${compact(d)}`;
-  const txt = ['BEGIN:VCALENDAR', 'VERSION:2.0', 'PRODID:-//Cap Secteur//FR', 'BEGIN:VEVENT',
-    `UID:${ev.uid || Date.now()}@cap-secteur`, `DTSTAMP:${new Date().toISOString().replace(/[-:]/g, '').slice(0, 15)}Z`,
-    `DTSTART${quand(ev.date, ev.heure)}`, `DTEND${quand(...fin)}`, `SUMMARY:${echap(ev.titre)}`,
-    ev.lieu ? `LOCATION:${echap(ev.lieu)}` : '', ev.details ? `DESCRIPTION:${echap(ev.details)}` : '',
-    'BEGIN:VALARM', 'TRIGGER:-PT30M', 'ACTION:DISPLAY', `DESCRIPTION:${echap(ev.titre)}`, 'END:VALARM',
-    'END:VEVENT', 'END:VCALENDAR'].filter(Boolean).join('\r\n');
+  const stamp = new Date().toISOString().replace(/[-:]/g, '').slice(0, 15) + 'Z';
+  const vevent = ev => { const fin = ev.heure ? plusMinutes(ev.date, ev.heure, ev.duree || 60) : [lendemain(ev.date), ''];
+    return ['BEGIN:VEVENT', `UID:${ev.uid || Date.now()}@cap-secteur`, `DTSTAMP:${stamp}`,
+      `DTSTART${quand(ev.date, ev.heure)}`, `DTEND${quand(...fin)}`, `SUMMARY:${echap(ev.titre)}`,
+      ev.lieu ? `LOCATION:${echap(ev.lieu)}` : '', ev.details ? `DESCRIPTION:${echap(ev.details)}` : '',
+      'BEGIN:VALARM', 'TRIGGER:-PT30M', 'ACTION:DISPLAY', `DESCRIPTION:${echap(ev.titre)}`, 'END:VALARM', 'END:VEVENT']; };
+  const txt = ['BEGIN:VCALENDAR', 'VERSION:2.0', 'PRODID:-//Cap Secteur//FR', ...[].concat(evs).flatMap(vevent), 'END:VCALENDAR'].filter(Boolean).join('\r\n');
   return new Blob([txt], { type: 'text/calendar;charset=utf-8' });
 }
 
@@ -61,6 +62,27 @@ export function proposerAgenda(ev, { titre = 'Ajouter à ton agenda' } = {}) {
     const a = document.createElement('a');
     a.href = URL.createObjectURL(fichierIcs(ev));
     a.download = `${ev.titre} ${ev.date}.ics`.replace(/[\\/:*?"<>|]/g, '-');
+    b.after(a); a.click(); setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 1000);
+  };
+  return p;
+}
+
+// Tous les RDV acceptés d'une semaine : un lien Google Agenda par RDV, ou tout d'un coup dans un fichier .ics
+export function proposerAgendaSemaine(evs, titre) {
+  const jourTxt = ev => new Date(ev.date + 'T12:00').toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long' });
+  const p = modal({ titre, valider: 'Fermer', corps: evs.length ? `
+    <ul class="plain agenda-liste">${evs.map((ev, i) => `<li><span><strong>${esc(ev.titre.replace(/^RDV /, ''))}</strong><br><span class="muted small">${esc(jourTxt(ev))}${ev.heure ? ` à ${esc(ev.heure.replace(':', 'h'))}` : ''}</span></span>
+      <a class="btn small" data-ag="${i}" href="${esc(lienGoogleAgenda(ev))}" target="_blank" rel="noopener">Google Agenda</a></li>`).join('')}</ul>
+    <div class="actions agenda-btns"><button type="button" class="btn primary" id="agTous">Tous d'un coup (fichier .ics)</button></div>
+    <p class="hint">Un par un : chaque bouton ouvre Google Agenda avec le RDV prérempli, il reste à Enregistrer. Tous d'un coup : sur ordinateur, Google Agenda › Paramètres › Importer et exporter › choisir le fichier ; sur téléphone, ouvre le fichier téléchargé avec Agenda. Seuls les RDV acceptés par les magasins sont repris.</p>`
+    : '<p class="muted">Aucun RDV accepté cette semaine. Les demandes envoyées ou sans réponse ne sont pas ajoutées à l\'agenda.</p>' });
+  const dlg = document.querySelector('dialog[open]');
+  dlg.querySelectorAll('[data-ag]').forEach(a => a.addEventListener('click', () => { a.textContent = 'Ajouté ✓'; a.classList.add('ok'); }));
+  const b = dlg.querySelector('#agTous');
+  if (b) b.onclick = () => {
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(fichierIcs(evs));
+    a.download = `${titre}.ics`.replace(/[\\/:*?"<>|]/g, '-');
     b.after(a); a.click(); setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 1000);
   };
   return p;

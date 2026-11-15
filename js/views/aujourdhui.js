@@ -6,6 +6,7 @@ import { getTournee, planning } from './tournee.js';
 import { aRelancer, dateEnLettres } from '../services/rdv.js';
 import { lienGps } from '../services/routing.js';
 import { ferie } from '../services/feries.js';
+import { aFaireOuverts, listeAFaire, brancherCoches } from '../services/afaire.js';
 const demain = () => { const d = new Date(today() + 'T12:00'); d.setDate(d.getDate() + 1); return d.toISOString().slice(0, 10); };
 
 export async function render(el) {
@@ -24,7 +25,10 @@ export async function render(el) {
   const t = await getTournee(today());
   const p = planning(t, byId, s);
   const savs = (await db.all('sav')).filter(x => x.statut !== 'Résolu').sort((a, b) => a.date.localeCompare(b.date));
-  const todos = (await db.all('notes')).filter(n => n.aFaire).sort((a, b) => (a.echeance || '9999').localeCompare(b.echeance || '9999') || b.date.localeCompare(a.date)).slice(0, 8);
+  // à faire encore ouverts : d'abord ceux des magasins de la tournée du jour, puis par échéance
+  const duJour = new Set(t.etapes.map(e => e.magasinId));
+  const tousAF = [...(await aFaireOuverts()).values()].flat();
+  const todos = tousAF.sort((a, b) => (duJour.has(b.magasinId) - duJour.has(a.magasinId)) || (a.echeance || '9999').localeCompare(b.echeance || '9999') || a.date.localeCompare(b.date)).slice(0, 10);
   const retard = mags.filter(m => m.enRetard).sort((a, b) => b.joursDepuisVisite - a.joursDepuisVisite);
   const jamais = mags.filter(m => !m.derniereVisite).length;
   const prenom = (s.commercial || '').split(' ')[0];
@@ -57,8 +61,10 @@ export async function render(el) {
     <div class="grid2">
       <section><h2 class="h2">SAV en cours <span class="badge">${savs.length}</span></h2>
         <ul class="plain">${savs.slice(0, 8).map(x => { const m = byId.get(x.magasinId); return `<li><a href="#/magasin/${encodeURIComponent(x.magasinId)}/sav">${esc(x.produit || 'SAV')}</a> <span class="muted">${esc(m?.nom || '')} · ${fmtDate(x.date)} · ${esc(x.statut)}</span></li>`; }).join('') || '<li class="muted">Aucun dossier ouvert.</li>'}</ul></section>
-      <section><h2 class="h2">À faire</h2>
-        <ul class="plain">${todos.map(n => { const m = byId.get(n.magasinId); return `<li><a href="#/magasin/${encodeURIComponent(n.magasinId)}/suivi">${esc(n.aFaire)}</a> <span class="muted">${esc(m?.nom || '')}</span>${n.echeance ? ` <span class="tag ${n.echeance < today() ? 'late' : ''}">pour le ${fmtDate(n.echeance)}</span>` : ''}</li>`; }).join('') || '<li class="muted">Rien en attente. Les « prochaines étapes » notées pendant tes visites apparaissent ici.</li>'}</ul></section>
+      <section id="afaire"><h2 class="h2">À faire <span class="badge">${tousAF.length}</span></h2>
+        ${todos.length ? listeAFaire(todos, { magasin: id => `${duJour.has(id) ? '📍 aujourd\'hui · ' : ''}${byId.get(id)?.nom || ''}` })
+          + (tousAF.length > todos.length ? `<p class="small muted">… et ${tousAF.length - todos.length} autre${tousAF.length - todos.length > 1 ? 's' : ''} sur les fiches magasins.</p>` : '')
+          : '<p class="muted">Rien en attente. Les « prochaines étapes » notées pendant tes visites apparaissent ici, et reviennent quand le magasin est dans ta tournée.</p>'}</section>
     </div>
     <div class="grid2">
       <section><h2 class="h2">Rendez-vous confirmés <a class="btn small" href="#/rdv">Rendez-vous</a></h2>
@@ -71,4 +77,5 @@ export async function render(el) {
       ${retard.length ? '' : ''}<ul class="store-list compact" ${retard.length ? '' : 'hidden'}>${retard.slice(0, 6).map(m => `<li><a class="store" href="#/magasin/${encodeURIComponent(m.id)}">${borne(m.departement)}<span class="store-main"><span class="store-name">${esc(m.nom)}</span><span class="store-sub">Dernière visite il y a ${m.joursDepuisVisite} jours${prevus.has(m.id) ? ` · prévu le ${fmtDate(prevus.get(m.id))}` : ''}</span></span></a></li>`).join('')}</ul>
       ${jamais ? `<a class="btn ghost" href="#/magasins">Voir les magasins jamais visités</a>` : ''}
     </section></div>`;
+  brancherCoches(el);   // cocher un « à faire » le ferme (il ne reviendra plus)
 }

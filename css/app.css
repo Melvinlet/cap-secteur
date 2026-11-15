@@ -870,3 +870,42 @@ li.glisse { position: relative; z-index: 5; box-shadow: 0 10px 28px rgba(0,0,0,.
 .sim-liste .diff-moins { color: var(--rouge, #C8371D); text-decoration: line-through; text-decoration-thickness: 1px; }
 .sim-liste .diff-moins small, .sim-liste .diff-plus small { color: inherit; opacity: .8; }
 @media (max-width: 640px) { .sim-cols { grid-template-columns: 1fr; } .sim-cols > div + div { border-left: 0; border-top: 1px dashed var(--trait); padding: .6rem 0 0; } }
+
+/* « à faire » qui suivent + fiche « avant d'entrer » */
+.afaire-liste { display: grid; gap: .35rem; margin: .3rem 0; }
+.afaire-liste li { display: grid; gap: .05rem; }
+.afaire-liste li .check { align-items: flex-start; }
+.afaire-liste li small { padding-left: 1.7rem; }
+.afaire-liste li.fait span { text-decoration: line-through; opacity: .55; }
+.late-txt { color: var(--rouge); font-weight: 600; }
+.afaire-rappel { margin: .2rem 0; font-size: .85rem; color: var(--orange); font-weight: 600; }
+.afaire-cr { background: color-mix(in srgb, var(--orange) 8%, var(--surface)); border-left: 3px solid var(--orange); padding: .5rem .7rem; border-radius: 6px; margin-bottom: .6rem; }
+.fiche-avant { display: grid; gap: .7rem; }
+.fa-tete { margin: 0; }
+.fa-liens { display: flex; gap: .4rem; flex-wrap: wrap; margin: 0; }
+.fa-bloc { border-top: 1px solid var(--trait); padding-top: .55rem; }
+.fa-bloc h3 { margin: 0 0 .3rem; font-size: .8rem; letter-spacing: .02em; color: var(--bleu); }
+.fa-bloc p { margin: .15rem 0; }
+.fa-afaire { background: color-mix(in srgb, var(--orange) 8%, var(--surface)); border: 1px solid color-mix(in srgb, var(--orange) 40%, transparent); border-radius: 8px; padding: .55rem .7rem; }
+.fa-afaire h3 { color: var(--orange); }
+.fa-bonjour { font-size: 1.05rem; font-weight: 600; }
+.fa-texte { white-space: pre-wrap; font-size: .9rem; background: color-mix(in srgb, var(--trait) 30%, var(--surface)); padding: .45rem .6rem; border-radius: 6px; }
+.timeline .todo.fait span { text-decoration: line-through; opacity: .6; }
+
+/* Carte de couverture du secteur */
+.couv-legende { display: flex; flex-wrap: wrap; gap: .4rem; align-items: center; margin: .4rem 0 .8rem; }
+.couv-sep { width: 1px; height: 1.4rem; background: var(--trait); margin: 0 .3rem; }
+.pastille { display: inline-block; width: .8rem; height: .8rem; border-radius: 50%; background: var(--c); border: 1.5px solid #fff; box-shadow: 0 0 0 1px rgba(0,0,0,.15); margin-right: .35rem; vertical-align: -1px; }
+.couv-grille { display: grid; grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr); gap: 1rem; align-items: start; }
+.couv-map { height: 620px; border-radius: 12px; }
+.couv-deps .table td.num, .couv-deps .table th.num { text-align: right; white-space: nowrap; }
+.couv-deps .table th[scope=row] { text-align: left; }
+.barre-pct { display: inline-block; width: 42px; height: 6px; border-radius: 3px; margin-right: .4rem; vertical-align: middle;
+  background: linear-gradient(90deg, var(--vert) var(--p), color-mix(in srgb, var(--trait) 70%, transparent) var(--p)); }
+@media (max-width: 900px) { .couv-grille { grid-template-columns: minmax(0, 1fr); } .couv-map { height: 420px; } }
+.couv-deps { min-width: 0; overflow-x: auto; }
+@media (max-width: 560px) { .barre-pct { display: none; } .couv-deps .table th, .couv-deps .table td { padding-left: .3rem; padding-right: .3rem; } .couv-sep { display: none; } }
+/* RDV de la semaine → agenda */
+.agenda-liste { display: grid; gap: .45rem; margin: 0 0 .8rem; }
+.agenda-liste li { display: flex; justify-content: space-between; align-items: center; gap: .8rem; border-bottom: 1px solid var(--trait); padding-bottom: .45rem; }
+.agenda-liste .btn.ok { background: var(--vert); border-color: var(--vert); color: #fff; }

@@ -12,6 +12,7 @@ const ROUTES = [
   [/^\/plan$/, 'tournee', () => import('./views/plan.js')],
   [/^\/semaine(?:\/(\d{4}-\d{2}-\d{2}))?$/, 'tournee', () => import('./views/semaine.js'), ['lundi']],
   [/^\/simulation(?:\/(\d{4}-\d{2}-\d{2}))?$/, 'tournee', () => import('./views/simulation.js'), ['lundi']],
+  [/^\/couverture$/, 'tournee', () => import('./views/couverture.js')],
   [/^\/rdv$/, 'rdv', () => import('./views/rdv.js')],
   [/^\/cr\/([^/]+)(?:\/([^/]+))?$/, 'magasins', () => import('./views/cr.js'), ['magasin', 'note']],
   [/^\/activite(?:\/(\w+))?$/, 'activite', () => import('./views/activite.js'), ['onglet']],
