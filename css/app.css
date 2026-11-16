@@ -921,3 +921,6 @@ h2 .tag-sem { font-size: .7em; }
 .rdv-periode input[type=date] { width: 100%; min-width: 0; }
 .rdv-periode .rdv-sem { flex: 0 0 auto; }
 .rdv-f > .rdv-periode { min-width: 0; flex: 1 1 260px; }
+/* sélecteur de magasins : place, km et heure de fin sous le détour */
+.pick-droite { flex: none; display: flex; flex-direction: column; align-items: flex-end; gap: .15rem; text-align: right; }
+.pick-droite small { font-size: .72rem; color: var(--gris); line-height: 1.25; white-space: nowrap; }

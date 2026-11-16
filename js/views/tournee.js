@@ -545,19 +545,38 @@ function gpsTout(t, mags, s) {
 let choix = { ens: [], prio: '', voir: '', tri: '' };
 export async function choisirMagasins(t, all, s, depart = t.depart?.lat != null ? t.depart : s.depart) {
   const dans = new Set(t.etapes.map(e => e.magasinId));
-  const route = [depart, ...t.etapes.map(e => all.find(m => m.id === e.magasinId))].filter(m => m?.lat != null);
-  if (t.retour !== false && s.depart?.lat != null) route.push(s.depart);
-  const cal = s.calibration || {};
-  const dt = (a, b) => trajet(a, b, s).min;
-  const aDesEtapes = route.length > 2 || (route.length === 2 && t.etapes.length);
-  const detourDe = m => {
-    if (m.lat == null || route.length < 1) return null;
-    if (route.length === 1) return dt(route[0], m) * 2;
-    let best = Infinity;
-    for (let k = 1; k < route.length; k++) best = Math.min(best, dt(route[k - 1], m) + dt(m, route[k]) - dt(route[k - 1], route[k]));
+  const mags = new Map(all.map(m => [m.id, m]));
+  // la journée telle qu'elle est : départ → magasins (numérotés comme dans la tournée) → retour / hôtel
+  const fin = t.retour !== false ? (s.depart?.lat != null ? s.depart : null) : t.hotel?.lat != null ? t.hotel : null;
+  const arrets = [{ p: depart, lib: 'départ', idx: 0 }];
+  t.etapes.forEach((e, i) => { const m = mags.get(e.magasinId); if (m?.lat != null) arrets.push({ p: m, lib: String(i + 1), idx: i + 1 }); });
+  if (fin) arrets.push({ p: fin, lib: 'fin', idx: t.etapes.length, fin: true });
+  const aDesEtapes = t.etapes.length > 0;
+  const T = (a, b) => trajet(a, b, s);
+  // fin de journée actuelle (estimée comme dans la vue Jour)
+  const rdvs = aDesEtapes ? await tousLesRdv() : null;
+  const base = aDesEtapes && s.depart?.lat != null ? estimerJour(t, mags, s, rdvs) : null;
+  const finJour = parseHeure(s.heureFin);
+  // meilleure place pour un magasin : entre deux arrêts consécutifs, là où le détour est le plus court
+  const placeDe = m => {
+    if (m.lat == null || depart?.lat == null) return null;
+    if (arrets.length === 1) { const a = T(arrets[0].p, m); return { det: a.min * 2, km: a.km * 2, aller: a.min, k: 1, entre: null }; }
+    let best = null;
+    for (let k = 1; k < arrets.length; k++) {
+      const a = arrets[k - 1], b = arrets[k], ab = T(a.p, b.p), am = T(a.p, m), mb = T(m, b.p);
+      const det = am.min + mb.min - ab.min;
+      if (!best || det < best.det) best = { det, km: am.km + mb.km - ab.km, k, a, b };
+    }
+    if (!fin && arrets.length > 1) {   // pas de retour prévu : on peut aussi le mettre en dernier
+      const a = arrets[arrets.length - 1], am = T(a.p, m);
+      if (am.min < best.det) best = { det: am.min, km: am.km, k: arrets.length, a, b: null };
+    }
+    best.entre = best.a.idx === 0 && (!best.b || best.b.fin) ? 'seul' : best.a.idx === 0 ? `en 1er (avant ${best.b.lib})` : !best.b || best.b.fin ? `en dernier (après ${best.a.lib})` : `entre ${best.a.lib} et ${best.b.lib}`;
     return best;
   };
-  const list = all.map(m => ({ ...m, det: detourDe(m) }));
+  const detourDe = m => placeDe(m)?.det ?? null;
+  const list = all.map(m => { const pl = placeDe(m); return { ...m, det: pl?.det ?? null, pl,
+    finApres: base && pl ? base.fin + pl.det + Number(dureeVisite(m, s)) : null }; });
   const deps = [...new Set(all.map(m => m.departement))].sort();
   const enseignes = [...new Set(all.map(m => m.enseigne).filter(Boolean))].sort();
   if (!choix.tri) choix.tri = aDesEtapes ? 'detour' : 'urgence';
@@ -580,7 +599,8 @@ export async function choisirMagasins(t, all, s, depart = t.depart?.lat != null 
   const row = m => `<label class="pick">
       <input type="checkbox" name="m:${esc(m.id)}" ${dans.has(m.id) ? 'checked disabled' : coches.has(m.id) ? 'checked' : ''}>
       ${borne(m.departement)}<span class="pick-info"><strong>${esc(m.nom)} ${prioTag(m.prio)}</strong><small>${esc(m.ville)} · ${m.derniereVisite ? `vu le ${fmtDate(m.derniereVisite)}` : 'jamais visité'}${m.enRetard ? ' · <b class="late-txt">en retard</b>' : ''}</small></span>
-      ${m.det != null ? `<span class="pick-det ${m.det <= 15 ? 'ok' : m.det <= 40 ? '' : 'loin'}">${aDesEtapes ? `+${Math.round(m.det)} min` : `${Math.round(m.det / 2)} min`}</span>` : ''}</label>`;
+      ${m.det != null ? `<span class="pick-droite"><span class="pick-det ${m.det <= 15 ? 'ok' : m.det <= 40 ? '' : 'loin'}">${aDesEtapes ? `+${Math.round(m.det)} min` : `${Math.round(m.det / 2)} min`}</span>
+        ${aDesEtapes && m.pl ? `<small>${esc(m.pl.entre)} · +${Math.max(0, Math.round(m.pl.km))} km${m.finApres != null ? `<br>fin <b class="${m.finApres > finJour ? 'late-txt' : ''}">${fmtHeure(m.finApres)}</b>` : ''}</small>` : ''}</span>` : ''}</label>`;
   const maj = () => {
     const q = norm($('#pickQ').value), d = $('#pickDep').value;
     choix.prio = $('#pickPrio').value; choix.voir = $('#pickVoir').value; choix.tri = $('#pickTri').value;
@@ -595,7 +615,7 @@ export async function choisirMagasins(t, all, s, depart = t.depart?.lat != null 
     l.sort((a, b) => (dans.has(a.id) - dans.has(b.id)) || (coches.has(b.id) - coches.has(a.id)) || cmp(a, b));
     $('#pickList').innerHTML = l.slice(0, 150).map(row).join('') || '<p class="empty">Aucun magasin ne correspond à ces filtres.</p>';
     $('#pickHint').textContent = `${l.length} magasin${l.length > 1 ? 's' : ''}${l.length > 150 ? ' (150 premiers affichés, affine les filtres)' : ''}. `
-      + (aDesEtapes ? 'Le chiffre à droite = minutes de route en plus pour l\'ajouter au meilleur endroit de la journée (estimation).' : 'Le chiffre à droite = temps de route depuis ton départ (estimation).');
+      + (aDesEtapes ? `À droite : la route en plus pour le placer au meilleur endroit de ta journée (« entre 1 et 2 » = entre tes magasins n° 1 et 2), et ta nouvelle heure de fin${base ? ` (actuellement ${fmtHeure(base.fin)})` : ''}, visite comprise. Il sera ajouté à cette place.` : 'Le chiffre à droite = temps de route depuis ton départ (estimation).');
   };
   $$('[data-e]').forEach(b => b.onclick = () => {
     const e = b.dataset.e; choix.ens = choix.ens.includes(e) ? choix.ens.filter(x => x !== e) : [...choix.ens, e];
@@ -607,7 +627,17 @@ export async function choisirMagasins(t, all, s, depart = t.depart?.lat != null 
   const r = await p;
   if (!r) return false;
   const ids = [...new Set([...coches, ...Object.keys(r).filter(k => k.startsWith('m:')).map(k => k.slice(2))])].filter(id => !dans.has(id));
-  ids.forEach(id => t.etapes.push({ magasinId: id, fait: false }));
+  // chaque magasin est inséré à sa meilleure place (recalculée après chaque ajout), pas simplement à la fin
+  for (const id of ids) {
+    const m = mags.get(id), e = { magasinId: id, fait: false };
+    if (m?.lat == null || depart?.lat == null || !t.etapes.length) { t.etapes.push(e); continue; }
+    const pts = [{ p: depart, i: 0 }]; t.etapes.forEach((x, i) => { const mm = mags.get(x.magasinId); if (mm?.lat != null) pts.push({ p: mm, i: i + 1 }); });
+    if (fin) pts.push({ p: fin, i: t.etapes.length });
+    let best = { det: Infinity, at: t.etapes.length };
+    for (let k = 1; k < pts.length; k++) { const det = T(pts[k - 1].p, m).min + T(m, pts[k].p).min - T(pts[k - 1].p, pts[k].p).min; if (det < best.det) best = { det, at: pts[k - 1].i }; }
+    if (!fin) { const det = T(pts[pts.length - 1].p, m).min; if (det < best.det) best = { det, at: t.etapes.length }; }
+    t.etapes.splice(best.at, 0, e);
+  }
   return ids.length > 0;
 }
 
