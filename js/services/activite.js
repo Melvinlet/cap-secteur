@@ -53,8 +53,6 @@ export function indicateurs(d, du, au, s, filtre = {}) {
     p1: p1Vus, p1Total: p1.length,
     tempsMagasin: tempsMag,
     photos: visites.reduce((a, n) => a + (n.photos?.length || 0), 0),
-    releves: visites.filter(n => n.stock && Object.keys(n.stock).length).length,
-    ruptures: visites.reduce((a, n) => a + Object.values(n.stock || {}).filter(q => Number(q) === 0).length, 0),
     concurrence: d.concurrence.filter(c => dans(c.date, du, au) && okMag(c.magasinId)).length,
     rdvDemandes: rdvEv.filter(h => h.statut === 'envoyee').length,
     rdvRelances: rdvEv.filter(h => h.statut === 'relancee').length,

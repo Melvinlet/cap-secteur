@@ -1,6 +1,6 @@
 // « Visité » en un geste, depuis le planning ou la fiche magasin.
 // Crée la visite (statut Réalisée) si elle n'existe pas encore ce jour-là, et coche l'étape de la tournée.
-// Les détails (compte rendu, stock, photos…) restent facultatifs : on les ajoute ensuite sur la même visite.
+// Les détails (compte rendu, photos…) restent facultatifs : on les ajoute ensuite sur la même visite.
 import { db, getSettings } from '../db.js';
 import { numeroVisite } from '../data.js';
 import { today } from '../ui.js';

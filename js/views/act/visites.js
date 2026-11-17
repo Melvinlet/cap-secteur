@@ -43,7 +43,7 @@ export async function render(el) {
         <small>${esc(n.objet || '')}${n.contact ? ` · avec ${esc(n.contact)}` : ''}</small>
         ${n.actions?.length ? `<p class="acts">${n.actions.map(a => `<span class="tag">${esc(a)}</span>`).join(' ')}</p>` : ''}
         ${n.texte ? `<p class="hist-txt">${esc(n.texte.slice(0, 220))}${n.texte.length > 220 ? '…' : ''}</p>` : ''}
-        <small class="muted">${[n.photos?.length && `${n.photos.length} photo${n.photos.length > 1 ? 's' : ''}`, n.stock && Object.keys(n.stock).length && 'relevé de stock', concBy.get(n.id) && `${concBy.get(n.id)} relevé${concBy.get(n.id) > 1 ? 's' : ''} concurrence`, n.aFaire && `à faire : ${n.aFaire}`].filter(Boolean).map(esc).join(' · ')}</small>
+        <small class="muted">${[n.photos?.length && `${n.photos.length} photo${n.photos.length > 1 ? 's' : ''}`, concBy.get(n.id) && `${concBy.get(n.id)} relevé${concBy.get(n.id) > 1 ? 's' : ''} concurrence`, n.aFaire && `à faire : ${n.aFaire}`].filter(Boolean).map(esc).join(' · ')}</small>
       </div>
       ${n.photos?.length ? `<img class="hist-ph" data-ph="${esc(n.photos[0].id)}" alt="">` : ''}</a></li>`).join('') || '<li class="empty">Aucune visite sur cette période. Les comptes rendus apparaissent ici dès que tu les enregistres (fiche magasin → Compte rendu de visite).</li>'}</ul>`;
 

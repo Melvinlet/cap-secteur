@@ -1,7 +1,7 @@
 // Compte rendu de visite : horaires, interlocuteurs, actions réalisées, photos de rayon,
-// relevé de stock, relevé concurrence et suite à donner. Enregistré dans l'historique des visites.
+// relevé concurrence et suite à donner. Enregistré dans l'historique des visites.
 import { db, uid, getSettings } from '../db.js';
-import { magasinComplet, produitsPour, numeroVisite, roleDe, trierContacts, frequenceDe } from '../data.js';
+import { magasinComplet, numeroVisite, roleDe, trierContacts, frequenceDe } from '../data.js';
 import { $, $$, esc, toast, today, confirmer, dictee, modal } from '../ui.js';
 import { getRdv, changerStatut, dateEnLettres } from '../services/rdv.js';
 import { evenementRdv, proposerAgenda } from '../services/agenda.js';
@@ -17,7 +17,6 @@ export async function render(el, { magasin, note }) {
   const d = await magasinComplet(id);
   if (!d) { el.innerHTML = '<div class="page"><h1>Magasin introuvable</h1></div>'; return; }
   const s = await getSettings();
-  const produits = await db.all('produits');
   const { m } = d;
   // sans visite précise : on complète celle déjà notée « visité » aujourd'hui plutôt que d'en créer une deuxième
   const n = note ? (await db.get('notes', note)) : d.notes.find(x => x.type === 'Visite' && x.date === today() && x.statut === 'Réalisée' && estVide(x)) || null;
@@ -29,7 +28,6 @@ export async function render(el, { magasin, note }) {
   const photos = [...(cr.photos || [])];          // [{ id, etiquette, legende }]
   const ajoutees = [];                              // photos prises pendant cette saisie (supprimées si on annule)
   const contacts = trierContacts(d.contacts);
-  const vendables = produitsPour(produits, m.enseigne);
 
   el.innerHTML = `<div class="page cr">
     <a class="back" href="#/magasin/${encodeURIComponent(m.id)}/suivi">${esc(m.nom)}</a>
@@ -67,11 +65,6 @@ export async function render(el, { magasin, note }) {
         <input type="file" id="pic" accept="image/*" capture="environment" multiple hidden>
         <input type="file" id="picGal" accept="image/*" multiple hidden>
       </section>
-
-      ${vendables.length ? `<section class="cr-sec"><h2 class="h2">Relevé de stock</h2>
-        <p class="hint">Laisse vide ce que tu n'as pas compté.</p>
-        <div class="stock-grid">${vendables.filter(p => !/accessoire/i.test(p.gamme || '')).map(p => `<label class="stock-row"><span>${esc(p.nom)} <small>${esc(p.ref || '')}</small></span>
-          <input type="number" min="0" inputmode="numeric" name="stock:${esc(p.id)}" value="${esc(cr.stock?.[p.id] ?? '')}" placeholder="–"></label>`).join('')}</div></section>` : ''}
 
       <section class="cr-sec"><h2 class="h2">Concurrence en rayon</h2>
         <div id="concur"></div>
@@ -149,11 +142,9 @@ export async function render(el, { magasin, note }) {
     e.preventDefault();
     const f = new FormData(e.target);
     const v = Object.fromEntries(f);
-    const stock = {};
-    for (const [k, val] of f) if (k.startsWith('stock:') && val !== '') stock[k.slice(6)] = Number(val);
     const rec = { ...cr, type: 'Visite', date: v.date, arrivee: v.arrivee, depart: v.depart, statut: v.statut, objet: v.objet, numero: v.numero,
       interlocuteurs: f.getAll('ic'), contact: v.contact || contacts.find(c => c.id === f.get('ic'))?.nom || '', actions: f.getAll('act'),
-      texte: v.texte, photos, stock, aFaire: v.aFaire, echeance: v.echeance, maj: new Date().toISOString() };
+      texte: v.texte, photos, aFaire: v.aFaire, echeance: v.echeance, maj: new Date().toISOString() };
     await db.put('notes', rec);
     // relevés concurrence : remplacés par ceux du formulaire
     for (const c of concur) await db.del('concurrence', c.id);

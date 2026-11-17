@@ -55,7 +55,7 @@ export async function magasinComplet(id) {
   return { m, contacts, notes: notes.sort(desc), sav: sav.sort(desc), commandes: commandes.sort(desc), implantations };
 }
 
-// ── Campagne / visites / stock ───────────────────────────────────────────────
+// ── Campagne / visites ───────────────────────────────────────────────────
 
 // Produits vendables dans une enseigne (référencés), sinon tout le catalogue
 export const produitsPour = (produits, enseigne) => {
@@ -69,27 +69,6 @@ export function numeroVisite(notes, date, idExclu) {
   const n = notes.filter(x => x.type === 'Visite' && x.id !== idExclu && (!SAISON.debut || x.date >= SAISON.debut) && x.date < date
     && !['Annulée', 'Reportée'].includes(x.statut)).length + 1;
   return n <= 6 ? `V${n}` : 'Autre';
-}
-
-// Relevés de stock successifs → ventes estimées, moyenne, couverture (en nombre de visites)
-// vendu entre deux relevés = stock précédent + quantités commandées entre les deux − stock actuel
-export function analyseStock(notes, commandes, produits) {
-  const releves = notes.filter(n => n.stock && Object.keys(n.stock).length).sort((a, b) => a.date.localeCompare(b.date));
-  const ids = [...new Set(releves.flatMap(n => Object.keys(n.stock)))];
-  return ids.map(pid => {
-    const pts = releves.filter(n => n.stock[pid] !== undefined && n.stock[pid] !== '').map(n => ({ date: n.date, stock: Number(n.stock[pid]) }));
-    const ventes = [];
-    for (let i = 1; i < pts.length; i++) {
-      const livre = commandes.filter(c => c.date > pts[i - 1].date && c.date <= pts[i].date)
-        .reduce((a, c) => a + c.lignes.filter(l => l.produitId === pid).reduce((x, l) => x + (Number(l.qte) || 0), 0), 0);
-      ventes.push(Math.max(0, pts[i - 1].stock + livre - pts[i].stock));
-    }
-    const moyenne = ventes.length ? ventes.reduce((a, b) => a + b, 0) / ventes.length : null;
-    const dernier = pts[pts.length - 1];
-    const couverture = moyenne > 0 ? dernier.stock / moyenne : null;
-    return { produit: produits.find(p => p.id === pid) || { id: pid, nom: pid }, pts, ventes, moyenne, dernier,
-      couverture, rupture: (couverture != null && couverture < 1) || dernier.stock === 0 };
-  }).sort((a, b) => (a.produit.ordre ?? 0) - (b.produit.ordre ?? 0));
 }
 
 // Registre des produits offerts : déjà donnés à ce magasin (1 seul par magasin et par produit)

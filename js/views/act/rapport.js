@@ -15,7 +15,7 @@ const LIGNES = [
   ['tempsMagasin', 'Temps passé en magasin', v => v ? fmtDuree(v) : '–'], ['joursTerrain', 'Jours de terrain'], ['km', 'Kilomètres (estimés)', v => v ? fmtKm(v) : '–'],
   ['nuits', 'Nuits sur place'], ['rdvDemandes', 'Demandes de RDV envoyées'], ['rdvRelances', 'Relances'], ['rdv', 'RDV obtenus'], ['rdvRefus', 'RDV refusés'],
   ['commandes', 'Commandes préparées'], ['unites', 'Unités commandées'], ['dummies', SAISON.libelleOffertLong || 'Produits offerts'],
-  ['releves', 'Relevés de stock'], ['ruptures', 'Ruptures constatées'], ['photos', 'Photos de rayon'], ['concurrence', 'Relevés concurrence'],
+  ['photos', 'Photos de rayon'], ['concurrence', 'Relevés concurrence'],
   ['savOuverts', 'Dossiers SAV ouverts'], ['fraisTotal', 'Notes de frais', v => euros(v)], ['fraisDu', 'Frais restant à me rembourser', v => euros(v)],
 ];
 

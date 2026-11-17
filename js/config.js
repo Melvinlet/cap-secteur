@@ -5,7 +5,7 @@
 // Aucune donnée d'entreprise ici : voir « Profil entreprise » en bas de fichier.
 // ─────────────────────────────────────────────────────────────────────────────
 
-export const APP_VERSION = '1.9.9';
+export const APP_VERSION = '1.10.0';
 
 export const DEFAULT_SETTINGS = {
   commercial: '',                 // ton nom, utilisé dans les exports
@@ -167,7 +167,7 @@ Je vous confirme notre rendez-vous {quand} dans votre magasin, pour {objet}.
 };
 
 // ── Compte rendu de visite ───────────────────────────────────────────────────
-export const ACTIONS_VISITE = ['Présentation gamme', 'Prise de commande', 'Relevé de stock', 'Implantation / mise en rayon',
+export const ACTIONS_VISITE = ['Présentation gamme', 'Prise de commande', 'Implantation / mise en rayon',
   'PLV posée', 'Formation vendeurs', 'Animation', 'Traitement SAV', 'Merchandising / facing', 'Point litiges / livraison', 'Autre'];
 export const ETIQUETTES_PHOTO = ['Rayon', 'Avant', 'Après', 'PLV', 'Meuble', 'Concurrence', 'Autre'];
 
@@ -181,7 +181,7 @@ export const STATUTS_FRAIS = { aDeclarer: 'À déclarer', declaree: 'Déclarée'
 // ── Objectifs (toujours en nombres / unités, jamais en euros) ────────────────
 export const INDICATEURS = {
   visites: 'Visites réalisées', magasins: 'Magasins différents visités', p1: 'Magasins P1 visités',
-  unites: 'Unités commandées', commandes: 'Commandes', rdv: 'RDV obtenus', releves: 'Relevés de stock',
+  unites: 'Unités commandées', commandes: 'Commandes', rdv: 'RDV obtenus',
   concurrence: 'Relevés concurrence', photos: 'Photos de rayon', manuel: 'Suivi manuel',
 };
 

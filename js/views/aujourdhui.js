@@ -16,7 +16,7 @@ export async function render(el) {
     el.innerHTML = `<div class="page welcome">
       <img src="icons/icon.svg" alt="" width="72" height="72">
       <h1>Bienvenue dans Cap Secteur</h1>
-      <p>Tes tournées, tes fiches magasins, ton catalogue et tes commandes, au même endroit, même sans réseau.</p>
+      <p>Tes tournées, tes fiches magasins, tes rendez-vous et tes commandes, au même endroit, même sans réseau.</p>
       <p>Pas encore de magasins : rejoins ton équipe avec le lien et le code entreprise de ton responsable, ou connecte-toi à ton compte.</p>
       <a class="btn primary" href="#/bienvenue">Commencer</a></div>`;
     return;

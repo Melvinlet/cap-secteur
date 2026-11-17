@@ -109,12 +109,6 @@ export async function render(el) {
       <div class="actions"><button class="btn${PROFIL.nom ? '' : ' primary'}" id="impProfil">Importer le profil entreprise</button></div>
     </section>
 
-    <section><h2 class="h2">Partager le catalogue</h2>
-      <p>Le pack catalogue contient uniquement les produits, leurs photos et leur référencement par enseigne — sans aucun prix, sans tes magasins ni tes notes. Il peut être envoyé aux collègues.</p>
-      <p class="hint">Pour démarrer : importe le pack catalogue fourni avec tes données.</p>
-      <div class="actions"><button class="btn" id="expCat">Exporter le pack catalogue</button><button class="btn" id="impCat">Importer un pack catalogue</button></div>
-    </section>
-
     </details>
 
     <section class="settings danger-zone"><h2 class="h2">Zone sensible</h2>
@@ -222,7 +216,6 @@ export async function render(el) {
     x.textContent = !n.configure() ? 'Pas encore configuré : tes données ne sont que sur cet appareil.' : s ? `Connecté (${s.email || 'compte'}) : synchronisation automatique et chiffrée entre tes appareils.` : 'Configuré, mais pas connecté sur cet appareil.';
   });
   $('#expAll').onclick = async () => downloadBlob(await exporter('complet'), `Cap Secteur sauvegarde ${today()}.json`);
-  $('#expCat').onclick = async () => downloadBlob(await exporter('catalogue'), `Cap Secteur catalogue ${today()}.json`);
   const imp = async () => {
     const file = await pickFile('.json,application/json');
     if (!file) return;
@@ -237,7 +230,7 @@ export async function render(el) {
       render(el);
     } catch (e) { toast(e.message, 'warn'); }
   };
-  $('#impAll').onclick = imp; $('#impCat').onclick = imp;
+  $('#impAll').onclick = imp;
   $('#impProfil').onclick = async () => {
     const file = await pickFile('.json,application/json');
     if (!file) return;
@@ -245,7 +238,7 @@ export async function render(el) {
     catch (e) { toast(e.message, 'warn'); }
   };
   $('#wipe').onclick = async () => {
-    if (!(await confirmer('Tout effacer', 'Toutes les données de cet appareil (magasins, notes, commandes, SAV, catalogue, réglages) seront supprimées. Exporte une sauvegarde avant si tu en as besoin.', 'Tout effacer'))) return;
+    if (!(await confirmer('Tout effacer', 'Toutes les données de cet appareil (magasins, notes, commandes, SAV, réglages) seront supprimées. Exporte une sauvegarde avant si tu en as besoin.', 'Tout effacer'))) return;
     for (const st of Object.keys(STORES)) await db.clear(st);
     location.hash = '#/'; location.reload();
   };

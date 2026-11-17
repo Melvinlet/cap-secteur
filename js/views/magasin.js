@@ -1,8 +1,8 @@
-// Fiche magasin : infos & contacts, visites, stock, commandes, SAV, implantations.
+// Fiche magasin : infos & contacts, visites, commandes, SAV, implantations.
 // Aucun prix n'est affiché ni saisi ici.
 import { civiliteDevinee } from '../services/civilite.js';
 import { db, uid, getSettings } from '../db.js';
-import { magasinComplet, dureeVisite, prioriteDe, frequenceDe, produitsPour, numeroVisite, analyseStock, offertsDejaDonnes, roleDe, trierContacts } from '../data.js';
+import { magasinComplet, dureeVisite, prioriteDe, frequenceDe, produitsPour, numeroVisite, offertsDejaDonnes, roleDe, trierContacts } from '../data.js';
 import { $, $$, esc, borne, prioTag, enseigneColor, fmtDate, toast, modal, confirmer, telLink, mailLink, today, downloadBlob } from '../ui.js';
 import { STATUTS_SAV, TYPES_NOTE, PRIORITES, STATUTS_VISITE, OBJETS_VISITE, SAISON, ORDRE_PRIORITES, ROLES_CONTACT, PROFIL } from '../config.js';
 import { lienGps } from '../services/routing.js';
@@ -14,7 +14,7 @@ import { imageURL } from '../services/images.js';
 import { marquerVisite, annulerVisite, lienDetails, estVide } from '../services/visite.js';
 import { brancherCoches } from '../services/afaire.js';
 
-const ONGLETS = [['infos', 'Infos'], ['suivi', 'Visites'], ['stock', 'Stock'], ['commandes', 'Commandes'], ['sav', 'SAV'], ['implantations', 'Implantations']];
+const ONGLETS = [['infos', 'Infos'], ['suivi', 'Visites'], ['commandes', 'Commandes'], ['sav', 'SAV'], ['implantations', 'Implantations']];
 let map;
 
 export async function render(el, { id, onglet = 'infos' }) {
@@ -29,11 +29,10 @@ export async function render(el, { id, onglet = 'infos' }) {
   const s = await getSettings();
   d.produits = await db.all('produits');
   const { m } = d;
-  const stock = analyseStock(d.notes, d.commandes, d.produits);
   const vuAuj = d.notes.find(n => n.type === 'Visite' && n.date === today() && n.statut === 'Réalisée');
   const rdv = await getRdv(m.id);
   const rdvDate = rdv.statut === 'autreDate' ? rdv.dateRetenue : rdv.date;
-  const cnt = { suivi: d.notes.length, stock: stock.filter(x => x.rupture).length, commandes: d.commandes.length,
+  const cnt = { suivi: d.notes.length, commandes: d.commandes.length,
     sav: d.sav.filter(x => x.statut !== 'Résolu').length, implantations: d.implantations.length };
   el.innerHTML = `<div class="page">
     <a class="back" href="#/magasins">Magasins</a>
@@ -51,7 +50,7 @@ export async function render(el, { id, onglet = 'infos' }) {
       <button class="btn" id="addTour">Ajouter à la tournée du jour</button>
       ${m.lat != null ? `<a class="btn" href="${lienGps(s.gps, m)}" target="_blank" rel="noopener">Y aller (${s.gps === 'google' ? 'Google Maps' : 'Waze'})</a>` : ''}
     </div>
-    <nav class="tabs" role="tablist">${ONGLETS.map(([k, l]) => `<a role="tab" href="#/magasin/${encodeURIComponent(id)}/${k}" aria-selected="${k === onglet}">${l}${cnt[k] ? ` <span class="badge ${k === 'stock' ? 'alert' : ''}">${cnt[k]}</span>` : ''}</a>`).join('')}</nav>
+    <nav class="tabs" role="tablist">${ONGLETS.map(([k, l]) => `<a role="tab" href="#/magasin/${encodeURIComponent(id)}/${k}" aria-selected="${k === onglet}">${l}${cnt[k] ? ` <span class="badge">${cnt[k]}</span>` : ''}</a>`).join('')}</nav>
     <section id="tab"></section></div>`;
 
   $('#addTour').onclick = async () => { const r = await ajouterEtape(today(), m.id); toast(r ? 'Ajouté à la tournée du jour' : 'Déjà dans la tournée du jour'); };
@@ -66,7 +65,7 @@ export async function render(el, { id, onglet = 'infos' }) {
     rerender();
     toast('Visite retirée');
   };
-  ({ infos, suivi, stock: vueStock, commandes, sav, implantations })[onglet]?.($('#tab'), d, s, stock);
+  ({ infos, suivi, commandes, sav, implantations })[onglet]?.($('#tab'), d, s);
 }
 
 const rerender = () => window.dispatchEvent(new HashChangeEvent('hashchange'));
@@ -172,19 +171,18 @@ async function editMagasin(m, s) {
 
 // ── Visites & notes ──────────────────────────────────────────────────────────
 function suivi(el, d) {
-  const { notes, produits } = d;
+  const { notes } = d;
   el.innerHTML = `<h2 class="h2">Visites & notes <a class="btn small primary" href="#/cr/${encodeURIComponent(d.m.id)}">Compte rendu de visite</a><button class="btn small" id="addNote">Note / appel</button></h2>
     <ol class="timeline">${notes.map(n => `<li data-type="${esc(n.type)}" data-statut="${esc(n.statut || '')}">
       <div class="tl-head"><strong>${esc(n.type === 'Visite' ? `Visite ${n.numero || ''}` : n.type)}</strong> <time>${fmtDate(n.date)}</time>
       ${n.statut && n.statut !== 'Réalisée' ? `<span class="tag">${esc(n.statut)}</span>` : ''}${n.objet ? `<span class="muted">${esc(n.objet)}</span>` : ''}
       ${n.contact ? `<span class="muted">· avec ${esc(n.contact)}</span>` : ''}<button class="btn-icon" data-id="${n.id}" aria-label="Modifier">✎</button></div>
       ${n.texte ? `<p>${esc(n.texte).replace(/\n/g, '<br>')}</p>` : ''}
-      ${n.stock && Object.keys(n.stock).length ? `<p class="muted small">Stock relevé : ${Object.entries(n.stock).map(([pid, q]) => `${esc(produits.find(p => p.id === pid)?.nom || pid)} ${esc(q)}`).join(' · ')}</p>` : ''}
       ${n.actions?.length ? `<p class="acts">${n.actions.map(a => `<span class="tag">${esc(a)}</span>`).join(' ')}</p>` : ''}
       ${n.arrivee || n.depart ? `<p class="muted small">En magasin ${esc(n.arrivee || '?')} – ${esc(n.depart || '?')}</p>` : ''}
       ${n.photos?.length ? `<div class="thumbs-row">${n.photos.slice(0, 6).map(p => `<img data-ph="${esc(p.id)}" alt="${esc(p.etiquette || '')}">`).join('')}${n.photos.length > 6 ? `<span class="muted">+${n.photos.length - 6}</span>` : ''}</div>` : ''}
       ${n.aFaire ? `<p class="todo${n.aFaireFait ? ' fait' : ''}"><label class="check"><input type="checkbox" data-afaire="${esc(n.id)}" ${n.aFaireFait ? 'checked' : ''}> <span>À faire : ${esc(n.aFaire)}${n.echeance ? ` (pour le ${fmtDate(n.echeance)})` : ''}</span></label>${n.aFaireFait ? ` <small class="muted">fait le ${fmtDate(n.aFaireFait)}</small>` : ''}</p>` : ''}</li>`).join('') ||
-      '<li class="muted">Rien de noté pour ce magasin. Après ta visite, note ce qui s\'est dit, le stock relevé et ce qu\'il reste à faire.</li>'}</ol>`;
+      '<li class="muted">Rien de noté pour ce magasin. Après ta visite, note ce qui s\'est dit et ce qu\'il reste à faire.</li>'}</ol>`;
   $('#addNote').onclick = () => editNote(d, { type: 'Note' });
   $$('[data-id]', el).forEach(b => b.onclick = () => {
     const n = notes.find(x => x.id === b.dataset.id);
@@ -195,12 +193,8 @@ function suivi(el, d) {
 }
 
 async function editNote(d, n) {
-  const { m, contacts, notes, produits } = d;
+  const { m, contacts, notes } = d;
   const date0 = n.date || today();
-  const vendables = produitsPour(produits, m.enseigne).filter(p => !/accessoire/i.test(p.gamme || ''));
-  const accessoires = produitsPour(produits, m.enseigne).filter(p => /accessoire/i.test(p.gamme || ''));
-  const stockRow = p => `<label class="stock-row"><span>${esc(p.nom)}${p.ref ? ` <small>${esc(p.ref)}</small>` : ''}</span>
-    <input type="number" min="0" inputmode="numeric" name="stock:${esc(p.id)}" value="${esc(n.stock?.[p.id] ?? '')}" placeholder="–"></label>`;
   const p = modal({ titre: n.id ? 'Modifier' : n.type === 'Visite' ? 'Noter une visite' : 'Nouvelle note', large: true, corps: `
     <div class="row"><label>Type<select name="type" id="nType">${TYPES_NOTE.map(t => `<option ${t === n.type ? 'selected' : ''}>${t}</option>`).join('')}</select></label>
     <label>Date<input type="date" name="date" id="nDate" value="${esc(date0)}" required></label></div>
@@ -212,20 +206,14 @@ async function editNote(d, n) {
     <label>Interlocuteur<input name="contact" list="ctList" value="${esc(n.contact)}"></label>
     <datalist id="ctList">${contacts.filter(c => c.nom).map(c => `<option value="${esc(c.nom)}">`).join('')}</datalist>
     <label>Compte rendu<textarea name="texte" rows="4">${esc(n.texte)}</textarea></label>
-    <label>À faire / prochaine étape<input name="aFaire" value="${esc(n.aFaire)}"></label>
-    ${produits.length ? `<fieldset class="visite-only"><legend>Relevé de stock en magasin</legend>
-      <p class="hint">Laisse vide ce que tu n'as pas compté. Les ventes et le risque de rupture se calculent d'une visite à l'autre.</p>
-      <div class="stock-grid">${vendables.map(stockRow).join('')}</div>
-      ${accessoires.length ? `<details><summary>Accessoires</summary><div class="stock-grid">${accessoires.map(stockRow).join('')}</div></details>` : ''}</fieldset>` : ''}` });
+    <label>À faire / prochaine étape<input name="aFaire" value="${esc(n.aFaire)}"></label>` });
   const maj = () => $$('.visite-only').forEach(x => { x.hidden = $('#nType').value !== 'Visite'; });
   $('#nType').onchange = maj; maj();
   $('#nDate').onchange = e => { if (!n.numero) $('#nNum').value = numeroVisite(notes, e.target.value, n.id); };
   const r = await p;
   if (!r) return;
-  const stock = {};
-  for (const [k, v] of Object.entries(r)) if (k.startsWith('stock:')) { if (v !== '') stock[k.slice(6)] = Number(v); delete r[k]; }
   if (r.type !== 'Visite') { delete r.statut; delete r.objet; delete r.numero; }
-  await db.put('notes', stamp({ ...n, ...r, stock: r.type === 'Visite' ? stock : undefined, id: n.id || uid('n'), magasinId: m.id }));
+  await db.put('notes', stamp({ ...n, ...r, id: n.id || uid('n'), magasinId: m.id }));
   if (r.type === 'Visite' && r.statut === 'Réalisée') {
     const t = await db.get('tournees', r.date);
     const e = t?.etapes.find(x => x.magasinId === m.id);
@@ -233,20 +221,6 @@ async function editNote(d, n) {
   }
   toast('Enregistré');
   go(`#/magasin/${encodeURIComponent(m.id)}/suivi`);
-}
-
-// ── Stock ────────────────────────────────────────────────────────────────────
-function vueStock(el, d, s, stock) {
-  el.innerHTML = `<h2 class="h2">Stock en magasin <button class="btn small" id="releve">Faire un relevé</button></h2>
-    ${stock.length ? `<table class="table stock-table"><thead><tr><th>Produit</th><th class="num">Dernier stock</th><th class="num">Vendu / visite</th><th>Couverture</th><th>Relevés</th></tr></thead><tbody>
-      ${stock.map(x => `<tr class="${x.rupture ? 'risk' : ''}"><td>${esc(x.produit.nom)}</td>
-        <td class="num">${x.dernier.stock}<small class="muted"> au ${fmtDate(x.dernier.date)}</small></td>
-        <td class="num">${x.moyenne == null ? '–' : x.moyenne.toFixed(1)}</td>
-        <td>${x.dernier.stock === 0 ? '<b class="late-txt">Rupture</b>' : x.moyenne === 0 ? '<span class="muted">Aucune vente relevée</span>' : x.couverture == null ? '<span class="muted">2 relevés nécessaires</span>' : x.rupture ? `<b class="late-txt">Moins d'une visite</b>` : `${x.couverture.toFixed(1)} visite${x.couverture >= 2 ? 's' : ''}`}</td>
-        <td class="muted small">${x.pts.map(p => `${fmtDate(p.date).replace(/ \d{4}$/, '')} : ${p.stock}`).join(' → ')}</td></tr>`).join('')}</tbody></table>
-      <p class="hint">Vendu = stock du relevé précédent + quantités commandées entre-temps − stock actuel. En rouge : risque de rupture avant ta prochaine visite.</p>`
-    : '<p class="muted">Aucun relevé de stock pour l\'instant. Note une visite et compte les produits en rayon : l\'appli calculera les ventes et te préviendra des ruptures.</p>'}`;
-  $('#releve').onclick = () => { location.hash = `#/cr/${encodeURIComponent(m.id)}`; };
 }
 
 // ── Commandes (préparation, sans prix) ───────────────────────────────────────
