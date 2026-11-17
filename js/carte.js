@@ -14,10 +14,11 @@ function loadLeaflet() {
   return leafletLoading;
 }
 
-export async function carte(el) {
+// opts.keyboard = false dans une fenêtre qui défile : sinon le clic donne le focus à la carte, la fenêtre défile et le clic tombe à côté
+export async function carte(el, opts = {}) {
   await loadLeaflet();
   const s = await getSettings();
-  const map = L.map(el, { zoomControl: true }).setView([47.6, -2.3], 7);
+  const map = L.map(el, { zoomControl: true, ...opts }).setView([47.6, -2.3], 7);
   map.invalidateSize();
   if (s.fondCarte === 'tomtom' && s.cleTomTom) {
     L.tileLayer(`https://api.tomtom.com/map/1/tile/basic/main/{z}/{x}/{y}.png?key=${encodeURIComponent(s.cleTomTom)}`,

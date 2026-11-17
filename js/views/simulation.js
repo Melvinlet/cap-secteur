@@ -1,18 +1,18 @@
-// Simulation d'une tournée : on lance le même « Remplir automatiquement » que la Semaine, mais sur un brouillon.
-// La vraie semaine n'est pas touchée : on compare les deux, puis « Exporter vers la semaine » si la simulation convient.
+// Simulation d'une tournée : on lance le même « Remplir automatiquement » que la Semaine (ou que le Jour), mais sur un brouillon.
+// La vraie semaine (ou journée) n'est pas touchée : on compare les deux, puis on exporte si la simulation convient.
 // Le brouillon reste sur cet appareil (non synchronisé) tant qu'il n'est pas exporté ou effacé.
 import { ongletsPlanning } from './onglets-planning.js';
 import { db, getSettings } from '../db.js';
 import { magasinsEnrichis } from '../data.js';
-import { esc, fmtKm, fmtDuree, fmtHeure, toast, modal, today, prioTag, tagSemaine, numSemaine } from '../ui.js';
+import { esc, fmtKm, fmtDuree, fmtHeure, fmtDateLong, toast, modal, today, prioTag, tagSemaine, numSemaine } from '../ui.js';
 import { getTournee, lundiDe, estimerJour as estimer, chainer } from './tournee.js';
-import { remplir } from './semaine.js';
+import { remplir, remplirJour } from './semaine.js';
 import { tousLesRdv } from '../services/rdv.js';
 import { ferie } from '../services/feries.js';
 
 const JOURS = ['Lun.', 'Mar.', 'Mer.', 'Jeu.', 'Ven.', 'Sam.'];
 const decale = (iso, n) => { const d = new Date(iso + 'T12:00'); d.setDate(d.getDate() + n); return d.toISOString().slice(0, 10); };
-const cle = lundi => `simulation:${lundi}`;
+const cle = id => id.includes(':') ? `simulation-${id}` : `simulation:${id}`;   // semaine : « simulation:lundi » ; journée : « simulation-jour:date »
 const copie = x => JSON.parse(JSON.stringify(x));
 const lireBrouillon = async lundi => (await db.get('reglages', cle(lundi)))?.valeur || null;
 const ecrireBrouillon = (lundi, valeur) => db.put('reglages', { cle: cle(lundi), valeur }, { sync: false });
@@ -41,15 +41,21 @@ let enCours = false;
 export async function render(el, params = {}) {
   const s = await getSettings();
   const auj = today(), jSem = new Date(auj + 'T12:00').getDay();
-  const lundi = lundiDe(params.lundi || (jSem === 0 || jSem === 6 ? decale(auj, jSem === 6 ? 2 : 1) : auj));
+  const modeJour = !!params.jour;   // simulation d'une seule journée (depuis la vue Jour)
+  const jourSim = modeJour ? (params.lundi || auj) : null;
+  const lundi = lundiDe(jourSim || params.lundi || (jSem === 0 || jSem === 6 ? decale(auj, jSem === 6 ? 2 : 1) : auj));
   const nb = Math.max(1, Math.min(6, Number(s.joursTerrain) || 5));
-  const dates = Array.from({ length: nb }, (_, i) => decale(lundi, i));
+  const dates = modeJour ? [jourSim] : Array.from({ length: nb }, (_, i) => decale(lundi, i));
+  const idB = modeJour ? `jour:${jourSim}` : lundi;
+  const ici = modeJour ? `#/simulation/${jourSim}?jour=1` : `#/simulation/${lundi}`;
+  const reRender = () => render(el, modeJour ? { lundi: jourSim, jour: '1' } : { lundi });
+  const quoi = modeJour ? 'journée' : 'semaine';
   const all = await magasinsEnrichis(s);
   const mags = new Map(all.map(m => [m.id, m]));
   const reels = await Promise.all(dates.map(getTournee));
   reels.forEach(t => { t.etapes = t.etapes.filter(e => mags.has(e.magasinId)); });
   const rdvs = await tousLesRdv();
-  const br = await lireBrouillon(lundi);
+  const br = await lireBrouillon(idB);
   const sims = br ? br.tours.map(t => ({ ...t, etapes: t.etapes.filter(e => mags.has(e.magasinId)) })) : null;
   const departOk = s.depart.lat != null;
   const A = bilan(reels, mags, s, rdvs), B = sims ? bilan(sims, mags, s, rdvs) : null;
@@ -69,45 +75,52 @@ export async function render(el, params = {}) {
       return `<li class="${diff ? `diff-${signe}` : ''}">${diff ? `<b aria-label="${signe === 'plus' ? 'ajouté' : 'retiré'}">${signe === 'plus' ? '+' : '−'}</b> ` : ''}${prioTag(m.prio)} ${nomCourt(m)} <small class="muted">${esc(m.ville || '')}${e.rdv || e.heureImposee ? ` · ${esc(e.rdv?.heure || e.heureImposee || 'RDV')}` : ''}</small></li>`; }).join('');
     const fer = ferie(dates[i]);
     return `<section class="sim-jour">
-      <h3>${JOURS[i]} ${new Date(dates[i] + 'T12:00').getDate()}${fer ? ` <span class="tag ferie">férié</span>` : ''}</h3>
+      <h3>${JOURS[(new Date(dates[i] + 'T12:00').getDay() + 6) % 7] || ''} ${new Date(dates[i] + 'T12:00').getDate()}${fer ? ` <span class="tag ferie">férié</span>` : ''}</h3>
       <div class="sim-cols">
-        <div><p class="sim-titre">Semaine actuelle</p><p class="small">${resume(a, pa)}</p><ul class="plain sim-liste">${liste(a, idsB, 'moins')}</ul></div>
+        <div><p class="sim-titre">${modeJour ? 'Journée actuelle' : 'Semaine actuelle'}</p><p class="small">${resume(a, pa)}</p><ul class="plain sim-liste">${liste(a, idsB, 'moins')}</ul></div>
         <div><p class="sim-titre">Simulation</p><p class="small">${resume(b, pb)}</p><ul class="plain sim-liste">${liste(b, idsA, 'plus')}</ul></div>
       </div></section>`;
   };
 
   el.innerHTML = `<div class="page wide">
-    ${ongletsPlanning('simulation', lundi)}
+    ${ongletsPlanning('simulation', modeJour ? jourSim : lundi)}
+    <nav class="seg sim-mode" aria-label="Simuler">
+      <a href="#/simulation/${lundi}" ${modeJour ? '' : 'aria-current="page"'}>Une semaine</a>
+      <a href="#/simulation/${modeJour ? jourSim : (dates.includes(auj) ? auj : lundi)}?jour=1" ${modeJour ? 'aria-current="page"' : ''}>Une journée</a></nav>
     <header class="page-head">
-      <div class="day-nav">
+      ${modeJour ? `<div class="day-nav">
+        <a class="btn-icon" href="#/simulation/${decale(jourSim, -1)}?jour=1" aria-label="Jour précédent">‹</a>
+        <h1>Simulation · ${fmtDateLong(jourSim)} ${tagSemaine(jourSim)}</h1>
+        <a class="btn-icon" href="#/simulation/${decale(jourSim, 1)}?jour=1" aria-label="Jour suivant">›</a>
+      </div>` : `<div class="day-nav">
         <a class="btn-icon" href="#/simulation/${decale(lundi, -7)}" aria-label="Semaine précédente">‹</a>
         <h1>${tagSemaine(lundi)} Simulation · semaine du ${new Date(lundi + 'T12:00').toLocaleDateString('fr-FR', { day: 'numeric', month: 'long' })}</h1>
         <a class="btn-icon" href="#/simulation/${decale(lundi, 7)}" aria-label="Semaine suivante">›</a>
-      </div>
+      </div>`}
     </header>
-    <p class="hint">Essaie un remplissage automatique sans toucher à ta vraie semaine, compare, puis exporte-le s'il te convient. ${br ? `Simulation faite le ${new Date(br.cree).toLocaleDateString('fr-FR')} à ${new Date(br.cree).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}.` : ''}</p>
+    <p class="hint">Essaie un remplissage automatique sans toucher à ta vraie ${quoi}, compare, puis exporte-le s'il te convient. ${br ? `Simulation faite le ${new Date(br.cree).toLocaleDateString('fr-FR')} à ${new Date(br.cree).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}.` : ''}</p>
     <div class="actions sim-actions">
-      <button class="btn ${sims ? '' : 'primary'}" id="simuler" ${departOk ? '' : 'disabled'}>${sims ? 'Relancer une simulation' : 'Simuler une tournée'}</button>
-      ${sims ? `<button class="btn primary" id="exporter">Exporter vers la semaine</button><button class="btn ghost" id="effacer">Effacer la simulation</button>` : ''}
-      <a class="btn ghost" href="#/semaine/${lundi}">Voir la semaine actuelle</a>
+      <button class="btn ${sims ? '' : 'primary'}" id="simuler" ${departOk ? '' : 'disabled'}>${sims ? 'Relancer une simulation' : modeJour ? 'Simuler la journée' : 'Simuler une tournée'}</button>
+      ${sims ? `<button class="btn primary" id="exporter">Exporter vers la ${quoi}</button><button class="btn ghost" id="effacer">Effacer la simulation</button>` : ''}
+      <a class="btn ghost" href="${modeJour ? `#/tournee/${jourSim}` : `#/semaine/${lundi}`}">Voir la ${quoi} actuelle</a>
     </div>
     ${departOk ? '' : '<div class="banner warn">Renseigne d\'abord ton point de départ dans Réglages.</div>'}
     ${sims ? `
     <section class="card sim-comp"><h2>Comparaison</h2>
-      <table class="table"><thead><tr><th></th><th class="num">Semaine actuelle</th><th class="num">Simulation</th><th class="num">Écart</th></tr></thead><tbody>
+      <table class="table"><thead><tr><th></th><th class="num">${modeJour ? 'Journée actuelle' : 'Semaine actuelle'}</th><th class="num">Simulation</th><th class="num">Écart</th></tr></thead><tbody>
         ${ligne('Visites', A.visites, B.visites)}
         ${ligne('dont priorité 1', A.p1, B.p1)}
         ${ligne('Magasins en retard de visite vus', A.retard, B.retard)}
         ${ligne('Kilomètres', A.km, B.km, fmtKm, 'moins')}
         ${ligne('Temps de route', A.route, B.route, fmtDuree, 'moins')}
         ${ligne('Nuits dehors', A.nuits, B.nuits, x => x, 'moins')}
-        ${ligne('Jours trop chargés', A.charges, B.charges, x => x, 'moins')}
-        <tr><th scope="row">Fin la plus tardive</th><td class="num">${A.finMax ? fmtHeure(A.finMax) : '—'}</td><td class="num"><strong>${B.finMax ? fmtHeure(B.finMax) : '—'}</strong></td><td></td></tr>
+        ${modeJour ? '' : ligne('Jours trop chargés', A.charges, B.charges, x => x, 'moins')}
+        <tr><th scope="row">${modeJour ? 'Fin de journée' : 'Fin la plus tardive'}</th><td class="num">${A.finMax ? fmtHeure(A.finMax) : '—'}</td><td class="num"><strong>${B.finMax ? fmtHeure(B.finMax) : '—'}</strong></td><td></td></tr>
       </tbody></table>
-      <p class="hint">Temps et kilomètres estimés (les deux semaines sont calculées de la même façon). <b class="ok-txt">Vert</b> = mieux dans la simulation, <b class="ko-txt">rouge</b> = moins bien. Dans le détail par jour : <b>+</b> ajouté par la simulation, <b>−</b> absent de la simulation.</p>
+      <p class="hint">Temps et kilomètres estimés (les deux ${modeJour ? 'journées' : 'semaines'} sont calculées de la même façon). <b class="ok-txt">Vert</b> = mieux dans la simulation, <b class="ko-txt">rouge</b> = moins bien. Dans le détail : <b>+</b> ajouté par la simulation, <b>−</b> absent de la simulation.</p>
     </section>
     <div class="sim-jours">${dates.map((_, i) => jour(i)).join('')}</div>`
-    : `<div class="empty"><p>Aucune simulation pour cette semaine.</p><p class="muted">« Simuler une tournée » ouvre les mêmes réglages que « Remplir automatiquement » (magasins imposés, nombre par jour, zones, enseignes…), mais le résultat reste ici, à part.</p></div>`}
+    : `<div class="empty"><p>Aucune simulation pour cette ${quoi}.</p><p class="muted">« ${modeJour ? 'Simuler la journée' : 'Simuler une tournée'} » ouvre les mêmes réglages que « Remplir automatiquement » (magasins imposés, nombre maximum, zone, enseignes…), mais le résultat reste ici, à part.</p></div>`}
   </div>`;
 
   // arrivée depuis la carte de couverture : zone déjà choisie (autour d'un magasin, ou un département)
@@ -117,6 +130,17 @@ export async function render(el, params = {}) {
     if (enCours) return; enCours = true;
     try {
       const base = copie(reels);   // la simulation part de la semaine actuelle (RDV et magasins déjà prévus compris)
+      if (modeJour) {
+        const ok = await remplirJour(jourSim, base[0], all, s, rdvs, {
+          titre: 'Simuler la journée', valider: 'Lancer la simulation',
+          sortie: async (t, r) => {
+            await ecrireBrouillon(idB, { cree: new Date().toISOString(), tours: [copie(t)], resume: r });
+            toast(`Simulation prête : ${r.n} magasin${r.n > 1 ? 's' : ''}. Compare avec ta journée actuelle.`);
+          },
+        });
+        if (ok) reRender();
+        return;
+      }
       const ok = await remplir(lundi, dates, base, all, s, rdvs, {
         titre: 'Simuler la semaine', valider: 'Lancer la simulation', zone,
         sortie: async (tours, r) => {
@@ -124,20 +148,20 @@ export async function render(el, params = {}) {
           toast(`Simulation prête : ${r.n} visites. Compare avec ta semaine actuelle.`);
         },
       });
-      if (ok) render(el, { lundi });
+      if (ok) reRender();
     } finally { enCours = false; }
   };
   el.querySelector('#simuler')?.addEventListener('click', simuler);
   if (zone && departOk) { history.replaceState(null, '', `#/simulation/${lundi}`); simuler(); }
   el.querySelector('#effacer')?.addEventListener('click', async () => {
-    await effacerBrouillon(lundi); toast('Simulation effacée'); render(el, { lundi });
+    await effacerBrouillon(idB); toast('Simulation effacée'); reRender();
   });
   el.querySelector('#exporter')?.addEventListener('click', async () => {
     const faits = reels.reduce((a, t) => a + t.etapes.filter(e => e.fait).length, 0);
-    const ok = await modal({ titre: 'Exporter vers la semaine', valider: 'Remplacer ma semaine',
-      corps: `<p>La semaine ${numSemaine(lundi)} (du ${new Date(lundi + 'T12:00').toLocaleDateString('fr-FR', { day: 'numeric', month: 'long' })}) sera remplacée par la simulation (${B.visites} visites).</p>
+    const ok = await modal({ titre: `Exporter vers la ${quoi}`, valider: `Remplacer ma ${quoi}`,
+      corps: `<p>${modeJour ? `La journée du ${fmtDateLong(jourSim)}` : `La semaine ${numSemaine(lundi)} (du ${new Date(lundi + 'T12:00').toLocaleDateString('fr-FR', { day: 'numeric', month: 'long' })})`} sera remplacée par la simulation (${B.visites} visite${B.visites > 1 ? 's' : ''}).</p>
         ${faits ? `<p>Les ${faits} magasin${faits > 1 ? 's' : ''} déjà marqué${faits > 1 ? 's' : ''} « visité » sont gardé${faits > 1 ? 's' : ''}.</p>` : ''}
-        <p class="hint">Tes RDV sont déjà dans la simulation. Pour revenir en arrière, il faudra refaire ta semaine à la main.</p>` });
+        <p class="hint">Tes RDV sont déjà dans la simulation. Pour revenir en arrière, il faudra refaire ta ${quoi} à la main.</p>` });
     if (ok === null) return;
     for (let i = 0; i < dates.length; i++) {
       const vrai = await getTournee(dates[i]), sim = copie(sims[i]);
@@ -146,10 +170,11 @@ export async function render(el, params = {}) {
       sim.calcul = null;
       if (sim.etapes.length || sim.heureDebut) await db.put('tournees', sim); else await db.del('tournees', dates[i]);
     }
-    const tours = await Promise.all(dates.map(getTournee));
-    for (let i = 0; i < tours.length; i++) if (chainer(i ? tours[i - 1] : null, tours[i], mags) && tours[i].etapes.length) await db.put('tournees', tours[i]);
-    await effacerBrouillon(lundi);
-    toast('Simulation exportée vers ta semaine');
-    location.hash = `#/semaine/${lundi}`;
+    const tours = await Promise.all([...(modeJour ? [decale(jourSim, -1)] : []), ...dates, ...(modeJour ? [decale(jourSim, 1)] : [])].map(getTournee));
+    for (let i = 1; i < tours.length; i++) if (chainer(tours[i - 1], tours[i], mags) && tours[i].etapes.length) await db.put('tournees', tours[i]);
+    if (!modeJour && chainer(null, tours[0], mags) && tours[0].etapes.length) await db.put('tournees', tours[0]);
+    await effacerBrouillon(idB);
+    toast(`Simulation exportée vers ta ${quoi}`);
+    location.hash = modeJour ? `#/tournee/${jourSim}` : `#/semaine/${lundi}`;
   });
 }

@@ -4,11 +4,11 @@ import { db, getSettings, saveSettings } from '../db.js';
 import { magasinsEnrichis, dureeVisite, numeroVisite } from '../data.js';
 import { OBJETS_VISITE, STATUTS_VISITE, ENSEIGNES_LISTE, PRIORITES, PROFIL } from '../config.js';
 import { exporterPlanning, heurePlanning, HEURES_PLANNING } from '../services/excel.js';
-import { downloadBlob, $, $$, esc, borne, prioTag, enseigneColor, fmtKm, fmtDuree, fmtHeure, parseHeure, fmtDateLong, today, toast, modal, norm, fmtDate, glisser, tagSemaine } from '../ui.js';
+import { downloadBlob, $, $$, esc, borne, prioTag, enseigneColor, fmtKm, fmtDuree, fmtHeure, parseHeure, fmtDateLong, today, toast, modal, confirmer, norm, fmtDate, glisser, tagSemaine } from '../ui.js';
 import { optimiserOrdre, calculerTrajets, lienGps, estimate, trajet, trajetBrut } from '../services/routing.js';
 import { geocodeMagasin, haversine } from '../services/geo.js';
 import { carte, repere, repereDepart, animerTrace } from '../carte.js';
-import { tousLesRdv } from '../services/rdv.js';
+import { tousLesRdv, labelStatut } from '../services/rdv.js';
 import { marquerVisite, annulerVisite, visitesDuJour, lienDetails, estVide } from '../services/visite.js';
 import { ferie } from '../services/feries.js';
 import { aFaireOuverts } from '../services/afaire.js';
@@ -232,6 +232,16 @@ export async function render(el, { date = today() }) {
   const departOk = dep.lat != null && s.depart.lat != null;
   const dernier = t.etapes.length ? mags.get(t.etapes[t.etapes.length - 1].magasinId) : null;
   const hRdv = departOk ? departPourRdv(t, mags, s, rdvs) : null;
+  // RDV du jour : acceptés (ou déplacés à ce jour), demandés pour ce jour, et ceux reportés à une autre date
+  const dansTour = new Set(t.etapes.map(e => e.magasinId));
+  const rdvJour = [...rdvs.values()].filter(r => mags.has(r.magasinId)).map(r => {
+    const m = mags.get(r.magasinId);
+    if (r.statut === 'autreDate' && r.dateRetenue === date) return { r, m, heure: r.heureRetenue || '', etat: 'ok', lib: 'Accepté (date déplacée)' };
+    if (r.statut === 'acceptee' && r.date === date) return { r, m, heure: r.heure || '', etat: 'ok', lib: 'Accepté' };
+    if (['envoyee', 'relancee'].includes(r.statut) && r.date === date) return { r, m, heure: r.heure || '', etat: 'attente', lib: `${labelStatut(r.statut)} · en attente` };
+    if (r.statut === 'autreDate' && r.date === date && r.dateRetenue !== date) return { r, m, heure: r.heure || '', etat: 'reporte', lib: `Reporté au ${fmtDate(r.dateRetenue)}${r.heureRetenue ? ` à ${r.heureRetenue}` : ''}` };
+    return null;
+  }).filter(Boolean).sort((a, b) => (a.heure || '99').localeCompare(b.heure || '99'));
 
   el.innerHTML = `<div class="page wide tour">
     ${ongletsPlanning('jour', date)}
@@ -260,10 +270,21 @@ export async function render(el, { date = today() }) {
           <div><span class="big">${t.calcul ? fmtDuree(p.conduite) : '–'}</span> de conduite</div>
           <div class="${p.depasse ? 'over' : ''}"><span class="big">${t.calcul ? fmtHeure(p.fin) : '–'}</span> fin estimée</div>
         </div>
+        ${rdvJour.length ? `<section class="rdv-jour" aria-label="Rendez-vous du jour"><h2 class="h3">Rendez-vous du jour</h2>
+          <ul class="plain">${rdvJour.map(x => `<li class="rdv-jour-l ${x.etat}"><span class="rdv-jour-h">${x.heure ? esc(x.heure.replace(':', 'h')) : '—'}</span>
+            <span class="rdv-jour-m"><a href="#/magasin/${encodeURIComponent(x.m.id)}">${esc(x.m.nom)}</a> <small class="muted">${esc(x.m.ville || '')}</small><br><span class="tag ${x.etat === 'ok' ? 'ok' : x.etat === 'attente' ? 'wait' : ''}">${esc(x.lib)}</span>${x.r.objet ? ` <small class="muted">${esc(x.r.objet)}</small>` : ''}</span>
+            ${x.etat !== 'reporte' && !dansTour.has(x.m.id) ? `<button class="btn small" data-addrdv="${esc(x.m.id)}">Ajouter à la tournée</button>` : x.etat !== 'reporte' ? '<small class="muted">dans la tournée</small>' : ''}</li>`).join('')}</ul>
+          <a class="small" href="#/rdv?du=${date}&au=${date}">Tous les RDV de ce jour</a></section>` : ''}
         <div class="actions">
           <button class="btn primary" id="add">Ajouter des magasins</button>
-          <button class="btn" id="opt" ${t.etapes.length < 2 || !departOk ? 'disabled' : ''} title="Meilleur ordre, heures de RDV respectées, nuit sur place si le lendemain est plus près">Optimiser</button>
+          <button class="btn" id="autoJ" ${departOk ? '' : 'disabled'} title="Complète la journée selon les priorités et les retards de visite">Remplir automatiquement</button>
+          <button class="btn" id="opt" ${t.etapes.length < 2 || !departOk ? 'disabled' : ''} title="Meilleur ordre, heures de RDV respectées, nuit sur place si le lendemain est plus près">Optimiser la journée</button>
           <button class="btn ghost" id="calc" ${!t.etapes.length || !departOk ? 'disabled' : ''}>Recalculer</button>
+        </div>
+        <div class="actions actions-2">
+          <a class="btn small ghost" href="#/simulation/${date}?jour=1" title="Essayer un remplissage sans toucher à cette journée, puis comparer">Simuler la journée</a>
+          <button class="btn small ghost" id="optSem" ${departOk ? '' : 'disabled'} title="Réordonne toute la semaine de ce jour (moins de route, RDV respectés, nuits sur place)">Optimiser la semaine</button>
+          <button class="btn small ghost" id="viderJ" ${t.etapes.some(e => !e.rdv && !e.fait) ? '' : 'disabled'}>Vider la journée</button>
         </div>
         <label class="check"><input type="checkbox" id="retour" ${t.retour ? 'checked' : ''}> Retour au domicile le soir (sinon nuit sur place)</label>
         <ol class="stops">
@@ -310,6 +331,27 @@ export async function render(el, { date = today() }) {
   $('#hDepReset')?.addEventListener('click', () => changerDepart(''));
   $('#hDepRdv')?.addEventListener('click', () => changerDepart(hRdv));
   $('#add').onclick = () => choisirMagasins(t, all, s).then(ch => ch && save());
+  $('#autoJ').onclick = async () => {
+    const { remplirJour } = await import('./semaine.js');
+    if (await remplirJour(date, t, all, s, rdvs)) save();
+  };
+  $('#optSem').onclick = async () => {
+    const { optimiserSemaineDepuis } = await import('./semaine.js');
+    if (await optimiserSemaineDepuis(date, s)) render(el, { date });
+  };
+  $('#viderJ').onclick = async () => {
+    if (!(await confirmer('Vider la journée', 'Retirer les magasins prévus ce jour-là ? Les rendez-vous confirmés et les magasins déjà visités sont gardés.', 'Vider'))) return;
+    t.etapes = t.etapes.filter(e => e.rdv || e.fait);
+    save();
+  };
+  $$('[data-addrdv]').forEach(b => b.onclick = async () => {
+    const id = b.dataset.addrdv;
+    if (t.etapes.some(e => e.magasinId === id)) return;
+    const x = rdvJour.find(y => y.m.id === id);
+    t.etapes.push({ magasinId: id, fait: false, ...(x?.etat === 'ok' ? { rdv: { heure: x.heure, statut: 'Confirmée' } } : {}), ...(x?.r.objet ? { objet: x.r.objet } : {}) });
+    placerRendezVous(t, mags, s, rdvs);
+    save();
+  });
   $('#opt').onclick = () => calculer(true);
   $('#calc').onclick = () => calculer(false);
   $('#opt2')?.addEventListener('click', () => calculer(true));
@@ -542,7 +584,7 @@ function gpsTout(t, mags, s) {
 // Fenêtre de choix des magasins : recherche, filtres, magasins proches ou en retard en premier.
 // Choix des magasins à ajouter : filtres (enseigne, priorité, à voir, département) et tri,
 // dont le « détour » = minutes en plus pour l'insérer au meilleur endroit de la journée.
-let choix = { ens: [], prio: '', voir: '', tri: '' };
+let choix = { ens: [], prio: '', voir: '', tri: '', vue: 'liste' };
 export async function choisirMagasins(t, all, s, depart = t.depart?.lat != null ? t.depart : s.depart) {
   const dans = new Set(t.etapes.map(e => e.magasinId));
   const mags = new Map(all.map(m => [m.id, m]));
@@ -582,7 +624,8 @@ export async function choisirMagasins(t, all, s, depart = t.depart?.lat != null 
   if (!choix.tri) choix.tri = aDesEtapes ? 'detour' : 'urgence';
   const TRIS = { detour: 'Détour le plus court', urgence: 'Les plus urgents', distance: 'Les plus proches de chez moi', enseigne: 'Enseigne puis ville' };
   const p = modal({ titre: 'Ajouter des magasins', valider: 'Ajouter à la tournée', large: true, corps: `
-    <input type="search" id="pickQ" placeholder="Ville, magasin…" aria-label="Rechercher">
+    <div class="pick-top"><input type="search" id="pickQ" placeholder="Ville, magasin…" aria-label="Rechercher">
+      <div class="seg pick-vue" role="group" aria-label="Affichage"><button type="button" data-vue="liste" aria-pressed="${choix.vue !== 'carte'}">Liste</button><button type="button" data-vue="carte" aria-pressed="${choix.vue === 'carte'}">Carte</button></div></div>
     <details class="pick-filtres"><summary>Filtres et tri</summary>
     <div class="pick-f">
       <select id="pickDep" aria-label="Département"><option value="">Tous départements</option>${deps.map(d => `<option>${d}</option>`).join('')}</select>
@@ -593,6 +636,8 @@ export async function choisirMagasins(t, all, s, depart = t.depart?.lat != null 
     <div class="chips pick-ens">${enseignes.map(e => `<button type="button" class="chip" data-e="${esc(e)}" aria-pressed="${choix.ens.includes(e)}"><i class="dot" style="background:${enseigneColor(e)}"></i>${esc(e)}</button>`).join('')}</div>
     </details>
     <p class="hint" id="pickHint"></p>
+    <div class="pick-carte" id="pickCarte" hidden><div id="pickMap" class="pick-map" role="application" aria-label="Carte des magasins : touche un point puis « Ajouter »"></div>
+      <p class="pick-leg small"><span><i class="pk pk-tour"></i>dans ta journée</span><span><i class="pk pk-sel"></i>sélectionné</span><span><i class="pk pk-retard"></i>en retard / jamais vu</span><span><i class="pk"></i>autres</span></p></div>
     <div class="pick-list" id="pickList"></div>` });
   if (matchMedia('(min-width: 641px)').matches) document.querySelector('dialog[open] .pick-filtres')?.setAttribute('open', '');
   const coches = new Set();
@@ -601,6 +646,59 @@ export async function choisirMagasins(t, all, s, depart = t.depart?.lat != null 
       ${borne(m.departement)}<span class="pick-info"><strong>${esc(m.nom)} ${prioTag(m.prio)}</strong><small>${esc(m.ville)} · ${m.derniereVisite ? `vu le ${fmtDate(m.derniereVisite)}` : 'jamais visité'}${m.enRetard ? ' · <b class="late-txt">en retard</b>' : ''}</small></span>
       ${m.det != null ? `<span class="pick-droite"><span class="pick-det ${m.det <= 15 ? 'ok' : m.det <= 40 ? '' : 'loin'}">${aDesEtapes ? `+${Math.round(m.det)} min` : `${Math.round(m.det / 2)} min`}</span>
         ${aDesEtapes && m.pl ? `<small>${esc(m.pl.entre)} · +${Math.max(0, Math.round(m.pl.km))} km${m.finApres != null ? `<br>fin <b class="${m.finApres > finJour ? 'late-txt' : ''}">${fmtHeure(m.finApres)}</b>` : ''}</small>` : ''}</span>` : ''}</label>`;
+  // ── carte : les magasins filtrés en points, un clic → fiche courte + « Ajouter » ──
+  let pmap = null, couche = null, filtres = [];
+  const marqueurs = new Map();
+  const styleDe = m => coches.has(m.id) ? { radius: 9, color: '#111', weight: 2.5, fillColor: '#F2C230', fillOpacity: 1 }
+    : { radius: m.prio === 1 ? 7 : m.prio === 2 ? 6 : 5, color: m.enRetard || !m.derniereVisite ? '#1B2430' : '#fff', weight: m.enRetard || !m.derniereVisite ? 2.5 : 1.5, fillColor: enseigneColor(m.enseigne), fillOpacity: .9 };
+  const popupDe = m => `<div class="pick-pop"><strong>${esc(m.nom)}</strong> ${prioTag(m.prio)}<br><small>${esc(m.ville)} · ${m.derniereVisite ? `vu le ${fmtDate(m.derniereVisite)}` : 'jamais visité'}${m.enRetard ? ' · <b class="late-txt">en retard</b>' : ''}</small>
+    ${m.det != null ? `<br><small>${aDesEtapes ? `+${Math.round(m.det)} min de route · ${esc(m.pl?.entre || '')}${m.finApres != null ? ` · fin ${fmtHeure(m.finApres)}` : ''}` : `${Math.round(m.det / 2)} min depuis ton départ`}</small>` : ''}
+    <br><button type="button" class="btn small ${coches.has(m.id) ? '' : 'primary'}" data-pk="${esc(m.id)}">${coches.has(m.id) ? 'Retirer de la sélection' : 'Ajouter'}</button></div>`;
+  const basculer = id => {
+    coches.has(id) ? coches.delete(id) : coches.add(id);
+    const mk = marqueurs.get(id), m = list.find(x => x.id === id);
+    if (mk && m) { mk.setStyle(styleDe(m)); mk.setPopupContent(popupDe(m)); if (coches.has(id)) mk.bringToFront(); }
+    const cb = document.querySelector(`dialog[open] input[name="m:${CSS.escape(id)}"]`); if (cb && !cb.disabled) cb.checked = coches.has(id);
+    compte();
+  };
+  const compte = () => { const n = coches.size; const v = document.querySelector('dialog[open] footer .btn.primary'); if (v) v.textContent = n ? `Ajouter ${n} magasin${n > 1 ? 's' : ''} à la tournée` : 'Ajouter à la tournée'; };
+  const dessinerCarte = (cadrer = false) => {
+    if (!pmap) return;
+    couche.clearLayers(); marqueurs.clear();
+    // la journée telle qu'elle est (départ, magasins numérotés, retour)
+    const trace = arrets.map(a => [a.p.lat, a.p.lon]);
+    if (trace.length > 1) L.polyline(trace, { color: '#1E4FA0', weight: 3, opacity: .55, dashArray: '6 8' }).addTo(couche);
+    if (depart?.lat != null) repereDepart(depart, depart !== s.depart).addTo(couche);
+    for (const m of filtres) {
+      if (m.lat == null || dans.has(m.id)) continue;
+      const mk = L.circleMarker([m.lat, m.lon], styleDe(m)).bindPopup(popupDe(m), { autoPanPadding: [20, 20] }).addTo(couche);
+      marqueurs.set(m.id, mk);
+    }
+    t.etapes.forEach((e, i) => { const m = mags.get(e.magasinId); if (m?.lat != null) repere(m, i + 1).bindPopup(`<strong>${esc(m.nom)}</strong><br><small>déjà dans ta journée (n° ${i + 1})</small>`).addTo(couche); });
+    if (cadrer) {
+      // cadrage : ta journée et ses environs, sinon tous les magasins affichés
+      const pts = arrets.length > 1 ? arrets.map(a => a.p) : filtres.filter(m => m.lat != null);
+      if (pts.length) map0(pts);
+    }
+  };
+  const map0 = pts => { const b = L.latLngBounds(pts.map(p => [p.lat, p.lon])); pmap.fitBounds(arrets.length > 1 ? b.pad(0.35) : b.pad(0.05), { animate: false, maxZoom: 11 }); };
+  const ouvrirCarte = async () => {
+    const box = document.querySelector('dialog[open] #pickMap');
+    if (!box) return;
+    if (!pmap) {
+      pmap = await carte(box, { keyboard: false });
+      couche = L.featureGroup().addTo(pmap);
+      pmap.on('popupopen', ev => { const b = ev.popup.getElement()?.querySelector('[data-pk]'); if (b) b.onclick = () => { basculer(b.dataset.pk); pmap.closePopup(); }; });
+      dessinerCarte(true);
+    }
+    setTimeout(() => { pmap?.invalidateSize(); box.scrollIntoView({ block: 'nearest' }); }, 30);
+  };
+  const vue = v => {
+    choix.vue = v;
+    $$('[data-vue]').forEach(b => b.setAttribute('aria-pressed', b.dataset.vue === v));
+    $('#pickCarte').hidden = v !== 'carte'; $('#pickList').hidden = v === 'carte';
+    maj(); if (v === 'carte') ouvrirCarte();
+  };
   const maj = () => {
     const q = norm($('#pickQ').value), d = $('#pickDep').value;
     choix.prio = $('#pickPrio').value; choix.voir = $('#pickVoir').value; choix.tri = $('#pickTri').value;
@@ -613,6 +711,8 @@ export async function choisirMagasins(t, all, s, depart = t.depart?.lat != null 
       distance: (a, b) => (a.lat == null) - (b.lat == null) || haversine(s.depart, a) - haversine(s.depart, b),
       enseigne: (a, b) => a.enseigne.localeCompare(b.enseigne) || a.ville.localeCompare(b.ville) }[choix.tri];
     l.sort((a, b) => (dans.has(a.id) - dans.has(b.id)) || (coches.has(b.id) - coches.has(a.id)) || cmp(a, b));
+    filtres = l;
+    if (choix.vue === 'carte') { dessinerCarte(); $('#pickHint').textContent = `${l.filter(m => m.lat != null && !dans.has(m.id)).length} magasins sur la carte. Touche un point pour voir le détour, puis « Ajouter ».`; return; }
     $('#pickList').innerHTML = l.slice(0, 150).map(row).join('') || '<p class="empty">Aucun magasin ne correspond à ces filtres.</p>';
     $('#pickHint').textContent = `${l.length} magasin${l.length > 1 ? 's' : ''}${l.length > 150 ? ' (150 premiers affichés, affine les filtres)' : ''}. `
       + (aDesEtapes ? `À droite : la route en plus pour le placer au meilleur endroit de ta journée (« entre 1 et 2 » = entre tes magasins n° 1 et 2), et ta nouvelle heure de fin${base ? ` (actuellement ${fmtHeure(base.fin)})` : ''}, visite comprise. Il sera ajouté à cette place.` : 'Le chiffre à droite = temps de route depuis ton départ (estimation).');
@@ -621,10 +721,13 @@ export async function choisirMagasins(t, all, s, depart = t.depart?.lat != null 
     const e = b.dataset.e; choix.ens = choix.ens.includes(e) ? choix.ens.filter(x => x !== e) : [...choix.ens, e];
     b.setAttribute('aria-pressed', choix.ens.includes(e)); maj();
   });
-  $('#pickList').onchange = e => { const i = e.target; if (i.name?.startsWith('m:')) i.checked ? coches.add(i.name.slice(2)) : coches.delete(i.name.slice(2)); };
+  $('#pickList').onchange = e => { const i = e.target; if (i.name?.startsWith('m:')) { i.checked ? coches.add(i.name.slice(2)) : coches.delete(i.name.slice(2)); compte(); } };
   $('#pickQ').oninput = maj; ['#pickDep', '#pickPrio', '#pickVoir', '#pickTri'].forEach(x => { $(x).onchange = maj; });
+  $$('[data-vue]').forEach(b => b.onclick = () => vue(b.dataset.vue));
   maj();
+  if (choix.vue === 'carte') vue('carte');
   const r = await p;
+  if (pmap) { pmap.off(); pmap.remove(); pmap = null; }
   if (!r) return false;
   const ids = [...new Set([...coches, ...Object.keys(r).filter(k => k.startsWith('m:')).map(k => k.slice(2))])].filter(id => !dans.has(id));
   // chaque magasin est inséré à sa meilleure place (recalculée après chaque ajout), pas simplement à la fin

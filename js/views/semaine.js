@@ -566,4 +566,141 @@ function caserRendezVous(t, mags, s, rdvs, gardes) {
   }
 }
 
+// ── Remplir UNE journée (vue Jour et simulation d'une journée) ──────────────────────
+// Complète la journée : les magasins déjà prévus restent, l'appli ajoute autour d'eux
+// (magasins à inclure obligatoirement, nombre maximum, zone, enseignes…). Les magasins
+// prévus les autres jours de la semaine ne sont pas repris. Modifie t (sans l'enregistrer).
+export async function remplirJour(date, t, all, s, rdvs, opts = {}) {
+  const c = { ...DEFAULT_SETTINGS.ciblage, ...(s.ciblage || {}) };
+  const lundi = lundiDe(date);
+  const autres = new Map();   // magasin → jour où il est déjà prévu cette semaine
+  for (let i = 0; i < 7; i++) {
+    const d = decale(lundi, i);
+    if (d === date) continue;
+    (await db.get('tournees', d))?.etapes?.forEach(e => autres.set(e.magasinId, d));
+  }
+  const enseignes = [...new Set(all.map(m => m.enseigne).filter(Boolean))]
+    .sort((a, b) => all.filter(m => m.enseigne === b).length - all.filter(m => m.enseigne === a).length);
+  const deps = [...new Set(all.map(m => String(m.departement)))].sort();
+  const etiq = m => `${m.nom} — ${m.cp || ''} ${m.ville || ''}`.trim();
+  const byId = new Map(all.map(m => [m.id, m]));
+  const prevus = t.etapes.map(e => byId.get(e.magasinId)).filter(Boolean);
+  const maxDefaut = c.modeMax === 'fixe' || (!c.modeMax && c.maxParJour) ? (c.maxParJour || 4) : '';
+  const p = modal({ titre: opts.titre || 'Remplir la journée automatiquement', valider: opts.valider || 'Remplir la journée', large: true, corps: `
+    <p class="hint">${prevus.length ? `Les ${prevus.length} magasin${prevus.length > 1 ? 's' : ''} déjà prévu${prevus.length > 1 ? 's' : ''} restent : l'appli complète autour.` : 'La journée est vide : l\'appli la construit selon les priorités et les retards de visite.'} Les magasins prévus les autres jours de la semaine ne sont pas repris.</p>
+    <fieldset><legend>Magasins à inclure obligatoirement</legend>
+      <p class="hint">La journée se construit autour. L'heure est facultative (comme un RDV).</p>
+      <div id="imposes" class="imposes"></div>
+      <datalist id="magsDLj">${all.filter(m => m.lat != null).map(m => `<option value="${esc(etiq(m))}">`).join('')}</datalist>
+      <button type="button" class="btn small" id="addImp">+ Ajouter un magasin</button></fieldset>
+    <fieldset><legend>Nombre de magasins</legend>
+      <label class="mini-ligne">Maximum <input type="number" name="max" min="1" max="15" value="${esc(maxDefaut)}" placeholder="libre" class="mini-num" aria-label="Magasins maximum dans la journée"> magasins dans la journée <small class="muted">(déjà prévus compris · vide = autant que les horaires le permettent)</small></label>
+      <div class="row"><label>Finir au plus tard à <small class="muted">(vide = ${s.heureFin})</small><input type="time" name="fin" value=""></label></div></fieldset>
+    <fieldset><legend>Zone</legend>
+      <label>Rester dans le coin de<select name="zone">
+        <option value="libre">Libre</option>
+        ${prevus.some(m => m.lat != null) ? `<option value="autour" selected>Autour de ${esc(prevus[0].nom)}${prevus.length > 1 ? ' et des magasins prévus' : ''}</option>` : ''}
+        ${deps.map(dp => `<option value="dep:${dp}">Département ${dp}</option>`).join('')}</select></label>
+      <label class="mini-ligne">Autour = à moins de <input type="number" name="rayon" min="15" max="120" step="5" value="${c.rayonZone || 45}" class="mini-num"> min de route</label></fieldset>
+    <details class="plus-options"><summary>Enseignes, priorités, départements</summary>
+      <fieldset><legend>Enseignes prioritaires</legend>
+        <div class="chips">${enseignes.map(e => `<label class="chip-check"><input type="checkbox" name="ens:${esc(e)}" ${c.enseignes.includes(e) ? 'checked' : ''}><span>${esc(e)}</span></label>`).join('')}</div>
+        <div class="radio-col">
+          <label class="check"><input type="radio" name="autres" value="detour" ${c.autres === 'detour' ? 'checked' : ''}> Les autres magasins seulement s'ils sont sur le chemin</label>
+          <label class="check"><input type="radio" name="autres" value="normal" ${c.autres === 'normal' ? 'checked' : ''}> Les autres magasins normalement</label>
+          <label class="check"><input type="radio" name="autres" value="aucun" ${c.autres === 'aucun' ? 'checked' : ''}> Uniquement les enseignes prioritaires</label>
+        </div></fieldset>
+      <fieldset><legend>Filtres</legend>
+        <div class="chips">${[1, 2, 3].map(k => `<label class="chip-check"><input type="checkbox" name="prio:${k}" ${c.priorites.includes(k) ? 'checked' : ''}><span>${PRIORITES[k].label}</span></label>`).join('')}</div>
+        <p class="small">Départements <span class="muted">(aucun coché = tous)</span></p>
+        <div class="chips">${deps.map(d => `<label class="chip-check"><input type="checkbox" name="dep:${d}" ${c.departements.map(String).includes(d) ? 'checked' : ''}><span>${d}</span></label>`).join('')}</div>
+        <label>Détour accepté pour un magasin en retard de visite (minutes)<input type="number" name="detour" min="0" step="5" value="${s.detourRetard ?? 40}"></label></fieldset>
+    </details>
+    <p class="hint">Les rendez-vous du jour sont toujours gardés, à leur heure. Horaires : ${t.heureDebut || s.heureDebut}–${s.heureFin}.</p>` });
+  const dlg = document.querySelector('dialog[open]');
+  let nImp = 0;
+  dlg.querySelector('#addImp').onclick = () => {
+    const i = nImp++; const d = document.createElement('div'); d.className = 'imp-ligne';
+    d.innerHTML = `<input name="impM:${i}" list="magsDLj" placeholder="Tape le nom ou la ville du magasin" aria-label="Magasin" autocomplete="off">
+      <input type="time" name="impH:${i}" aria-label="Heure (facultatif)" title="Heure (facultatif)">
+      <button type="button" class="btn-icon" aria-label="Retirer">✕</button>`;
+    d.querySelector('button').onclick = () => d.remove();
+    dlg.querySelector('#imposes').append(d); d.querySelector('input').focus();
+  };
+  const r = await p;
+  if (!r) return false;
+  const parEtiq = new Map(all.filter(m => m.lat != null).map(m => [norm(etiq(m)), m]));
+  const imposes = [], inconnus = [];
+  for (const k of Object.keys(r).filter(k => k.startsWith('impM:'))) {
+    const txt = (r[k] || '').trim();
+    if (!txt) continue;
+    let m = parEtiq.get(norm(txt));
+    if (!m) { const l = all.filter(x => x.lat != null && norm(etiq(x)).includes(norm(txt))); if (l.length === 1) m = l[0]; }
+    if (!m) { inconnus.push(txt); continue; }
+    imposes.push({ m, heure: r['impH:' + k.slice(5)] || '' });
+  }
+  if (inconnus.length) { toast(`Magasin introuvable : ${inconnus.join(', ')}. Choisis-le dans la liste proposée.`, 'warn'); return false; }
+  const prios = [1, 2, 3].filter(k => r['prio:' + k] === 'on');
+  if (!prios.length) { toast('Coche au moins une priorité', 'warn'); return false; }
+  const max = r.max === '' || r.max == null ? null : Math.max(1, Number(r.max) || 1);
+  const loc = all.filter(m => m.lat != null);
+  const rayon = Math.max(15, Number(r.rayon) || 45);
+  const centre = l => l.length ? { lat: l.reduce((a, m) => a + m.lat, 0) / l.length, lon: l.reduce((a, m) => a + m.lon, 0) / l.length } : null;
+  const z = r.zone || 'libre';
+  const zone = z === 'autour' ? (() => { const c0 = centre([...prevus, ...imposes.map(i => i.m)].filter(m => m.lat != null)); return c0 ? { ...c0, rayon } : null; })()
+    : z.startsWith('dep:') ? (() => { const dep = z.slice(4); const c0 = centre(loc.filter(m => String(m.departement) === dep)); return c0 ? { ...c0, dep } : null; })() : null;
+  const cible = {
+    enseignes: enseignes.filter(e => r['ens:' + e] === 'on'), autres: r.autres || 'detour', detourPetit: Number(c.detourPetit) || 0,
+    completer: c.completer, priorites: prios, departements: deps.filter(d => r['dep:' + d] === 'on'),
+    limites: [max], joursOff: [], feriesDecides: true, debuts: [t.heureDebut || null], finDernierJour: r.fin || '', zones: [zone],
+  };
+  // déjà prévus + imposés : gardés ; heures de RDV respectées
+  const heures = new Map();
+  t.etapes.forEach(e => { const h = heureRdv(e, rdvs.get(e.magasinId), date); if (h) heures.set(e.magasinId, h.heure); });
+  imposes.forEach(im => { if (im.heure) heures.set(im.m.id, im.heure); });
+  const ids = [...new Set([...t.etapes.map(e => e.magasinId), ...imposes.map(im => im.m.id)])];
+  const fixes = new Map([[0, ids]]);
+  const exclus = new Set([...ids, ...autres.keys()]);
+  const sPlan = { ...s, decoucher: false, detourRetard: Number(r.detour) || 0, joursTerrain: 1 };
+  const plan = planifier(loc, sPlan, { debut: date, semaines: 1, fixes, exclus, cible, heures });
+  const j = plan.jours[0] || { etapes: [], detours: [], ajouts: {} };
+  const anciens = new Map(t.etapes.map(e => [e.magasinId, e]));
+  const avant = t.etapes.length;
+  t.etapes = j.etapes.map(id => anciens.get(id) || { magasinId: id, fait: false, auto: true, detour: j.detours.includes(id), ...(id in (j.ajouts || {}) ? { surChemin: j.ajouts[id] } : {}) });
+  for (const e of anciens.values()) if (!t.etapes.includes(e)) t.etapes.push(e);   // jamais perdre un magasin déjà prévu (non localisé…)
+  for (const im of imposes) {
+    let e = t.etapes.find(x => x.magasinId === im.m.id);
+    if (!e) { e = { magasinId: im.m.id, fait: false }; t.etapes.push(e); }
+    e.impose = true; if (im.heure) e.heureImposee = im.heure;
+  }
+  t.calcul = null;
+  const sFin = r.fin ? { ...s, heureFin: r.fin } : s;
+  const retires = caserRendezVous(t, byId, sFin, rdvs, new Set(ids));
+  const dejaLa = new Set([...t.etapes.map(e => e.magasinId), ...autres.keys()]);
+  const pool = loc.filter(m => !dejaLa.has(m.id) && m.urgence >= 0.5 && prios.includes(m.prio)
+    && (!cible.departements.length || cible.departements.includes(String(m.departement)))
+    && (cible.autres !== 'aucun' || !cible.enseignes.length || cible.enseignes.includes(m.enseigne)));
+  const combles = !max || t.etapes.length < max ? comblerAttente(t, byId, sFin, rdvs, pool, dejaLa, max || 0) : 0;
+  const ajoutes = t.etapes.length - avant;
+  const dejaAilleurs = imposes.filter(im => autres.has(im.m.id)).map(im => `${im.m.nom} (aussi prévu le ${dateEnLettres(autres.get(im.m.id))})`);
+  const res = { n: t.etapes.length, ajoutes, combles, retires, dejaAilleurs };
+  if (opts.sortie) { await opts.sortie(t, res); return res; }
+  toast(`${ajoutes > 0 ? `${ajoutes} magasin${ajoutes > 1 ? 's' : ''} ajouté${ajoutes > 1 ? 's' : ''}` : 'Aucun magasin à ajouter avec ces réglages'} · ${t.etapes.length} dans la journée`
+    + `${retires ? ` · ${retires} retiré${retires > 1 ? 's' : ''} pour tenir les RDV` : ''}${dejaAilleurs.length ? ` · attention : ${dejaAilleurs.join(', ')}` : ''}`, dejaAilleurs.length ? 'warn' : undefined);
+  return res;
+}
+
+// « Optimiser la semaine » depuis la vue Jour : même traitement que le bouton de la Semaine
+export async function optimiserSemaineDepuis(date, s) {
+  const lundi = lundiDe(date);
+  const nb = Math.max(1, Math.min(6, Number(s.joursTerrain) || 5));
+  const dates = Array.from({ length: nb }, (_, i) => decale(lundi, i));
+  const all = await magasinsEnrichis(s);
+  const mags = new Map(all.map(m => [m.id, m]));
+  const tours = await Promise.all(dates.map(getTournee));
+  tours.forEach(t => { t.etapes = t.etapes.filter(e => mags.has(e.magasinId)); });
+  if (tours.reduce((a, t) => a + t.etapes.length, 0) < 2) { toast('Pas assez de magasins prévus cette semaine pour optimiser', 'warn'); return false; }
+  return optimiserSemaineUI(tours, mags, s, await tousLesRdv());
+}
+
 export function destroy() { if (map) { map.stop(); map.off(); map.remove(); map = null; } }

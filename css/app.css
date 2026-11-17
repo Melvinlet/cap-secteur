@@ -924,3 +924,39 @@ h2 .tag-sem { font-size: .7em; }
 /* sélecteur de magasins : place, km et heure de fin sous le détour */
 .pick-droite { flex: none; display: flex; flex-direction: column; align-items: flex-end; gap: .15rem; text-align: right; }
 .pick-droite small { font-size: .72rem; color: var(--gris); line-height: 1.25; white-space: nowrap; }
+
+/* ── v1.11 : planif journée (RDV du jour, actions), choix des magasins sur carte, simulation d'une journée ── */
+.seg button[aria-pressed="true"] { background: var(--bleu); color: #fff; }
+.seg button + button { border-left: 1.5px solid var(--trait); }
+.actions-2 { margin-top: -.25rem; }
+.rdv-jour { border: 1.5px solid var(--trait); border-left: 4px solid var(--vert); border-radius: var(--r); padding: .6rem .8rem; margin: .75rem 0; background: var(--surface); }
+.rdv-jour h2 { font-size: 1rem; margin: 0 0 .4rem; }
+.rdv-jour ul { margin: 0 0 .3rem; }
+.rdv-jour-l { display: grid; grid-template-columns: 3.2rem minmax(0, 1fr) auto; gap: .5rem; align-items: center; padding: .35rem 0; border-top: 1px solid var(--trait); }
+.rdv-jour-l:first-child { border-top: 0; }
+.rdv-jour-h { font-weight: 700; font-variant-numeric: tabular-nums; }
+.rdv-jour-m { min-width: 0; }
+.rdv-jour-l.reporte .rdv-jour-h, .rdv-jour-l.reporte .rdv-jour-m a { color: var(--gris); text-decoration: line-through; }
+.tag.wait { background: #FCEBD7; color: #8A4705; }
+@media (prefers-color-scheme: dark) { .tag.wait { background: #3A2A16; color: var(--orange); } }
+@media (max-width: 420px) { .rdv-jour-l { grid-template-columns: 2.8rem minmax(0, 1fr); } .rdv-jour-l > :last-child { grid-column: 2; justify-self: start; } }
+.pick-top { display: flex; gap: .5rem; align-items: center; }
+.pick-top input[type=search] { flex: 1; min-width: 0; margin: 0; }
+.pick-vue { flex: none; }
+.pick-vue button { padding: .45rem .8rem; }
+.pick-carte { margin-top: .5rem; }
+.pick-map { height: min(55vh, 520px); border: 1px solid var(--trait); border-radius: var(--r); }
+.pick-leg { display: flex; flex-wrap: wrap; gap: .3rem 1rem; margin: .4rem 0 0; color: var(--gris); }
+.pick-leg span { display: inline-flex; align-items: center; gap: .35rem; }
+.pk { display: inline-block; width: 12px; height: 12px; border-radius: 50%; background: var(--bleu); border: 1.5px solid #fff; box-shadow: 0 0 0 1px var(--trait); }
+.pk-tour { border-radius: 3px; background: #1E4FA0; }
+.pk-sel { background: #F2C230; border: 2px solid #111; }
+.pk-retard { border: 2.5px solid #1B2430; }
+@media (prefers-color-scheme: dark) { .pk-retard { border-color: #E8ECF1; } }
+.pick-pop { line-height: 1.45; }
+.pick-pop .btn { margin-top: .4rem; }
+.sim-mode { margin: 0 0 .6rem; }
+.sim-mode a { padding: .4rem 1rem; font: 600 .9rem var(--sans); color: var(--gris); background: var(--surface); text-decoration: none; min-height: 38px; display: flex; align-items: center; }
+.sim-mode a + a { border-left: 1.5px solid var(--trait); }
+.sim-mode a[aria-current] { background: var(--bleu); color: #fff; }
+.plus-options > summary { cursor: pointer; font-weight: 600; color: var(--bleu); padding: .4rem 0; }
