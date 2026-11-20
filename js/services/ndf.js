@@ -205,7 +205,7 @@ const txt = v => String(v ?? '').replace(/[\u202F\u00A0]/g, ' ').replace(/[→�
 const eur = v => (Math.round((Number(v) || 0) * 100) / 100).toFixed(2).replace('.', ',').replace(/\B(?=(\d{3})+(?!\d))/g, ' ') + ' €';
 const dfr = iso => { const [y, m, d] = iso.split('-'); return `${d}/${m}/${y.slice(2)}`; };
 
-export async function genererNdfPdf(frais, images, s, { date }) {
+export async function genererNdfPdf(frais, images, s, { date, du = '', au = '' }) {
   const jsPDF = await loadJsPDF();
   const doc = new jsPDF({ unit: 'mm', format: 'a4', orientation: 'portrait' });
   const W = 210, M = 10, nom = (s.commercial || '').trim();
@@ -221,6 +221,8 @@ export async function genererNdfPdf(frais, images, s, { date }) {
     doc.setFont('helvetica', 'bold'); doc.setFontSize(10);
     doc.text('NOM :', M, 14); doc.text('DATE :', M, 20);
     doc.setFont('helvetica', 'normal'); doc.text(txt(nom), M + 16, 14); doc.text(dfr(date), M + 16, 20);
+    if (du && au) { const v = `du ${dfr(du)} au ${dfr(au)}`; doc.setFont('helvetica', 'normal'); doc.text(v, W - M, 20, { align: 'right' });
+      const lv = doc.getTextWidth(v); doc.setFont('helvetica', 'bold'); doc.text('PÉRIODE :', W - M - lv - 2, 20, { align: 'right' }); }
     doc.setFont('helvetica', 'bold'); doc.setFontSize(16); doc.text(txt(PROFIL.ndf.titre || 'NOTE DE FRAIS'), W / 2, 30, { align: 'center' });
     if (PROFIL.ndf.mention) { doc.setFontSize(7); doc.text(txt(PROFIL.ndf.mention), M, 30); }
   };

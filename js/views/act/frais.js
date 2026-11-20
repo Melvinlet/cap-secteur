@@ -1,5 +1,5 @@
 // Notes de frais : dépenses, ce qui m'est dû, ce qui a été remboursé, justificatifs, export.
-import { db, uid, getSettings } from '../../db.js';
+import { db, uid, getSettings, saveSettings } from '../../db.js';
 import { $, $$, esc, fmtDate, modal, toast, downloadBlob, confirmer } from '../../ui.js';
 import { STATUTS_FRAIS, DEFAULT_SETTINGS, PROFIL } from '../../config.js';
 import { periode, decaler, libellePeriode } from '../../services/activite.js';
@@ -48,8 +48,8 @@ export async function render(el) {
     </div>
     <div class="actions">
       <button class="btn primary" id="add">Ajouter une dépense</button>
-      <button class="btn primary" id="ndf" ${liste.length ? '' : 'disabled'}>${esc(PROFIL.ndf.nom || 'Note de frais')} (Excel)</button>
-      <button class="btn primary" id="ndfPdf" ${liste.length ? '' : 'disabled'}>Note de frais en PDF</button>
+      <button class="btn primary" id="ndf" ${tous.length ? '' : 'disabled'}>${esc(PROFIL.ndf.nom || 'Note de frais')} (Excel)</button>
+      <button class="btn primary" id="ndfPdf" ${tous.length ? '' : 'disabled'}>Note de frais en PDF</button>
       <button class="btn" id="xls" ${liste.length ? '' : 'disabled'}>Export simple (Excel)</button>
       <select id="fst" aria-label="Statut"><option value="">Tous les statuts</option>${Object.entries(STATUTS_FRAIS).map(([k, v]) => `<option value="${k}" ${f.statut === k ? 'selected' : ''}>${v}</option>`).join('')}</select>
       <select id="fcat" aria-label="Catégorie"><option value="">Toutes catégories</option>${cats.map(c => `<option ${f.cat === c ? 'selected' : ''}>${esc(c)}</option>`).join('')}</select>
@@ -94,8 +94,9 @@ export async function render(el) {
     toast(`${n.length} dépense${n.length > 1 ? 's' : ''} : ${STATUTS_FRAIS[vers]}`);
     render(el);
   });
-  $('#ndf', el).onclick = () => noteEntreprise(liste, s, 'xlsx').then(ok => ok && render(el));
-  $('#ndfPdf', el).onclick = () => noteEntreprise(liste, s, 'pdf').then(ok => ok && render(el));
+  // la note de frais a sa propre période (du … au …), choisie dans la fenêtre : pas forcément le mois affiché
+  $('#ndf', el).onclick = () => noteEntreprise(tous, s, 'xlsx').then(ok => ok && render(el));
+  $('#ndfPdf', el).onclick = () => noteEntreprise(tous, s, 'pdf').then(ok => ok && render(el));
   $('#xls', el).onclick = async () => {
     const ExcelJS = await loadExcelJS();
     const wb = new ExcelJS.Workbook();
@@ -175,23 +176,63 @@ async function editer(x, s, base) {
   return true;
 }
 
-// Note de frais au format du profil entreprise : choix des dépenses, puis Excel et/ou PDF avec justificatifs
-async function noteEntreprise(liste, s, format = 'xlsx') {
+// Note de frais au format du profil entreprise : période (du … au …), choix des dépenses, puis Excel et/ou PDF avec justificatifs.
+// La période ne suit pas forcément le mois : on envoie souvent la note avant la fin du mois, le reste part sur la note suivante.
+const decaleJ = (iso, n) => { const d = new Date(iso + 'T12:00'); d.setDate(d.getDate() + n); return d.toISOString().slice(0, 10); };
+async function noteEntreprise(tous, s, format = 'xlsx') {
   const defaut = x => x.payeur === 'moi' && x.remboursable !== false && x.statut !== 'refusee' && x.statut !== 'remboursee';
-  const tri = liste.slice().sort((a, b) => a.date.localeCompare(b.date));
-  const r = await modal({ titre: PROFIL.ndf.nom || 'Note de frais', valider: 'Créer la note de frais', large: true, corps: `
+  const tri = tous.slice().sort((a, b) => a.date.localeCompare(b.date));
+  const auj = today(), debutMois = auj.slice(0, 8) + '01';
+  const moisPrec = (() => { const d = new Date(debutMois + 'T12:00'); d.setMonth(d.getMonth() - 1); const a = d.toISOString().slice(0, 10); return [a, decaleJ(debutMois, -1)]; })();
+  // période proposée : depuis le lendemain de la dernière note (sinon la plus ancienne dépense à déclarer, sinon le début du mois) jusqu'à aujourd'hui
+  const apresDerniere = s.ndfDernierAu ? decaleJ(s.ndfDernierAu, 1) : '';
+  const plusAncienne = tri.find(x => x.statut === 'aDeclarer' && defaut(x))?.date || '';
+  const du0 = apresDerniere && apresDerniere <= auj ? apresDerniere : plusAncienne && plusAncienne < debutMois ? plusAncienne : debutMois;
+  const raccourcis = [
+    ...(apresDerniere && apresDerniere <= auj ? [['Depuis la dernière note', apresDerniere, auj]] : []),
+    ['Ce mois-ci jusqu\'à aujourd\'hui', debutMois, auj],
+    ['Le mois dernier', ...moisPrec],
+  ];
+  const p = modal({ titre: PROFIL.ndf.nom || 'Note de frais', valider: 'Créer la note de frais', large: true, corps: `
+    <fieldset><legend>Période de la note</legend>
+      <div class="row"><label>Du<input type="date" name="du" value="${du0}" required></label><label>Au<input type="date" name="au" value="${auj}" required></label></div>
+      <div class="chips">${raccourcis.map(([l, a, b]) => `<button type="button" class="btn small ghost" data-per="${a}|${b}">${esc(l)}</button>`).join('')}</div>
+      ${s.ndfDernierAu ? `<p class="hint">Ta dernière note s'arrêtait au ${fmtDate(s.ndfDernierAu)}.</p>` : ''}</fieldset>
     <div class="seg" role="radiogroup" aria-label="Fichier à créer">${[['pdf', 'PDF'], ['xlsx', 'Excel'], ['les2', 'Les deux']].map(([k, l]) => `<label class="seg-r"><input type="radio" name="format" value="${k}" ${k === format ? 'checked' : ''}><span>${l}</span></label>`).join('')}</div>
     <p class="hint">PDF : le tableau de la note (comme l'Excel) puis tous les justificatifs, un par page, dans l'ordre des dates des dépenses.
     Excel : onglets « ${esc(PROFIL.ndf.ongletReel || 'Frais')} », « ${esc(PROFIL.ndf.ongletIk || 'Indemnités km')} » et « Justificatifs ». Les numéros de justificatif sont rappelés sur chaque ligne.</p>
     ${s.commercial ? '' : '<p class="banner">Renseigne ton nom dans les Réglages : il remplit « NOM » et le nom du fichier.</p>'}
     <label>Date de la note<input type="date" name="date" value="${today()}" required></label>
-    <div class="ndf-list">${tri.map(x => `<label class="pick"><input type="checkbox" name="f:${x.id}" ${defaut(x) ? 'checked' : ''}>
+    <p class="ndf-compte" id="ndfCompte" aria-live="polite"></p>
+    <div class="ndf-list">${tri.map(x => `<label class="pick" data-date="${x.date}"><input type="checkbox" name="f:${x.id}" ${defaut(x) ? 'checked' : ''}>
       <span class="pick-info"><strong>${esc(x.libelle || x.categorie)}</strong><small>${fmtDate(x.date)} · ${esc(estIkm(x) ? 'Indemnités km' : colonneNdf(x.categorie))}${x.justificatif ? ' · 📎 justificatif' : ' · <b class="late-txt">sans justificatif</b>'}${x.payeur === 'societe' ? ' · carte société' : ''}${x.payeur === 'moi' && x.remboursable === false ? ' · <b>non remboursable</b>' : ''}${x.statut === 'declaree' ? ' · déjà déclarée' : x.statut === 'remboursee' ? ' · déjà remboursée' : ''}</small></span>
-      <span class="pick-det">${euros(x.montant)}</span></label>`).join('')}</div>
+      <span class="pick-det">${euros(x.montant)}</span></label>`).join('')}<p class="muted" id="ndfVide" hidden>Aucune dépense sur cette période.</p></div>
     <p class="hint">Cochées par défaut : les dépenses que tu as avancées, remboursables et pas encore remboursées. Dans le fichier, elles sont classées par date de la dépense (pas par date d'ajout).</p>
     <label class="check"><input type="checkbox" name="declarer" checked> Passer ces dépenses en « Déclarée »</label>` });
+  // seules les dépenses de la période sont affichées (et comptées)
+  const dlg = document.querySelector('dialog[open]'), fo = dlg.querySelector('form') || dlg;
+  const parId = new Map(tri.map(x => [x.id, x]));
+  const majPer = () => {
+    const a = fo.querySelector('[name="du"]').value, b = fo.querySelector('[name="au"]').value;
+    let n = 0, tot = 0, vis = 0;
+    dlg.querySelectorAll('.ndf-list .pick').forEach(l => {
+      const dedans = (!a || l.dataset.date >= a) && (!b || l.dataset.date <= b);
+      l.hidden = !dedans; if (dedans) vis++;
+      const c = l.querySelector('input');
+      if (dedans && c.checked) { n++; tot += Number(parId.get(c.name.slice(2))?.montant) || 0; }
+    });
+    dlg.querySelector('#ndfVide').hidden = vis > 0;
+    dlg.querySelector('#ndfCompte').textContent = a && b && a > b ? 'La date de début est après la date de fin.'
+      : `${n} dépense${n > 1 ? 's' : ''} cochée${n > 1 ? 's' : ''} du ${fmtDate(a)} au ${fmtDate(b)} · ${euros(tot)}`;
+  };
+  fo.querySelectorAll('[name="du"], [name="au"]').forEach(i => i.addEventListener('change', majPer));
+  dlg.querySelector('.ndf-list').addEventListener('change', majPer);
+  dlg.querySelectorAll('[data-per]').forEach(b => b.onclick = () => { const [a, z] = b.dataset.per.split('|'); fo.querySelector('[name="du"]').value = a; fo.querySelector('[name="au"]').value = z; majPer(); });
+  majPer();
+  const r = await p;
   if (!r) return false;
-  const choisis = tri.filter(x => r['f:' + x.id] === 'on');
+  if (r.du > r.au) { toast('La date de début est après la date de fin', 'warn'); return false; }
+  const choisis = tri.filter(x => r['f:' + x.id] === 'on' && x.date >= r.du && x.date <= r.au);
   if (!choisis.length) { toast('Aucune dépense cochée', 'warn'); return false; }
   const images = new Map();
   for (const x of choisis) if (x.justificatif) { const im = await db.get('images', x.justificatif); if (im?.blob) images.set(x.justificatif, im); }
@@ -200,10 +241,11 @@ async function noteEntreprise(liste, s, format = 'xlsx') {
   const fichier = nomFichierNdf(s, r.date);
   if (r.format !== 'pdf') downloadBlob(await genererNdf(choisis, images, s, { date: r.date, bareme }), fichier);
   if (r.format !== 'xlsx') {
-    try { downloadBlob(await genererNdfPdf(choisis, images, s, { date: r.date }), fichier.replace(/\.xlsx$/, '.pdf')); }
+    try { downloadBlob(await genererNdfPdf(choisis, images, s, { date: r.date, du: r.du, au: r.au }), fichier.replace(/\.xlsx$/, '.pdf')); }
     catch (e) { toast(e.message || 'Création du PDF impossible', 'warn'); return false; }
   }
   if (r.declarer === 'on') for (const x of choisis.filter(y => y.statut === 'aDeclarer')) await db.put('frais', { ...x, statut: 'declaree', declareLe: today(), maj: new Date().toISOString() });
+  await saveSettings({ ndfDernierAu: r.au });   // la prochaine note repartira du lendemain
   const sans = choisis.filter(x => !x.justificatif).length;
   toast(`Note de frais créée : ${choisis.length} dépense${choisis.length > 1 ? 's' : ''}${sans ? ` (${sans} sans justificatif)` : ''}`);
   return true;
