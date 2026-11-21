@@ -8,7 +8,7 @@ import { downloadBlob, $, $$, esc, borne, prioTag, enseigneColor, fmtKm, fmtDure
 import { optimiserOrdre, calculerTrajets, lienGps, estimate, trajet, trajetBrut } from '../services/routing.js';
 import { geocodeMagasin, haversine } from '../services/geo.js';
 import { carte, repere, repereDepart, animerTrace } from '../carte.js';
-import { tousLesRdv, labelStatut } from '../services/rdv.js';
+import { tousLesRdv, labelStatut, tagEtatRdv } from '../services/rdv.js';
 import { marquerVisite, annulerVisite, visitesDuJour, lienDetails, estVide } from '../services/visite.js';
 import { ferie } from '../services/feries.js';
 import { aFaireOuverts } from '../services/afaire.js';
@@ -282,6 +282,7 @@ export async function render(el, { date = today() }) {
           <button class="btn ghost" id="calc" ${!t.etapes.length || !departOk ? 'disabled' : ''}>Recalculer</button>
         </div>
         <div class="actions actions-2">
+          <button class="btn small ghost" id="planRdv" title="Un RDV pris sur place ou au téléphone : magasin, jour, heure">Planifier un RDV</button>
           <a class="btn small ghost" href="#/simulation/${date}?jour=1" title="Essayer un remplissage sans toucher à cette journée, puis comparer">Simuler la journée</a>
           <button class="btn small ghost" id="optSem" ${departOk ? '' : 'disabled'} title="Réordonne toute la semaine de ce jour (moins de route, RDV respectés, nuits sur place)">Optimiser la semaine</button>
           <button class="btn small ghost" id="viderJ" ${t.etapes.some(e => !e.rdv && !e.fait) ? '' : 'disabled'}>Vider la journée</button>
@@ -300,7 +301,7 @@ export async function render(el, { date = today() }) {
             <div class="stop-body">
               <a href="#/magasin/${encodeURIComponent(m.id)}"><strong>${esc(m.nom)}</strong></a>
               ${afaires.get(e.magasinId)?.length ? `<p class="afaire-rappel">📌 À faire : ${afaires.get(e.magasinId).map(n => esc(n.aFaire)).join(' · ')}</p>` : ''}
-              <p class="muted">${e.rdv ? `<span class="tag ok">RDV ${e.rdv.heure ? esc(e.rdv.heure) : 'confirmé'}</span> ` : e.heureImposee ? `<span class="tag ok">à ${esc(e.heureImposee)}</span> ` : e.rdvHeure ? `<span class="tag">RDV demandé ${esc(e.rdvHeure)}</span> ` : e.rdvAttente ? '<span class="tag">RDV demandé · en attente</span> ' : ''}${e.retardRdv ? `<span class="tag late">arrivée ${e.retardRdv} min après le RDV</span> ` : ''}${esc(m.ville)} · <button type="button" class="btn-link duree${t.etapes[i]?.duree ? ' modifiee' : ''}" data-duree="${i}" title="Changer le temps passé dans ce magasin">visite ${e.duree} min</button>${m.savOuverts ? ` · <span class="tag warn">${m.savOuverts} SAV</span>` : ''}${m.lat == null ? ' · <span class="tag late">non localisé</span>' : ''}</p>
+              <p class="muted">${e.rdv ? `<span class="tag ok">RDV ${e.rdv.heure ? esc(e.rdv.heure) : 'confirmé'}</span> ` : e.heureImposee ? `<span class="tag ok">à ${esc(e.heureImposee)}</span> ` : `${tagEtatRdv(rdvs.get(e.magasinId), date, s.relanceApres)} `}${e.retardRdv ? `<span class="tag late">arrivée ${e.retardRdv} min après le RDV</span> ` : ''}${esc(m.ville)} · <button type="button" class="btn-link duree${t.etapes[i]?.duree ? ' modifiee' : ''}" data-duree="${i}" title="Changer le temps passé dans ce magasin">visite ${e.duree} min</button>${m.savOuverts ? ` · <span class="tag warn">${m.savOuverts} SAV</span>` : ''}${m.lat == null ? ' · <span class="tag late">non localisé</span>' : ''}</p>
               <div class="stop-actions">
                 ${m.lat != null ? `<a class="btn small" href="${lienGps(s.gps, m)}" target="_blank" rel="noopener">GPS</a>` : ''}
                 <button class="btn small" data-avant="${i}" title="Contact, RDV, à faire, dernier compte rendu, chiffres">Avant d'entrer${afaires.get(e.magasinId)?.length ? ` <span class="badge">${afaires.get(e.magasinId).length}</span>` : ''}</button>
@@ -334,6 +335,10 @@ export async function render(el, { date = today() }) {
   $('#autoJ').onclick = async () => {
     const { remplirJour } = await import('./semaine.js');
     if (await remplirJour(date, t, all, s, rdvs)) save();
+  };
+  $('#planRdv').onclick = async () => {
+    const { planifierRdv } = await import('./planif-rdv.js');
+    if (await planifierRdv({ date })) render(el, { date });
   };
   $('#optSem').onclick = async () => {
     const { optimiserSemaineDepuis } = await import('./semaine.js');

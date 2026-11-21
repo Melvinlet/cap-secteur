@@ -78,6 +78,7 @@ export async function render(el, params = {}) {
 
   el.innerHTML = `<div class="page wide">
     <header class="page-head"><h1>Rendez-vous</h1>
+      <button class="btn primary" id="planRdv" title="Un RDV pris sur place ou au téléphone : magasin, jour, heure">Planifier un RDV</button>
       <div class="seg" role="tablist" aria-label="Magasins"><button role="tab" data-mode="semaine" aria-selected="${etat.mode === 'semaine'}">Mes tournées</button><button role="tab" data-mode="tous" aria-selected="${etat.mode === 'tous'}">Tous les magasins</button></div></header>
     ${params.m ? `<p><a href="#/rdv">Voir tous les rendez-vous</a></p>` : ''}
     <div class="rdv-f">
@@ -98,6 +99,7 @@ export async function render(el, params = {}) {
     <ul class="rdv-list">${visibles.map((l, i) => ligneHTML(l, i)).join('')}</ul>
   </div>`;
 
+  $('#planRdv').onclick = async () => { const { planifierRdv } = await import('./planif-rdv.js'); if (await planifierRdv({})) render(el); };
   $$('[data-mode]').forEach(b => b.onclick = () => { etat.mode = b.dataset.mode; location.hash = '#/rdv'; render(el); });
   $('#chTous')?.addEventListener('click', () => { etat.mode = 'tous'; render(el); });
   $('#du')?.addEventListener('change', e => { etat.du = e.target.value; if (etat.au < etat.du) etat.au = etat.du; render(el); });

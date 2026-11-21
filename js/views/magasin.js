@@ -47,12 +47,14 @@ export async function render(el, { id, onglet = 'infos' }) {
         <a class="btn ${estVide(vuAuj) ? 'primary' : ''}" href="${lienDetails(vuAuj)}">${estVide(vuAuj) ? 'Ajouter des détails' : 'Voir le compte rendu'}</a>`
         : `<button class="btn primary btn-visite" id="visite">Visité</button>`}
       <a class="btn" href="#/rdv?m=${encodeURIComponent(m.id)}">${rdv.statut === 'aFaire' ? 'Demander un RDV' : `RDV : ${esc(labelStatut(rdv.statut))}${rdvDate && ['acceptee', 'autreDate'].includes(rdv.statut) ? ` le ${esc(dateEnLettres(rdvDate))}${(rdv.statut === 'autreDate' ? rdv.heureRetenue : rdv.heure) ? ' à ' + esc(rdv.statut === 'autreDate' ? rdv.heureRetenue : rdv.heure) : ''}` : ''}`}</a>
+      <button class="btn" id="planRdv" title="Un RDV pris sur place ou au téléphone">Planifier un RDV</button>
       <button class="btn" id="addTour">Ajouter à la tournée du jour</button>
       ${m.lat != null ? `<a class="btn" href="${lienGps(s.gps, m)}" target="_blank" rel="noopener">Y aller (${s.gps === 'google' ? 'Google Maps' : 'Waze'})</a>` : ''}
     </div>
     <nav class="tabs" role="tablist">${ONGLETS.map(([k, l]) => `<a role="tab" href="#/magasin/${encodeURIComponent(id)}/${k}" aria-selected="${k === onglet}">${l}${cnt[k] ? ` <span class="badge">${cnt[k]}</span>` : ''}</a>`).join('')}</nav>
     <section id="tab"></section></div>`;
 
+  $('#planRdv').onclick = async () => { const { planifierRdv } = await import('./planif-rdv.js'); if (await planifierRdv({ magasinId: m.id })) render(el, { id, onglet }); };
   $('#addTour').onclick = async () => { const r = await ajouterEtape(today(), m.id); toast(r ? 'Ajouté à la tournée du jour' : 'Déjà dans la tournée du jour'); };
   $('#visite').onclick = async () => {
     if (!vuAuj) {

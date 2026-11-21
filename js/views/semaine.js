@@ -7,7 +7,7 @@ import { magasinsEnrichis, prioriteDe } from '../data.js';
 import { $, $$, esc, prioTag, enseigneColor, fmtKm, fmtDuree, fmtHeure, parseHeure, toast, modal, confirmer, fmtDate, glisser, today, norm, tagSemaine, numSemaine } from '../ui.js';
 import { getTournee, heureRdv, choisirMagasins, exporterVersPlanning, lundiDe, estimerJour as estimer, placerRendezVous, departPourRdv, calibrer, empreinte, modifierDuree, chainer, lieuNuit, pointsJour, choisirNuit } from './tournee.js';
 import { planifier } from '../services/planificateur.js';
-import { dateEnLettres, tousLesRdv } from '../services/rdv.js';
+import { dateEnLettres, tousLesRdv, tagEtatRdv } from '../services/rdv.js';
 import { haversine } from '../services/geo.js';
 import { estimate, optimiserOrdre, trajet, calculerTrajets } from '../services/routing.js';
 import { carte, repere, repereDepart, animerTrace } from '../carte.js';
@@ -33,6 +33,7 @@ const traceTomTom = (t, pts) => { const legs = t.calcul?.legs;
 export async function render(el, params) {
   destroy();
   const s = await getSettings();
+  relanceApres = s.relanceApres ?? 3;
   // sans date : la semaine en cours (le week-end : la suivante) ; les jours déjà passés sont repliés
   const auj = today(), jSem = new Date(auj + 'T12:00').getDay();
   const lundi = lundiDe(params.lundi || (jSem === 0 || jSem === 6 ? decale(auj, jSem === 6 ? 2 : 1) : auj));
@@ -79,6 +80,7 @@ export async function render(el, params) {
       <button class="btn" id="versAgenda" title="Mettre les RDV acceptés de la semaine dans Google Agenda">RDV → Agenda</button>
       <button class="btn" id="optSem" ${departOk && tot.n > 1 ? '' : 'disabled'}>Optimiser la semaine</button>
       <a class="btn" href="#/rdv?du=${lundi}&au=${dates[dates.length - 1]}">Demander les RDV</a>
+      <button class="btn" id="planRdv" title="Un RDV pris sur place ou au téléphone : magasin, jour, heure">Planifier un RDV</button>
       <button class="btn" id="exp">Exporter le ${esc(PROFIL.planning.nom || 'planning')}</button>
       ${s.cleTomTom && echecTomTom && tours.some(t => t.etapes.length && t.calcul?.provider !== 'tomtom') ? '<button class="btn" id="reels" title="Remplace les temps estimés par les temps TomTom">Trajets réels (TomTom)</button>' : ''}
       <button class="btn ghost" id="vider" ${tot.n ? '' : 'disabled'}>Vider la semaine</button>
@@ -156,6 +158,11 @@ export async function render(el, params) {
     if (await choisirMagasins(t, all, s, t.depart?.lat != null ? t.depart : s.depart)) { await save(t); render(el, { lundi }); }
   });
   // RDV acceptés (date confirmée dans la semaine) → Google Agenda : uniquement ceux-là
+  $('#planRdv')?.addEventListener('click', async () => {
+    const { planifierRdv } = await import('./planif-rdv.js');
+    const auj = today();
+    if (await planifierRdv({ date: dates.includes(auj) ? auj : lundi })) render(el, params);
+  });
   $('#versAgenda')?.addEventListener('click', async () => {
     const { evenementRdv, proposerAgendaSemaine } = await import('../services/agenda.js');
     const cts = new Map((await db.all('contacts')).map(c => [c.id, c]));
@@ -205,13 +212,13 @@ export async function render(el, params) {
 }
 
 // Heure de RDV : confirmée (étape) ou demandée au magasin pour ce jour-là (en attente de réponse)
+let relanceApres = 3;
 function rdvTxt(e, r, jour) {
   if (e.rdv) return ` <b class="ok-txt">· RDV ${esc(e.rdv.heure || 'confirmé')}</b>`;
   if (e.heureImposee) return ` <b class="ok-txt">· à ${esc(e.heureImposee)}</b>`;
   if (e.impose) return ` <span class="muted">· imposé</span>`;
-  if (r && ['envoyee', 'relancee'].includes(r.statut) && r.date === jour) return ` <b class="wait-txt">· RDV demandé${r.heure ? ' ' + esc(r.heure) : ''}</b>`;
-  if (r && r.statut === 'aFaire' && r.date === jour && r.heure) return ` <span class="muted">· RDV souhaité ${esc(r.heure)}</span>`;
-  return '';
+  const x = tagEtatRdv(r, jour, relanceApres);
+  return x ? ` ${x}` : '';
 }
 
 function colonne(t, i, p, mags, s, dates, rdvs, vus = new Map()) {

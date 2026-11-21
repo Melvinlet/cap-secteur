@@ -107,3 +107,29 @@ export function aRelancer(r, jours = 3) {
 }
 
 export const labelStatut = st => STATUTS_RDV[st]?.label || st;
+
+// Où en est le RDV d'un magasin, vu depuis un jour de tournée (plannings Jour et Semaine) :
+// non demandé · demandé / relancé, en attente (à relancer) · accepté (ce jour-là ou un autre) · refusé.
+// Un vieux RDV (date passée) ne compte plus pour une nouvelle visite. null = rien à afficher.
+const jourCourt = iso => new Date(iso + 'T12:00').toLocaleDateString('fr-FR', { weekday: 'short', day: 'numeric' });
+export function etatRdvJour(r, jour, relanceApres = 3) {
+  const auj = new Date().toISOString().slice(0, 10);
+  const nonDemande = (plus = '') => jour >= auj ? { cls: 'non', txt: `RDV non demandé${plus}` } : null;
+  if (!r || r.statut === 'aFaire') return nonDemande(r?.date === jour && r.heure ? ` (souhaité ${r.heure})` : '');
+  const dR = r.statut === 'autreDate' ? r.dateRetenue : r.date;
+  const hR = r.statut === 'autreDate' ? r.heureRetenue : r.heure;
+  const perime = d => d && d < auj && d < jour;   // demande ou RDV d'une date passée : c'était pour une autre visite
+  if (['acceptee', 'autreDate'].includes(r.statut)) {
+    if (dR === jour) return { cls: 'ok', txt: `RDV accepté${hR ? ` ${hR}` : ''}` };
+    if (dR && !perime(dR)) return { cls: 'autre', txt: `RDV accepté pour le ${jourCourt(dR)}${hR ? ` ${hR}` : ''}` };
+    return nonDemande();
+  }
+  if (['envoyee', 'relancee'].includes(r.statut)) {
+    if (perime(r.date)) return nonDemande();
+    const quoi = r.statut === 'relancee' ? `RDV relancé${r.relances > 1 ? ` ${r.relances} fois` : ''}` : 'RDV demandé';
+    return { cls: 'attente', txt: `${quoi}${r.date && r.date !== jour ? ` pour le ${jourCourt(r.date)}` : ''}${r.heure ? ` ${r.heure}` : ''} · en attente${aRelancer(r, relanceApres) ? ' · à relancer' : ''}` };
+  }
+  if (r.statut === 'refusee') return perime(r.date) ? nonDemande() : { cls: 'refus', txt: 'RDV refusé' };
+  return null;
+}
+export const tagEtatRdv = (r, jour, relanceApres) => { const x = etatRdvJour(r, jour, relanceApres); return x ? `<span class="rdv-et rdv-${x.cls}">${x.txt.replace(/&/g, '&amp;').replace(/</g, '&lt;')}</span>` : ''; };

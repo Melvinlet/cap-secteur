@@ -960,3 +960,29 @@ h2 .tag-sem { font-size: .7em; }
 .sim-mode a + a { border-left: 1.5px solid var(--trait); }
 .sim-mode a[aria-current] { background: var(--bleu); color: #fff; }
 .plus-options > summary { cursor: pointer; font-weight: 600; color: var(--bleu); padding: .4rem 0; }
+
+/* ── v1.12 : état des RDV dans les plannings, « Planifier un RDV » ── */
+.rdv-et { display: inline-block; font-size: .78rem; font-weight: 600; line-height: 1.3; padding: .05rem .45rem; border-radius: 99px; border: 1px solid transparent; white-space: normal; }
+.rdv-et.rdv-non { color: var(--gris); border-color: var(--trait); background: transparent; font-weight: 500; }
+.rdv-et.rdv-attente { color: #8A4705; background: #FCEBD7; }
+.rdv-et.rdv-ok { color: #1F6B33; background: #DDF1E2; }
+.rdv-et.rdv-autre { color: #1E4FA0; background: #E3ECFA; }
+.rdv-et.rdv-refus { color: #9B2A15; background: #F9E0DA; }
+@media (prefers-color-scheme: dark) {
+  .rdv-et.rdv-attente { color: var(--orange); background: #3A2A16; }
+  .rdv-et.rdv-ok { color: #7BD08F; background: #17301F; }
+  .rdv-et.rdv-autre { color: #9DBBEF; background: #1A2740; }
+  .rdv-et.rdv-refus { color: #F0A08E; background: #3A1D17; }
+}
+.wstops .rdv-et { font-size: .72rem; margin-top: .15rem; }
+.pr-apercu { border: 1.5px solid var(--trait); border-radius: var(--r); padding: .6rem .75rem; margin: .5rem 0; background: var(--surface); }
+.pr-apercu .banner { margin: .4rem 0; }
+.pr-alertes p { margin: .15rem 0; }
+.pr-titre { margin: 0 0 .3rem; }
+.pr-ok { color: var(--vert); font-weight: 600; margin: .3rem 0; }
+.pr-jour { margin: .4rem 0 .5rem; padding-left: 1.4rem; font-size: .9rem; }
+.pr-jour li { padding: .12rem 0; }
+.pr-jour li.moi { font-weight: 700; }
+.pr-jour li.hors { color: var(--gris); }
+.pr-h { display: inline-block; min-width: 3.1rem; font-variant-numeric: tabular-nums; color: var(--gris); }
+.pr-jour li.moi .pr-h { color: inherit; }
