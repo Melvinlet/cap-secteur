@@ -62,12 +62,15 @@ export async function render(el, params = {}) {
   }
   lignes = [...vus.values()];
   // prochain jour où le magasin est prévu dans une tournée (pour rattacher une demande envoyée à ce jour-là)
-  const auj = new Date().toISOString().slice(0, 10), prochain = new Map();
+  const auj = today(), prochain = new Map();
   for (const t of tournees.filter(x => x.id >= auj).sort((a, b) => a.id.localeCompare(b.id))) for (const e of t.etapes || []) if (!prochain.has(e.magasinId)) prochain.set(e.magasinId, t.id);
   lignes.forEach(l => {
-    l.jourTournee = l.date || prochain.get(l.m.id) || '';
+    l.jourTournee = (l.date && l.date >= auj ? l.date : '') || prochain.get(l.m.id) || '';   // jamais une date passée
     l.rdv = rdvs.get(l.m.id) || { id: `rdv-${l.m.id}`, magasinId: l.m.id, statut: 'aFaire', historique: [] };
-    l.relance = aRelancer(l.rdv, s.relanceApres);
+    // demande ou RDV d'une date passée : c'était pour une ancienne visite → nouvelle demande, pas de relance
+    const dR = l.rdv.statut === 'autreDate' ? l.rdv.dateRetenue : l.rdv.date;
+    l.perime = l.rdv.statut !== 'aFaire' && !!dR && dR < auj;
+    l.relance = !l.perime && aRelancer(l.rdv, s.relanceApres);
     l.contacts = trierContacts(ctBy.get(l.m.id) || []);
   });
   const q = norm(etat.q);
@@ -147,12 +150,12 @@ function ligneHTML(l, i) {
       <span class="rdv-nom"><a href="#/magasin/${encodeURIComponent(m.id)}"><strong>${esc(m.nom)}</strong></a> ${prioTag(m.prio)}</span>
       <small>${c ? `${l.trouve ? '<mark>' : ''}${esc(c.nom || 'Contact')}${l.trouve ? '</mark>' : ''}${l.trouve && l.trouve.id === r.contactId && r.dateEnvoi ? ' <span class="tag ok">destinataire</span>' : ''}${c.email ? ` · ${esc(c.email)}` : ''}${c.tel ? ` · ${esc(c.tel)}` : ''}` : m.telMagasin ? `Magasin · ${esc(m.telMagasin)}` : '<span class="late-txt">Aucun contact</span>'}</small>
       <small>${date ? `${r.statut === 'autreDate' ? 'Nouvelle date : ' : ''}${esc(dateEnLettres(date))}${heure ? ` · ${esc(heure)}` : ''}` : 'Date à proposer'}
-        ${r.dateEnvoi ? ` · envoyée le ${fmtDate(r.dateEnvoi)}` : ''}${r.relances ? ` · ${r.relances} relance${r.relances > 1 ? 's' : ''}` : ''}${l.relance ? ' · <b class="late-txt">à relancer</b>' : ''}</small>
+        ${r.dateEnvoi ? ` · envoyée le ${fmtDate(r.dateEnvoi)}` : ''}${l.perime && l.jourTournee ? ` · <b class="wait-txt">prévu dans ta tournée le ${esc(dateEnLettres(l.jourTournee))}</b>` : ''}${r.relances ? ` · ${r.relances} relance${r.relances > 1 ? 's' : ''}` : ''}${l.relance ? ' · <b class="late-txt">à relancer</b>' : ''}</small>
     </div>
     <div class="rdv-act">
       <select data-statut="${i}" aria-label="Réponse du magasin" class="st-sel">${Object.entries(STATUTS_RDV).map(([k, v]) => `<option value="${k}" ${k === r.statut ? 'selected' : ''}>${v.label}</option>`).join('')}</select>
       ${['acceptee', 'autreDate'].includes(r.statut) && date ? `<button class="btn small" data-agenda="${i}" title="Ajouter à mon agenda">Agenda</button>` : ''}
-      <button class="btn small ${r.statut === 'aFaire' || l.relance ? 'primary' : ''}" data-ecrire="${i}">${r.statut === 'aFaire' ? 'Rédiger' : l.relance ? 'Relancer' : ['acceptee', 'autreDate'].includes(r.statut) ? 'Confirmer' : 'Écrire'}</button>
+      <button class="btn small ${r.statut === 'aFaire' || l.relance || (l.perime && l.jourTournee) ? 'primary' : ''}" data-ecrire="${i}" ${l.perime && l.jourTournee ? `title="Nouvelle demande pour le ${esc(dateEnLettres(l.jourTournee))}"` : ''}>${r.statut === 'aFaire' ? 'Rédiger' : l.perime ? 'Nouvelle demande' : l.relance ? 'Relancer' : ['acceptee', 'autreDate'].includes(r.statut) ? 'Confirmer' : 'Écrire'}</button>
     </div></li>`;
 }
 
@@ -164,10 +167,11 @@ async function reponse(l, statut, s) {
     const autre = statut === 'autreDate';
     const f = await modal({ titre: autre ? 'Nouvelle date proposée par le magasin' : 'Rendez-vous accepté', valider: 'Enregistrer', corps: `
       <p><strong>${esc(l.m.nom)}</strong></p>
-      <div class="row"><label>Date<input type="date" name="date" value="${esc((autre ? r.dateRetenue : r.date) || l.date || today())}" required></label>
+      <div class="row"><label>Date<input type="date" name="date" value="${esc([(autre ? r.dateRetenue : r.date), l.date].find(x => x && x >= today()) || today())}" min="${today()}" required></label>
       <label>Heure<input type="time" name="heure" value="${esc((autre ? r.heureRetenue : r.heure) || l.heure || '')}"></label></div>
       <p class="hint">Le magasin sera ajouté à ta tournée de ce jour-là, avec l'heure du rendez-vous.</p>` });
     if (!f) return;
+    if (f.date < today()) { toast('Pas de rendez-vous dans le passé : choisis aujourd\'hui ou un jour à venir', 'warn'); return; }
     Object.assign(extra, autre ? { dateRetenue: f.date, heureRetenue: f.heure } : { date: f.date, heure: f.heure });
   }
   const { ajoute, rdv } = await changerStatut(r, statut, extra);
@@ -191,9 +195,14 @@ function rediger(file, s, fin) {
   const afficher = async () => {
     const l = file[i];
     const r = l.rdv;
-    if (!r.date && l.date) { r.date = l.date; r.heure = l.heure; }
+    // une demande ou un RDV d'une date passée (ex. le 11/11) : c'était pour une ancienne visite.
+    // On repart sur le prochain jour où le magasin est dans ta tournée, en nouvelle demande. Jamais de date passée.
+    const auj = today();
+    const perime = !!(r.date && r.date < auj);
+    if (perime) { r.date = l.jourTournee || ''; r.heure = l.jourTournee && l.jourTournee === l.date ? l.heure || '' : ''; r.mailOuvert = undefined; }
+    if (!r.date && (l.jourTournee || (l.date >= auj && l.date))) { r.date = l.jourTournee || l.date; r.heure = r.date === l.date ? l.heure || '' : ''; }
     if (!r.objet) r.objet = l.objet || s.objetDefaut;
-    const type0 = l.relance || r.statut === 'envoyee' || r.statut === 'relancee' ? 'relance' : ['acceptee', 'autreDate'].includes(r.statut) ? 'confirmation' : 'demande';
+    const type0 = perime ? 'demande' : l.relance || r.statut === 'envoyee' || r.statut === 'relancee' ? 'relance' : ['acceptee', 'autreDate'].includes(r.statut) ? 'confirmation' : 'demande';
     const mods = modeles(s);
     d.innerHTML = `<form method="dialog">
       <header><h2>${esc(l.m.nom)}</h2>${file.length > 1 ? `<span class="muted">${i + 1} / ${file.length}</span>` : ''}<button type="button" class="btn-icon" data-close aria-label="Fermer">✕</button></header>
@@ -203,7 +212,7 @@ function rediger(file, s, fin) {
           <label>Civilité<select id="cCiv"></select></label>
           <label>Message<select id="cType">${Object.entries(mods).filter(([, m]) => !m.groupe).map(([k, m]) => `<option value="${k}" ${k === type0 ? 'selected' : ''}>${esc(m.label)}</option>`).join('')}</select></label></div>
         <div class="row">
-          <label>Date proposée<input type="date" id="cDate" value="${esc(r.date || '')}"><small class="tag ferie" id="cFer" hidden></small></label>
+          <label>Date proposée<input type="date" id="cDate" value="${esc(r.date || '')}" min="${auj}"><small class="tag ferie" id="cFer" hidden></small></label>
           <label>Heure<input type="time" id="cHeure" value="${esc(r.heure || '')}"></label>
           <label>Objet<select id="cObjet">${OBJETS_VISITE.map(o => `<option ${o === r.objet ? 'selected' : ''}>${o}</option>`).join('')}</select></label></div>
         <label id="lSujet">Objet du mail<input id="cSujet"></label>
@@ -235,6 +244,7 @@ function rediger(file, s, fin) {
       maj();
     };
     const maj = () => {
+      if ($('#cDate', d).value && $('#cDate', d).value < auj) { $('#cDate', d).value = auj; toast('Pas de rendez-vous dans le passé : date remise à aujourd\'hui', 'warn'); }
       r.date = $('#cDate', d).value; r.heure = $('#cHeure', d).value; r.objet = $('#cObjet', d).value; r.contactId = contact()?.id;
       const type = $('#cType', d).value;
       const msg = genererMessage(type, { m: l.m, contact: contact(), rdv: r, s });

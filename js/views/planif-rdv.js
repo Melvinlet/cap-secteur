@@ -67,7 +67,7 @@ async function simuler({ m, date, heure, objet }, mags, s) {
   const js = new Date(date + 'T12:00').getDay();
   if (fer) alertes.push(`Le ${dateEnLettres(date)} est férié (${esc(fer)}).`);
   else if (js === 0 || js === 6) infos.push(`C'est un ${js === 6 ? 'samedi' : 'dimanche'}.`);
-  if (date < today()) alertes.push('Ce jour est déjà passé.');
+  if (date < today()) alertes.push('Ce jour est déjà passé : choisis aujourd\'hui ou un jour à venir.');
   return { t, p, pe, dejaLa, alertes, infos, hors, ailleurs, departPropose };
 }
 
@@ -83,7 +83,7 @@ export async function planifierRdv(pre = {}) {
     <p class="hint">Un rendez-vous pris sur place ou au téléphone : il passe en « Acceptée » et entre dans ta tournée de ce jour, à son heure.</p>
     <label>Magasin<input name="mag" list="dlPlanRdv" value="${m0 ? esc(etiq(m0)) : ''}" placeholder="Tape le nom ou la ville du magasin" autocomplete="off" required></label>
     <datalist id="dlPlanRdv">${all.map(m => `<option value="${esc(etiq(m))}">`).join('')}</datalist>
-    <div class="row"><label>Jour<input type="date" name="date" value="${esc(pre.date || today())}" required></label>
+    <div class="row"><label>Jour<input type="date" name="date" value="${esc(pre.date && pre.date >= today() ? pre.date : today())}" min="${today()}" required></label>
       <label>Heure<input type="time" name="heure" value="${esc(pre.heure || '')}" step="300" required></label></div>
     <div class="row"><label>Objet de la visite<select name="objet"><option value="">—</option>${OBJETS_VISITE.map(o => `<option value="${esc(o.id || o)}">${esc(o.label || o)}</option>`).join('')}</select></label>
       <label>Avec <small class="muted">(facultatif)</small><select name="contact" id="prCt"><option value="">—</option></select></label></div>
@@ -134,6 +134,7 @@ export async function planifierRdv(pre = {}) {
   const m = trouver(r.mag);
   if (!m) { toast(`Magasin introuvable : « ${r.mag} ». Choisis-le dans la liste proposée.`, 'warn'); return false; }
   if (!r.date || !r.heure) { toast('Indique le jour et l\'heure du rendez-vous', 'warn'); return false; }
+  if (r.date < today()) { toast('Pas de rendez-vous dans le passé : choisis aujourd\'hui ou un jour à venir', 'warn'); return false; }
 
   // on refait la simulation avec les valeurs validées, puis on applique
   const res = dernier && dernier.m.id === m.id && dernier.date === r.date && dernier.heure === r.heure ? dernier.res : await simuler({ m, date: r.date, heure: r.heure, objet: r.objet }, mags, s);

@@ -17,6 +17,7 @@ const ROUTES = [
   [/^\/cr\/([^/]+)(?:\/([^/]+))?$/, 'magasins', () => import('./views/cr.js'), ['magasin', 'note']],
   [/^\/activite(?:\/(\w+))?$/, 'activite', () => import('./views/activite.js'), ['onglet']],
   [/^\/magasins$/, 'magasins', () => import('./views/magasins.js')],
+  [/^\/afaire$/, 'afaire', () => import('./views/afaire.js')],
   [/^\/magasin\/([^/]+)(?:\/(\w+))?$/, 'magasins', () => import('./views/magasin.js'), ['id', 'onglet']],
   [/^\/reglages$/, 'reglages', () => import('./views/reglages.js')],
   [/^\/compte$/, 'reglages', () => import('./views/compte.js')],

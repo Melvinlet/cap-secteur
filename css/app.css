@@ -988,3 +988,17 @@ h2 .tag-sem { font-size: .7em; }
 .pr-jour li.moi .pr-h { color: inherit; }
 .rdv-list .rdv.passe { opacity: .62; }
 .rdv-pardates { align-self: center; margin: 0; }
+
+/* ── v1.13 : page « À faire » ── */
+.af-f { margin: .75rem 0; }
+.af-grp { margin-top: 1.1rem; }
+.af-grp.late > h2 { color: var(--rouge, #C8371D); }
+.af-liste { display: flex; flex-direction: column; gap: 2px; }
+.af-item { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: .2rem .6rem; align-items: start; padding: .55rem .7rem; background: var(--surface); border: 1px solid var(--trait); border-radius: var(--r); }
+.af-item .check { grid-column: 1; margin: 0; align-items: flex-start; }
+.af-txt { font-weight: 600; overflow-wrap: anywhere; }
+.af-meta { grid-column: 1; padding-left: 1.75rem; overflow-wrap: anywhere; }
+.af-act { grid-column: 2; grid-row: 1 / span 2; display: flex; align-items: center; gap: .3rem; }
+.af-item.fait .af-txt { text-decoration: line-through; color: var(--gris); font-weight: 500; }
+.af-tour { white-space: nowrap; }
+@media (max-width: 760px) { .nav a { font-size: .68rem; padding-left: 0; padding-right: 0; } }

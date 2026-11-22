@@ -3,7 +3,7 @@
 // IMPORTANT : à chaque mise en ligne d'une nouvelle version, change VERSION
 // (sinon les téléphones garderont l'ancienne version en cache).
 // ─────────────────────────────────────────────────────────────────────────────
-const VERSION = 'cap-secteur-1.12.1';
+const VERSION = 'cap-secteur-1.13.1';
 const TUILES = 'cap-secteur-tuiles';
 const IMAGES_WEB = 'cap-secteur-images-web';
 const MAX_TUILES = 3000;
@@ -66,6 +66,7 @@ const APP = [
   './js/views/semaine.js',
   './js/views/simulation.js',
   './js/views/planif-rdv.js',
+  './js/views/afaire.js',
   './js/views/couverture.js',
   './js/views/fiche-avant.js',
   './js/services/afaire.js',

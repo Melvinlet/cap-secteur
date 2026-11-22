@@ -38,7 +38,8 @@ export const fmtDuree = min => {
 };
 export const fmtHeure = min => { min = Math.round(min); return `${String(Math.floor(min / 60) % 24).padStart(2, '0')}:${String(min % 60).padStart(2, '0')}`; };
 export const parseHeure = s => { const [h, m] = (s || '0:0').split(':').map(Number); return h * 60 + (m || 0); };
-export const today = () => new Date().toISOString().slice(0, 10);
+// date du jour en heure locale (pas UTC : entre minuit et 1 h, l'UTC donnerait encore la veille)
+export const today = () => { const d = new Date(); return new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 10); };
 export const joursDepuis = d => d ? Math.floor((Date.now() - new Date(d).getTime()) / 86400000) : null;
 export const norm = s => (s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
 

@@ -61,9 +61,9 @@ export async function render(el) {
     <div class="grid2">
       <section><h2 class="h2">SAV en cours <span class="badge">${savs.length}</span></h2>
         <ul class="plain">${savs.slice(0, 8).map(x => { const m = byId.get(x.magasinId); return `<li><a href="#/magasin/${encodeURIComponent(x.magasinId)}/sav">${esc(x.produit || 'SAV')}</a> <span class="muted">${esc(m?.nom || '')} · ${fmtDate(x.date)} · ${esc(x.statut)}</span></li>`; }).join('') || '<li class="muted">Aucun dossier ouvert.</li>'}</ul></section>
-      <section id="afaire"><h2 class="h2">À faire <span class="badge">${tousAF.length}</span></h2>
+      <section id="afaire"><h2 class="h2">À faire <span class="badge">${tousAF.length}</span> <a class="btn small" href="#/afaire">Tout voir</a></h2>
         ${todos.length ? listeAFaire(todos, { magasin: id => `${duJour.has(id) ? '📍 aujourd\'hui · ' : ''}${byId.get(id)?.nom || ''}` })
-          + (tousAF.length > todos.length ? `<p class="small muted">… et ${tousAF.length - todos.length} autre${tousAF.length - todos.length > 1 ? 's' : ''} sur les fiches magasins.</p>` : '')
+          + (tousAF.length > todos.length ? `<p class="small muted"><a href="#/afaire">… et ${tousAF.length - todos.length} autre${tousAF.length - todos.length > 1 ? 's' : ''}</a></p>` : '')
           : '<p class="muted">Rien en attente. Les « prochaines étapes » notées pendant tes visites apparaissent ici, et reviennent quand le magasin est dans ta tournée.</p>'}</section>
     </div>
     <div class="grid2">

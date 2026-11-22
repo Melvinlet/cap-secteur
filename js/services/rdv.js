@@ -113,7 +113,7 @@ export const labelStatut = st => STATUTS_RDV[st]?.label || st;
 // Un vieux RDV (date passée) ne compte plus pour une nouvelle visite. null = rien à afficher.
 const jourCourt = iso => new Date(iso + 'T12:00').toLocaleDateString('fr-FR', { weekday: 'short', day: 'numeric' });
 export function etatRdvJour(r, jour, relanceApres = 3) {
-  const auj = new Date().toISOString().slice(0, 10);
+  const d0 = new Date(), auj = new Date(d0.getTime() - d0.getTimezoneOffset() * 60000).toISOString().slice(0, 10);
   const nonDemande = (plus = '') => jour >= auj ? { cls: 'non', txt: `RDV non demandé${plus}` } : null;
   if (!r || r.statut === 'aFaire') return nonDemande(r?.date === jour && r.heure ? ` (souhaité ${r.heure})` : '');
   const dR = r.statut === 'autreDate' ? r.dateRetenue : r.date;
