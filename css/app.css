@@ -986,3 +986,5 @@ h2 .tag-sem { font-size: .7em; }
 .pr-jour li.hors { color: var(--gris); }
 .pr-h { display: inline-block; min-width: 3.1rem; font-variant-numeric: tabular-nums; color: var(--gris); }
 .pr-jour li.moi .pr-h { color: inherit; }
+.rdv-list .rdv.passe { opacity: .62; }
+.rdv-pardates { align-self: center; margin: 0; }

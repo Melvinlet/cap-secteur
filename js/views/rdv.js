@@ -10,7 +10,8 @@ import { planning } from './tournee.js';
 import { evenementRdv, proposerAgenda } from '../services/agenda.js';
 import { ferie } from '../services/feries.js';
 
-let etat = { mode: 'semaine', du: null, au: null, q: '', dep: '', statut: '' };
+// « Mes RDV » par défaut : tous les rendez-vous (demandés, relancés, acceptés, refusés), sans période — filtre par dates en option
+let etat = { mode: 'mesRdv', du: null, au: null, q: '', dep: '', statut: '', parDates: false };
 
 function semaineSuivante() {
   const d = new Date(); d.setHours(12);
@@ -32,7 +33,17 @@ export async function render(el, params = {}) {
 
   // lignes : magasins des tournées de la période, ou tous les magasins
   let lignes = [];
-  if (etat.mode === 'semaine') {
+  const auj0 = today();
+  const dateEff = r => (r.statut === 'autreDate' ? r.dateRetenue : r.date) || '';
+  const heureEff = r => (r.statut === 'autreDate' ? r.heureRetenue : r.heure) || '';
+  if (etat.mode === 'mesRdv') {
+    // à venir (par date) → demandes sans date → passés (le plus récent d'abord)
+    const rang = r => { const d = dateEff(r); return d >= auj0 ? 0 : !d ? 1 : 2; };
+    lignes = [...rdvs.values()].filter(r => r.statut !== 'aFaire' && byId.has(r.magasinId))
+      .filter(r => !etat.parDates || (dateEff(r) >= etat.du && dateEff(r) <= etat.au))
+      .sort((a, b) => rang(a) - rang(b) || (rang(a) === 2 ? dateEff(b).localeCompare(dateEff(a)) : rang(a) === 1 ? (a.dateEnvoi || '').localeCompare(b.dateEnvoi || '') : dateEff(a).localeCompare(dateEff(b)) || heureEff(a).localeCompare(heureEff(b))))
+      .map(r => ({ m: byId.get(r.magasinId), date: dateEff(r), heure: heureEff(r), objet: r.objet, passe: rang(r) === 2 }));
+  } else if (etat.mode === 'semaine') {
     for (const t of tournees.filter(x => x.id >= etat.du && x.id <= etat.au).sort((a, b) => a.id.localeCompare(b.id))) {
       const p = planning(t, byId, s);
       p.etapes.forEach(e => { const m = byId.get(e.magasinId); if (m) lignes.push({ m, date: t.id, heure: t.calcul ? fmtHeure(e.arrivee) : '', objet: e.objet }); });
@@ -79,10 +90,11 @@ export async function render(el, params = {}) {
   el.innerHTML = `<div class="page wide">
     <header class="page-head"><h1>Rendez-vous</h1>
       <button class="btn primary" id="planRdv" title="Un RDV pris sur place ou au téléphone : magasin, jour, heure">Planifier un RDV</button>
-      <div class="seg" role="tablist" aria-label="Magasins"><button role="tab" data-mode="semaine" aria-selected="${etat.mode === 'semaine'}">Mes tournées</button><button role="tab" data-mode="tous" aria-selected="${etat.mode === 'tous'}">Tous les magasins</button></div></header>
+      <div class="seg" role="tablist" aria-label="Magasins"><button role="tab" data-mode="mesRdv" aria-selected="${etat.mode === 'mesRdv'}">Mes RDV</button><button role="tab" data-mode="semaine" aria-selected="${etat.mode === 'semaine'}">Mes tournées</button><button role="tab" data-mode="tous" aria-selected="${etat.mode === 'tous'}">Tous les magasins</button></div></header>
     ${params.m ? `<p><a href="#/rdv">Voir tous les rendez-vous</a></p>` : ''}
     <div class="rdv-f">
-      ${etat.mode === 'semaine' ? `<div class="row rdv-periode"><label>Du<input type="date" id="du" value="${etat.du}"></label><label>Au<input type="date" id="au" value="${etat.au}"></label><span class="rdv-sem">${numSemaine(etat.du) === numSemaine(etat.au) ? tagSemaine(etat.du) : `${tagSemaine(etat.du)} → ${tagSemaine(etat.au)}`}</span></div>` : ''}
+      ${etat.mode === 'mesRdv' ? `<label class="check rdv-pardates"><input type="checkbox" id="parDates" ${etat.parDates ? 'checked' : ''}> Filtrer par dates</label>` : ''}
+      ${etat.mode === 'semaine' || (etat.mode === 'mesRdv' && etat.parDates) ? `<div class="row rdv-periode"><label>Du<input type="date" id="du" value="${etat.du}"></label><label>Au<input type="date" id="au" value="${etat.au}"></label><span class="rdv-sem">${numSemaine(etat.du) === numSemaine(etat.au) ? tagSemaine(etat.du) : `${tagSemaine(etat.du)} → ${tagSemaine(etat.au)}`}</span></div>` : ''}
       <input type="search" id="q" placeholder="Magasin, ville, nom ou e-mail d'un contact…" value="${esc(etat.q)}" aria-label="Rechercher">
       <select id="dep" aria-label="Département"><option value="">Tous départements</option>${deps.map(d => `<option ${etat.dep === d ? 'selected' : ''}>${d}</option>`).join('')}</select>
     </div>
@@ -91,6 +103,7 @@ export async function render(el, params = {}) {
       ${Object.entries(STATUTS_RDV).map(([k, v]) => `<button class="chip st-${k}" data-st="${k}" aria-pressed="${etat.statut === k}">${v.court} (${compte(k)})</button>`).join('')}
       <button class="chip st-relancer" data-st="relancer" aria-pressed="${etat.statut === 'relancer'}">À relancer (${compte('relancer')})</button>
     </div>
+    ${etat.mode === 'mesRdv' && !lignes.length ? `<div class="empty"><p>${etat.parDates ? `Aucun rendez-vous du ${fmtDate(etat.du)} au ${fmtDate(etat.au)}.` : 'Aucun rendez-vous pour l\'instant.'}</p><p class="muted">Les demandes envoyées et les RDV acceptés apparaissent ici. Pour en demander, passe sur « Mes tournées » ; pour un RDV pris sur place, « Planifier un RDV ».</p></div>` : ''}
     ${etat.mode === 'semaine' && !lignes.length ? `<div class="empty"><p>Aucune tournée prévue du ${fmtDate(etat.du)} au ${fmtDate(etat.au)}. Prépare d'abord tes tournées (ou ton plan de secteur), ou passe sur « Tous les magasins ».</p><a class="btn" href="#/tournee/${etat.du}">Ouvrir la tournée du ${fmtDate(etat.du)}</a></div>` : ''}
     ${visibles.length ? `<div class="actions"><label class="check"><input type="checkbox" id="all"> Tout sélectionner</label>
       <button class="btn primary" id="lot" disabled>Préparer les demandes</button>
@@ -102,6 +115,7 @@ export async function render(el, params = {}) {
   $('#planRdv').onclick = async () => { const { planifierRdv } = await import('./planif-rdv.js'); if (await planifierRdv({})) render(el); };
   $$('[data-mode]').forEach(b => b.onclick = () => { etat.mode = b.dataset.mode; location.hash = '#/rdv'; render(el); });
   $('#chTous')?.addEventListener('click', () => { etat.mode = 'tous'; render(el); });
+  $('#parDates')?.addEventListener('change', e => { etat.parDates = e.target.checked; render(el); });
   $('#du')?.addEventListener('change', e => { etat.du = e.target.value; if (etat.au < etat.du) etat.au = etat.du; render(el); });
   $('#au')?.addEventListener('change', e => { etat.au = e.target.value; render(el); });
   $('#q').oninput = e => { etat.q = e.target.value; clearTimeout(etat.t); etat.t = setTimeout(() => render(el).then(() => { const i = $('#q'); i.focus(); i.setSelectionRange(i.value.length, i.value.length); }), 250); };
@@ -126,7 +140,7 @@ function ligneHTML(l, i) {
   const date = r.statut === 'autreDate' ? r.dateRetenue : (r.date || l.date);
   const heure = r.statut === 'autreDate' ? r.heureRetenue : (r.heure || l.heure);
   const c = l.trouve || l.contacts.find(x => x.id === r.contactId) || l.contacts[0];   // le contact recherché d'abord
-  return `<li class="rdv st-${r.statut}">
+  return `<li class="rdv st-${r.statut}${l.passe ? ' passe' : ''}">
     <input type="checkbox" class="rdv-sel" data-i="${i}" aria-label="Sélectionner ${esc(m.nom)}">
     ${borne(m.departement)}
     <div class="rdv-main">
