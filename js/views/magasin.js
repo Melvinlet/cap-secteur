@@ -12,7 +12,7 @@ import { getRdv, labelStatut, dateEnLettres, dateEffRdv } from '../services/rdv.
 import { carte, repere } from '../carte.js';
 import { imageURL } from '../services/images.js';
 import { marquerVisite, annulerVisite, lienDetails, estVide } from '../services/visite.js';
-import { brancherCoches } from '../services/afaire.js';
+import { brancherCoches, estOuvert } from '../services/afaire.js';
 import { ic } from '../icones.js';
 
 const ONGLETS = [['infos', 'Infos'], ['suivi', 'Visites'], ['commandes', 'Commandes'], ['sav', 'SAV'], ['implantations', 'Implantations']];
@@ -33,6 +33,21 @@ export async function render(el, { id, onglet = 'infos' }) {
   const vuAuj = d.notes.find(n => n.type === 'Visite' && n.date === today() && n.statut === 'Réalisée');
   const rdv = await getRdv(m.id);
   const rdvDate = dateEffRdv(rdv);
+  // repères sous le nom : dernière visite, prochaine visite prévue, à faire ouverts, ventes (en unités)
+  const auj = today();
+  const visites = d.notes.filter(n => n.type === 'Visite' && n.statut === 'Réalisée' && n.date <= auj).map(n => n.date).sort();
+  const derniere = visites.at(-1) || null;
+  const ilYa = derniere ? Math.round((new Date(auj + 'T12:00') - new Date(derniere + 'T12:00')) / 864e5) : null;
+  const freq = frequenceDe(m, s);
+  const prochaine = (await db.all('tournees')).filter(t => t.id >= auj && (t.etapes || []).some(e => e.magasinId === m.id && !e.fait)).map(t => t.id).sort()[0] || null;
+  const nbAfaire = d.notes.filter(estOuvert).length;
+  const repere = (lib, val, cls = '', href = '') => `<${href ? `a href="${href}"` : 'div'} class="repere ${cls}"><small>${lib}</small><b>${val}</b></${href ? 'a' : 'div'}>`;
+  const reperes = `<div class="reperes">
+      ${repere('Dernière visite', derniere ? (ilYa === 0 ? 'aujourd\'hui' : `il y a ${ilYa} j`) : 'jamais', derniere == null || (freq && ilYa > freq) ? 'alerte' : '', derniere ? `#/magasin/${encodeURIComponent(m.id)}/visites` : '')}
+      ${repere('Prochaine visite', prochaine ? (prochaine === auj ? 'aujourd\'hui' : esc(dateEnLettres(prochaine))) : 'pas prévue', prochaine ? '' : 'neutre', prochaine ? `#/tournee/${prochaine}` : '')}
+      ${repere('À faire', nbAfaire ? `${nbAfaire} en cours` : 'rien', nbAfaire ? 'info' : 'neutre', nbAfaire ? '#/afaire' : '')}
+      ${Number(m.ventes2026) > 0 ? repere('Ventes 2026', `${Number(m.ventes2026)} u.${d.rangVentes ? ` · ${d.rangVentes.rang}<sup>e</sup>` : ''}`) : freq ? repere('Rythme', `tous les ${freq} j`, 'neutre') : ''}
+    </div>`;
   const cnt = { suivi: d.notes.length, commandes: d.commandes.length,
     sav: d.sav.filter(x => x.statut !== 'Résolu').length, implantations: d.implantations.length };
   el.innerHTML = `<div class="page">
@@ -43,6 +58,7 @@ export async function render(el, { id, onglet = 'infos' }) {
         <h1>${esc(m.nom)} ${prioTag(prioriteDe(m))}</h1>
         <p class="muted">${esc(m.adresse || '')}${m.adresse ? ', ' : ''}${esc(m.cp)} ${esc(m.ville)}${m.telMagasin ? ` · ${telLink(m.telMagasin)}` : ''}</p></div>
     </header>
+    ${reperes}
     <div class="actions actions-grille">
       ${vuAuj ? `<button class="btn btn-visite fait" id="visite" aria-pressed="true" title="${estVide(vuAuj) ? 'Appuyer pour retirer' : 'Ouvrir le compte rendu'}">Visité aujourd'hui ✓</button>
         <a class="btn ${estVide(vuAuj) ? 'primary' : ''}" href="${lienDetails(vuAuj)}">${estVide(vuAuj) ? 'Ajouter des détails' : 'Voir le compte rendu'}</a>`

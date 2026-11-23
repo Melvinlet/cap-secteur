@@ -151,6 +151,7 @@ export async function render(el, params) {
   $('#pick').onchange = e => { location.hash = `#/semaine/${lundiDe(e.target.value)}`; };
   brancherCalendrier(el);
   brancherPlus($('#plusS'), $('#plusSem'), 'Semaine');
+  defilementJours(el);
   $('#exp').onclick = () => exporterVersPlanning(lundi, s, { du: lundi, au: dates[dates.length - 1] });
   $('#vider').onclick = async () => {
     if (!(await confirmer('Vider la semaine', 'Retirer tous les magasins prévus cette semaine ? Les rendez-vous confirmés sont gardés.', 'Vider'))) return;
@@ -639,3 +640,30 @@ export async function optimiserSemaineDepuis(date, s) {
 }
 
 export function destroy() { if (map) { map.stop(); map.off(); map.remove(); map = null; } }
+
+let jourVu = { cle: null, i: 0 };
+// Téléphone : une carte par jour, qu'on fait défiler d'un geste ; une bande de jours en haut pour sauter
+// directement à un jour. À l'ouverture, on se place sur aujourd'hui (ou le prochain jour de la semaine).
+function defilementJours(el) {
+  const wk = el.querySelector('.week');
+  if (!wk || !matchMedia('(max-width: 899px)').matches) return;
+  const jours = [...wk.querySelectorAll(':scope > .wday')];
+  if (jours.length < 2) return;
+  const bande = document.createElement('nav');
+  bande.className = 'week-jours'; bande.setAttribute('aria-label', 'Jours de la semaine');
+  bande.innerHTML = jours.map((d, i) => `<button type="button" data-i="${i}" class="${d.classList.contains('auj') ? 'auj' : ''}">
+    <span>${esc(d.querySelector('header strong')?.textContent || '')}</span><small>${d.querySelectorAll('.wstops > li:not(.wleg)').length || '–'}</small></button>`).join('');
+  wk.before(bande);
+  const boutons = [...bande.children];
+  const cle = jours[0].dataset.jour;
+  const choisir = i => { boutons.forEach((b, j) => b.setAttribute('aria-current', j === i ? 'true' : 'false')); jourVu = { cle, i }; };
+  bande.onclick = e => { const b = e.target.closest('button'); if (!b) return; const d = jours[+b.dataset.i];
+    wk.scrollTo({ left: d.offsetLeft - wk.offsetLeft - 16, behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth' }); };
+  const obs = new IntersectionObserver(es => { for (const e of es) if (e.isIntersecting) choisir(jours.indexOf(e.target)); }, { root: wk, threshold: .6 });
+  jours.forEach(d => obs.observe(d));
+  const auj = today();
+  // même semaine qu'avant (écran redessiné après une modification) : on reste sur le jour regardé
+  const depart = jourVu.cle === cle ? jourVu.i : Math.max(0, jours.findIndex(d => d.dataset.jour >= auj));
+  choisir(depart);
+  requestAnimationFrame(() => { wk.scrollLeft = jours[depart].offsetLeft - wk.offsetLeft - 16; });
+}

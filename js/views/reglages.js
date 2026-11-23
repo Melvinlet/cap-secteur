@@ -13,7 +13,7 @@ export async function render(el) {
   let usage = '';
   try { const e = await navigator.storage.estimate(); usage = `${(e.usage / 1048576).toFixed(1)} Mo utilisés sur cet appareil`; } catch { /* non dispo */ }
 
-  el.innerHTML = `<div class="page">
+  el.innerHTML = `<div class="page reglages">
     <h1>Réglages</h1>
     <section class="settings compte-equipe"><h2 class="h2">Compte et équipe</h2>
       <p id="etatCompte" class="muted">…</p>
@@ -272,6 +272,7 @@ export async function render(el) {
   const terrainMaj = async () => {
     const { infosTerrain } = await import('../services/terrain.js');
     const i = await infosTerrain();
+    if (!document.getElementById('terrainEtat')) return;   // écran quitté entre-temps
     $('#terrainEtat').textContent = i ? `« ${i.nom} » · version du ${fmtDate(i.importe)} · ${Math.round(i.taille / 1e5) / 10} Mo` : 'Aucun fichier importé.';
     $('#terrainImp').textContent = i ? 'Importer une nouvelle version' : 'Importer le fichier';
     $('#terrainOuvrir').hidden = $('#terrainSuppr').hidden = !i;

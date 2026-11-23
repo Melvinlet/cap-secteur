@@ -7,6 +7,8 @@ import { persistStorage, chargerProfil } from './db.js';
 import { $, $$, esc, animerEntree, toast } from './ui.js';
 import { placerPastille } from './nav-pastille.js';
 import { initBarreTitre, majBarreTitre } from './barre-titre.js';
+import { initSegPastilles } from './seg-pastille.js';
+import { initTirer } from './tirer.js';
 
 const ROUTES = [
   [/^\/?$/, 'aujourdhui', () => import('./views/aujourdhui.js')],
@@ -86,6 +88,8 @@ if (!window.__retourMail && /^#?\/?$/.test(location.hash)) {
   try { if (await (await import('./views/bienvenue.js')).aMontrer()) history.replaceState(null, '', location.pathname + '#/bienvenue'); } catch { /* accueil normal */ }
 }
 initBarreTitre();
+initSegPastilles();
+initTirer(async () => { await chargerProfil(); await route(null, { garder: true }); });
 await route();
 dispatchEvent(new Event('cap-pret'));   // l'écran de lancement peut s'effacer
 placerPastille({ animer: false });

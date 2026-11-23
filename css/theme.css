@@ -779,3 +779,89 @@ html, body { overflow-x: clip; }
 .af-item > .af-act { grid-column: 3; grid-row: auto; }
 .af-item.fait .af-txt { color: var(--gris); text-decoration: line-through; font-weight: 500; }
 .af-liste { gap: .5rem; }
+
+/* ════ v1.20 ════ */
+/* ── Onglets segmentés : la pastille glisse (js/seg-pastille.js) ── */
+.seg, .tabs, .onglets-planning { position: relative; isolation: isolate; }
+.seg-pastille { position: absolute; left: 0; top: 0; z-index: -1; border-radius: 10px; pointer-events: none; background: var(--surface);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, .08), 0 3px 8px rgba(0, 0, 0, .1);
+  transition: transform .42s cubic-bezier(.25, 1.1, .35, 1), width .42s cubic-bezier(.25, 1.1, .35, 1), height .3s ease, opacity .2s; }
+.seg-pastille.sans-anim { transition: none; }
+.seg-anim > :is([aria-selected="true"], [aria-pressed="true"], [aria-current]), .seg-anim > .seg-r:has(input:checked) { background: transparent !important; box-shadow: none !important; }
+.seg-anim > :is(button, a, .seg-r) { position: relative; z-index: 1; transition: color .3s ease, transform .15s ease; }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .seg-pastille { background: #3A4456; } }
+:root[data-theme="dark"] .seg-pastille { background: #3A4456; }
+@media (prefers-reduced-motion: reduce) { .seg-pastille { transition: none; } }
+/* le sélecteur Semaine / Journée de la Simulation reprend le même contrôle segmenté */
+.sim-mode { display: inline-flex; }
+.sim-mode a { background: transparent; color: var(--encre); border: 0 !important; border-radius: 10px; min-height: 36px; }
+.sim-mode a[aria-current] { background: var(--surface); color: var(--encre); box-shadow: 0 1px 2px rgba(0, 0, 0, .08), 0 3px 8px rgba(0, 0, 0, .08); }
+/* ── Tirer pour actualiser ── */
+.tirer { position: fixed; z-index: 460; left: 50%; top: calc(env(safe-area-inset-top) + 6px); width: 38px; height: 38px; border-radius: 50%; opacity: 0; pointer-events: none;
+  display: grid; place-items: center; transform: translate(-50%, 0); color: var(--bleu);
+  background: color-mix(in srgb, var(--surface) 80%, transparent); -webkit-backdrop-filter: var(--flou); backdrop-filter: var(--flou);
+  border: 1px solid var(--verre-bord); box-shadow: var(--ombre-haute); transition: transform .3s cubic-bezier(.2, .8, .3, 1), opacity .25s; }
+.tirer svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width: 2.2; stroke-linecap: round; stroke-linejoin: round; transition: transform .2s; }
+.tirer.pret { color: #fff; background: var(--bleu); }
+.tirer.tourne svg { animation: tirer-tourne .8s linear infinite; }
+.tirer.tourne svg path { d: path("M12 4a8 8 0 1 0 8 8"); }
+@keyframes tirer-tourne { to { transform: rotate(360deg); } }
+html, body { overscroll-behavior-y: contain; }
+/* ── Semaine au téléphone : une carte par jour, défilement aimanté ── */
+@media (max-width: 899px) {
+  .week { display: flex; gap: .75rem; overflow-x: auto; scroll-snap-type: x mandatory; scroll-padding-inline: 16px; margin: .5rem -16px 1rem; padding: 4px 16px 10px; scrollbar-width: none; overscroll-behavior-x: contain; }
+  .week::-webkit-scrollbar { display: none; }
+  .week > .wday { flex: 0 0 calc(100% - 46px); scroll-snap-align: start; min-height: 260px; }
+  .week-jours { display: grid; grid-template-columns: repeat(auto-fit, minmax(0, 1fr)); gap: 4px; margin: .75rem 0 0; padding: 4px; border-radius: 14px; background: var(--piste); }
+  .week-jours button { display: flex; flex-direction: column; align-items: center; gap: 1px; min-height: 46px; padding: .3rem 0; border: 0; border-radius: 10px; background: transparent; color: var(--encre); font: 600 .82rem var(--sans); cursor: pointer; transition: background .25s, box-shadow .25s, transform .15s; }
+  .week-jours button small { font-size: .7rem; color: var(--gris); font-weight: 600; }
+  .week-jours button[aria-current="true"] { background: var(--surface); box-shadow: 0 1px 2px rgba(0, 0, 0, .08), 0 3px 8px rgba(0, 0, 0, .08); }
+  .week-jours button.auj span { color: var(--bleu); }
+  .week-jours button:active { transform: scale(.94); }
+}
+@media (min-width: 900px) { .week-jours { display: none; } }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .week-jours button[aria-current="true"] { background: #3A4456; } }
+:root[data-theme="dark"] .week-jours button[aria-current="true"] { background: #3A4456; }
+/* ── Fiche magasin : repères sous le nom ── */
+.reperes { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: .5rem; margin: .7rem 0 .2rem; }
+.repere { display: flex; flex-direction: column; gap: 1px; padding: .55rem .75rem; border-radius: 14px; text-decoration: none; color: var(--encre);
+  background: var(--verre-fort); border: 1px solid var(--verre-bord); box-shadow: var(--ombre); transition: transform .15s ease; min-width: 0; }
+a.repere:active { transform: scale(.97); }
+.repere small { font-size: .72rem; color: var(--gris); font-weight: 600; }
+.repere b { font: 700 1rem/1.25 var(--cond); letter-spacing: -.015em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.repere b sup { font-size: .6em; }
+.repere.alerte b { color: var(--st-att); }
+.repere.info b { color: var(--bleu); }
+.repere.neutre b { color: var(--gris); font-weight: 600; }
+@media (max-width: 480px) { .reperes { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .repere { border-color: var(--trait); } }
+:root[data-theme="dark"] .repere { border-color: var(--trait); }
+
+/* ── Réglages et Compte : listes groupées façon iPhone ── */
+.reglages section, .reglages details.sect-avance, .compte #zone > section, .compte #zone > form {
+  background: var(--verre-fort); border: 1px solid var(--verre-bord); border-radius: var(--r-carte); box-shadow: var(--ombre);
+  padding: .3rem 1rem 1rem; margin: 0 0 1rem; }
+.reglages section section, .reglages details.sect-avance section { background: none; border: 0; box-shadow: none; padding: .2rem 0 0; margin: 0; border-top: 1px solid var(--trait); border-radius: 0; }
+.reglages details.sect-avance section:first-of-type { border-top: 0; }
+.reglages form.settings, .reglages .settings:not(section):not(details) { background: none; border: 0; padding: 0; }
+.reglages section > .h2, .reglages details > summary .h2 { font-size: 1.05rem; margin: .8rem 0 .55rem; }
+:is(.reglages, .compte) label:not(.check):not(.chip-check) { font-size: .86rem; font-weight: 600; color: var(--gris); }
+:is(.reglages, .compte) label:not(.check):not(.chip-check) :is(input, select, textarea) { margin-top: .3rem; color: var(--encre); font-weight: 400; font-size: 1rem; }
+.reglages fieldset { background: var(--champ); border: 0; border-radius: 14px; }
+.reglages details > summary { list-style: none; display: flex; align-items: center; justify-content: space-between; gap: .5rem; cursor: pointer; min-height: 44px; font-weight: 600; }
+.reglages details > summary::-webkit-details-marker { display: none; }
+.reglages details > summary::after { content: ""; flex: none; width: 9px; height: 9px; border-right: 2px solid var(--gris); border-bottom: 2px solid var(--gris); transform: rotate(-45deg); transition: transform .25s ease; margin-right: 4px; }
+.reglages details[open] > summary::after { transform: rotate(45deg); }
+.reglages .danger-zone { border-color: color-mix(in srgb, var(--st-ko) 35%, var(--verre-bord)); }
+.reglages .danger-zone > .h2 { color: var(--st-ko); }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) :is(.reglages section, .reglages details.sect-avance, .compte #zone > section, .compte #zone > form) { border-color: var(--trait); } }
+:root[data-theme="dark"] :is(.reglages section, .reglages details.sect-avance, .compte #zone > section, .compte #zone > form) { border-color: var(--trait); }
+
+/* ── Secteur et Simulation : réglages du calcul posés dans une carte ── */
+.plan-form { padding: .9rem 1rem; border-radius: var(--r-carte); background: var(--verre-fort); border: 1px solid var(--verre-bord); box-shadow: var(--ombre); }
+.plan-form label { font-size: .86rem; font-weight: 600; color: var(--gris); }
+.plan-form label :is(input, select) { margin-top: .3rem; color: var(--encre); font-weight: 400; }
+.sim-jour { background: var(--verre-fort); border: 1px solid var(--verre-bord); border-radius: var(--r-carte); box-shadow: var(--ombre); }
+.sim-titre { font-weight: 700; }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) :is(.plan-form, .sim-jour) { border-color: var(--trait); } }
+:root[data-theme="dark"] :is(.plan-form, .sim-jour) { border-color: var(--trait); }
