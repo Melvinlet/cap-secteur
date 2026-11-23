@@ -564,10 +564,13 @@ export async function exporterVersPlanning(date, s, periode = null) {
 // Lignes du planning en texte brut (une ligne par visite, colonnes séparées par des tabulations, de Jour à Interlocuteur).
 // Collé dans Excel, du texte brut ne remplace QUE les valeurs : la mise en forme conditionnelle (couleurs par enseigne),
 // les listes déroulantes et les formules du fichier restent. Date en AAAA-MM-JJ : Excel la reconnaît dans toutes les langues
-// et l'affiche ensuite au format de la colonne (ex. « Mon 23/11/26 »).
+// (le jour est envoyé en numéro de série : voir plus bas).
 async function copierPlanning(lignes) {
   const net = x => String(x ?? '').replace(/[\t\r\n]+/g, ' ').trim();
-  const tsv = lignes.map(l => [l.jour, heurePlanning(l.heure) || '', l.chef, l.enseigne, l.magasin, l.statut, l.objet, l.numero, l.interlocuteur].map(net).join('\t')).join('\r\n');
+  // le jour part en numéro de série Excel (ex. 46349) : un nombre collé garde le format de la colonne (« Mon 23/11/26 »),
+  // alors qu'une date écrite en texte fait changer le format de la case (ex. 11/23/2026 sur un Excel américain)
+  const serie = iso => { const [y, m, d] = iso.split('-').map(Number); return Math.round((Date.UTC(y, m - 1, d) - Date.UTC(1899, 11, 30)) / 86400000); };
+  const tsv = lignes.map(l => [serie(l.jour), heurePlanning(l.heure) || '', l.chef, l.enseigne, l.magasin, l.statut, l.objet, l.numero, l.interlocuteur].map(net).join('\t')).join('\r\n');
   const msg = `${lignes.length} visite${lignes.length > 1 ? 's' : ''} copiée${lignes.length > 1 ? 's' : ''}. Dans ton planning : clique la 1re case vide de la colonne Jour, puis Ctrl+V.`;
   try { await navigator.clipboard.writeText(tsv); toast(msg); return; } catch { /* copie refusée : on montre le texte */ }
   const p = modal({ titre: 'Copier les lignes', valider: 'Fermer', large: true, corps: `
