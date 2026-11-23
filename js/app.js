@@ -5,6 +5,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 import { persistStorage, chargerProfil } from './db.js';
 import { $, $$, esc, animerEntree, toast } from './ui.js';
+import { placerPastille } from './nav-pastille.js';
 
 const ROUTES = [
   [/^\/?$/, 'aujourdhui', () => import('./views/aujourdhui.js')],
@@ -20,6 +21,7 @@ const ROUTES = [
   [/^\/magasins$/, 'magasins', () => import('./views/magasins.js')],
   [/^\/afaire$/, 'afaire', () => import('./views/afaire.js')],
   [/^\/magasin\/([^/]+)(?:\/(\w+))?$/, 'magasins', () => import('./views/magasin.js'), ['id', 'onglet']],
+  [/^\/terrain$/, 'terrain', () => import('./views/terrain.js')],
   [/^\/reglages$/, 'reglages', () => import('./views/reglages.js')],
   [/^\/compte$/, 'reglages', () => import('./views/compte.js')],
   [/^\/bienvenue$/, 'aujourdhui', () => import('./views/bienvenue.js')],
@@ -44,6 +46,7 @@ async function route(_, { garder = false } = {}) {
   const params = { ...query };
   names.forEach((n, i) => { if (m[i + 1]) params[n] = m[i + 1]; });
   $$('.nav a[data-route]').forEach(a => a.toggleAttribute('aria-current', a.dataset.route === nav));
+  placerPastille();
   document.body.dataset.view = nav;
   try {
     current = await loader();
@@ -75,7 +78,10 @@ window.__retourMail = await nuage.lireRetourMail().catch(() => null);
 if (!window.__retourMail && /^#?\/?$/.test(location.hash)) {
   try { if (await (await import('./views/bienvenue.js')).aMontrer()) history.replaceState(null, '', location.pathname + '#/bienvenue'); } catch { /* accueil normal */ }
 }
-route();
+await route();
+dispatchEvent(new Event('cap-pret'));   // l'écran de lancement peut s'effacer
+import('./services/terrain.js').then(async ({ infosTerrain }) => { if (await infosTerrain()) { $('.nav-terrain')?.removeAttribute('hidden'); placerPastille({ animer: false }); } }).catch(() => {});
+placerPastille({ animer: false });
 // synchronisation automatique entre appareils (si un compte est configuré)
 import('./services/synchro.js').then(({ demarrer }) => demarrer());
 // étapes cochées « visité » avant la v1.8.4 : la visite manquante est créée (une fois, puis plus rien à faire)

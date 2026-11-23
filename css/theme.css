@@ -318,7 +318,6 @@ dialog.feuille { background: color-mix(in srgb, var(--surface) 82%, transparent)
 .borne span { background: var(--jaune); }
 .sticky-save { bottom: calc(86px + env(safe-area-inset-bottom)); background: none; padding: .6rem 0; z-index: 5; }
 @media (min-width: 900px) { .sticky-save { bottom: 12px; } }
-#ouverture { background: radial-gradient(130% 150% at 100% 0%, rgba(255, 255, 255, .18), transparent 46%), linear-gradient(140deg, #1F72D0 0%, #0B5CAD 42%, #083F78 100%); }
 @media (prefers-reduced-motion: reduce) { .btn { transition: none; } .btn:active:not(:disabled) { transform: none; } }
 .accueil > .alerte-retard { border-left: 5px solid var(--st-att); }
 .alerte-retard .h2 { color: var(--st-att); }
@@ -422,3 +421,133 @@ small, .hint, .small { font-size: .8125rem; }
 .wact select { background: transparent; color: var(--gris); border: 1px solid var(--trait); border-radius: 8px; min-height: 32px; font-size: .78rem; padding: 0 1.4rem 0 .5rem; }
 .wact .btn-icon { min-width: 32px; min-height: 32px; color: var(--gris); }
 .rdv-f select { font-size: .92rem; }
+
+/* ════ v1.17 ════ */
+/* Ordinateur : la colonne de contenu ne peut plus être poussée hors de l'écran par un enfant trop large */
+@media (min-width: 900px) { .shell { grid-template-columns: 236px minmax(0, 1fr); } }
+main, .page { min-width: 0; }
+.page-head { min-width: 0; }
+.page-head .seg { flex: 0 1 auto; }
+
+/* Magasins : recherche en pleine largeur, puis les 4 filtres alignés sur une ligne */
+@media (min-width: 700px) {
+  .filters { display: grid; grid-template-columns: minmax(0, 1fr); gap: .6rem; }
+  .filters .bornes { order: -1; }
+  .filtres-corps { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+}
+@media (min-width: 900px) { .filtres-plus > summary { display: none; } .filtres-plus .filtres-corps { margin-top: 0; } }
+/* Ordinateur : toutes les pages partent du même bord, à côté du menu (plus de pages centrées et d'autres collées) */
+@media (min-width: 900px) {
+  .page, .page.wide { margin: 0; padding: 1.4rem 2rem 2.5rem; }
+  .tm { margin: 0; }
+}
+/* pastilles de compteur dans les onglets : un peu d'air */
+.seg .badge, .tabs .badge, .onglets-planning .badge { margin-left: .35rem; }
+/* Semaine : les commandes d'un magasin passent à la ligne au lieu de déborder de la colonne */
+.wact { flex-wrap: wrap; }
+.wday { min-width: 0; }
+/* Bouton « Enregistrer » flottant : posé sur une plaque de verre pour ne pas se mélanger au texte dessous */
+.sticky-save { width: fit-content; padding: .45rem; margin-top: .5rem; border-radius: 18px; background: color-mix(in srgb, var(--papier) 70%, transparent);
+  -webkit-backdrop-filter: var(--flou); backdrop-filter: var(--flou); border: 1px solid var(--verre-bord); box-shadow: var(--ombre); }
+.sticky-save .btn { margin: 0; }
+.sticky-save.cr-save { width: auto; }
+
+/* ── Menu : pastille qui glisse + effet d'appui ── */
+.nav a { position: relative; z-index: 1; transition: color .35s ease, transform .18s cubic-bezier(.3, .7, .4, 1); -webkit-tap-highlight-color: transparent; }
+.nav a:active { transform: scale(.93); }
+.nav a[aria-current] { background: none !important; box-shadow: none !important; }
+.nav-pastille { position: absolute; z-index: 0; left: 0; top: 0; pointer-events: none; border-radius: 21px;
+  background: color-mix(in srgb, var(--bleu) 13%, transparent);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .35);
+  transition: transform .5s cubic-bezier(.22, 1.15, .36, 1), width .5s cubic-bezier(.22, 1.15, .36, 1), height .5s cubic-bezier(.22, 1.15, .36, 1), opacity .2s; }
+.nav-pastille.sans-anim { transition: none; }
+@media (prefers-color-scheme: dark) { .nav-pastille { background: rgba(255, 255, 255, .13); } }
+@media (min-width: 900px) {
+  .nav-pastille { border-radius: 12px; background: var(--hero); box-shadow: 0 6px 16px rgba(11, 92, 173, .3), inset 0 1px 0 rgba(255, 255, 255, .22); }
+  .nav a[aria-current], .nav a[aria-current] svg { color: #fff; }
+}
+@media (prefers-reduced-motion: reduce) { .nav-pastille, .nav a { transition: none; } .nav a:active { transform: none; } }
+
+/* ── Entrée des écrans : courte et douce ── */
+.vue-entre { animation: entre .32s cubic-bezier(.2, .8, .3, 1); }
+@media (prefers-reduced-motion: reduce) { .vue-entre { animation: none; } }
+/* boutons et puces : même ressort à l'appui */
+.btn, .chip, .btn-icon, .seg button, .tabs a, .onglets-planning a { -webkit-tap-highlight-color: transparent; }
+.chip:active, .seg button:active, .tabs a:active, .onglets-planning a:active, .btn-icon:active { transform: scale(.95); }
+.seg button, .tabs a, .onglets-planning a { transition: background .25s ease, box-shadow .25s ease, transform .15s ease, color .25s; }
+
+/* ── Cases à cocher : dessinées (même rendu partout), ronds « Rappels » pour les à faire ── */
+input[type=checkbox]:not(.chip-check input):not(.seg-r input) {
+  -webkit-appearance: none; appearance: none; flex: none; margin: 0; cursor: pointer; position: relative;
+  width: 22px; height: 22px; min-height: 22px; border-radius: 7px;
+  border: 2px solid color-mix(in srgb, var(--gris) 60%, transparent); background: var(--surface);
+  display: inline-grid; place-content: center; vertical-align: middle;
+  transition: background .2s ease, border-color .2s ease, transform .15s ease, box-shadow .2s; }
+input[type=checkbox]:not(.chip-check input):not(.seg-r input)::before {
+  content: ""; width: 12px; height: 12px; background: #fff; transform: scale(0); transition: transform .22s cubic-bezier(.3, 1.6, .5, 1);
+  -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12'%3E%3Cpath d='M2.4 6.3 4.9 8.7 9.6 3.5' fill='none' stroke='%23000' stroke-width='2.1' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E") center / contain no-repeat;
+          mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12'%3E%3Cpath d='M2.4 6.3 4.9 8.7 9.6 3.5' fill='none' stroke='%23000' stroke-width='2.1' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E") center / contain no-repeat; }
+input[type=checkbox]:not(.chip-check input):not(.seg-r input):checked { background: linear-gradient(180deg, #2A7FDB, #0B5CAD); border-color: transparent; }
+input[type=checkbox]:not(.chip-check input):not(.seg-r input):checked::before { transform: scale(1); }
+input[type=checkbox]:not(.chip-check input):not(.seg-r input):active { transform: scale(.88); }
+input[type=checkbox]:not(.chip-check input):not(.seg-r input):focus-visible { outline: none; box-shadow: 0 0 0 4px color-mix(in srgb, var(--bleu) 30%, transparent); }
+input[type=checkbox]:not(.chip-check input):not(.seg-r input):disabled { opacity: .45; cursor: not-allowed; }
+@media (prefers-color-scheme: dark) { input[type=checkbox]:not(.chip-check input):not(.seg-r input) { background: rgba(255, 255, 255, .06); } }
+
+/* À faire : rond à gauche, texte, détails dessous alignés sur le texte */
+input[data-afaire] { width: 24px !important; height: 24px !important; min-height: 24px !important; border-radius: 50% !important; }
+input[data-afaire]:checked { background: linear-gradient(180deg, #34A065, #23663D) !important; }
+.afaire-liste { gap: 0; }
+.afaire-liste li, .af-item { position: relative; }
+.afaire-liste li .check, .af-item .check { display: grid; grid-template-columns: 24px minmax(0, 1fr); gap: .7rem; align-items: start; margin: 0; font-weight: 500; }
+.afaire-liste li .check > span, .af-item .af-txt { padding-top: 1px; line-height: 1.35; }
+.afaire-liste li { padding: .55rem 0; border-bottom: 1px solid var(--trait); }
+.afaire-liste li:last-child { border-bottom: 0; }
+.afaire-liste li small, .af-meta { display: block; padding-left: calc(24px + .7rem) !important; margin-top: .15rem; line-height: 1.45; }
+.afaire-liste li.fait span, .af-item.fait .af-txt { opacity: 1; color: var(--gris); text-decoration: line-through; transition: color .3s; }
+.af-item { padding: .75rem .85rem; border-radius: 14px; background: var(--verre-fort); border: 1px solid var(--verre-bord); box-shadow: var(--ombre); }
+@media (prefers-color-scheme: dark) { .af-item { border-color: var(--trait); } }
+.af-act .btn-icon { min-width: 36px; min-height: 36px; }
+/* dans la carte du mode tournée (fond coloré) */
+.tm-afaire input[data-afaire] { border-color: rgba(255, 255, 255, .75); background: rgba(255, 255, 255, .12); }
+.tm-afaire .afaire-liste li { border-bottom-color: rgba(255, 255, 255, .2); }
+
+/* ── Écran de lancement ── */
+#ouverture { background:
+    radial-gradient(60% 45% at 50% 38%, rgba(90, 170, 255, .38), transparent 70%),
+    radial-gradient(80% 60% at 0% 0%, rgba(58, 147, 238, .45), transparent 70%),
+    radial-gradient(70% 55% at 100% 100%, rgba(4, 30, 64, .8), transparent 70%),
+    linear-gradient(160deg, #1C6FCB 0%, #0B5CAD 45%, #062F5E 100%);
+  color: #fff; font-family: var(--sans); }
+.ov-scene { display: grid; justify-items: center; gap: 0; transform-origin: 50% 40%; padding: 0 24px; text-align: center; }
+.ov-logo { position: relative; width: 96px; height: 141px; margin-bottom: 24px; }
+.ov-logo img { width: 96px; height: 141px; display: block; filter: drop-shadow(0 16px 26px rgba(2, 20, 45, .5)); }
+.ov-trainee { position: absolute; top: 50%; right: 70%; width: 130px; height: 64px; margin-top: -32px; border-radius: 50%; opacity: 0; pointer-events: none; transform-origin: right center;
+  background: radial-gradient(closest-side, rgba(255, 255, 255, .55), rgba(255, 255, 255, 0)); filter: blur(6px); }
+.ov-titre { margin: 0 0 18px; font: 700 2rem/1.1 var(--cond); letter-spacing: -.03em; }
+.ov-barre { width: 168px; height: 5px; border-radius: 3px; overflow: hidden; background: rgba(255, 255, 255, .2); box-shadow: inset 0 1px 1px rgba(0, 0, 0, .15); }
+.ov-barre i { display: block; height: 100%; border-radius: 3px; transform-origin: left center; transform: scaleX(0); background: linear-gradient(90deg, #fff, #FFE45C); }
+.ov-phrase { margin: 14px 0 0; min-height: 1.4em; font-size: .95rem; color: rgba(255, 255, 255, .82); max-width: 28ch; }
+
+/* ── Clasper Terrain (outil du collègue, en plein écran) ── */
+@media (max-width: 899px) { .nav .nav-terrain { display: none !important; } }
+body[data-view="terrain"] main { padding-bottom: 0; }
+@media (max-width: 899px) { body[data-view="terrain"] .nav { display: none; } }
+.terrain { display: flex; flex-direction: column; height: 100vh; height: 100dvh; }
+.terrain-barre { flex: none; display: flex; align-items: center; gap: .5rem; padding: calc(6px + env(safe-area-inset-top)) 10px 6px;
+  background: color-mix(in srgb, var(--surface) 72%, transparent); -webkit-backdrop-filter: var(--flou); backdrop-filter: var(--flou); border-bottom: 1px solid var(--trait); }
+.terrain-barre .btn-icon { font-size: 1.7rem; text-decoration: none; display: grid; place-items: center; color: var(--bleu); padding-bottom: 3px; }
+.terrain-titre { flex: 1; min-width: 0; display: flex; flex-direction: column; line-height: 1.2; }
+.terrain-titre small { color: var(--gris); }
+.terrain-cadre { flex: 1; width: 100%; border: 0; background: #fff; }
+.terrain-lien { display: flex; align-items: center; gap: .8rem; padding: .75rem .9rem; margin: 0 0 .9rem; border-radius: var(--r-carte); text-decoration: none; color: var(--encre);
+  background: var(--verre-fort); border: 1px solid var(--verre-bord); box-shadow: var(--ombre); transition: transform .15s ease; }
+.terrain-lien:active { transform: scale(.98); }
+.terrain-lien > span:nth-child(2) { flex: 1; display: flex; flex-direction: column; line-height: 1.25; }
+.terrain-lien small { color: var(--gris); }
+.terrain-lien .chevron { color: var(--gris); font-size: 1.4rem; }
+.terrain-ic { width: 36px; height: 36px; border-radius: 10px; flex: none; background: var(--hero); position: relative; box-shadow: inset 0 1px 0 rgba(255, 255, 255, .25); }
+.terrain-ic::after { content: ""; position: absolute; inset: 9px; background: #FFD200;
+  -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M4 12h14M13 6l6 6-6 6' fill='none' stroke='%23000' stroke-width='3' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E") center / contain no-repeat;
+          mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M4 12h14M13 6l6 6-6 6' fill='none' stroke='%23000' stroke-width='3' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E") center / contain no-repeat; }
+@media (prefers-color-scheme: dark) { .terrain-lien { border-color: var(--trait); } }

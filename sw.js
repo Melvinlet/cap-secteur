@@ -3,7 +3,7 @@
 // IMPORTANT : à chaque mise en ligne d'une nouvelle version, change VERSION
 // (sinon les téléphones garderont l'ancienne version en cache).
 // ─────────────────────────────────────────────────────────────────────────────
-const VERSION = 'cap-secteur-1.16.1';
+const VERSION = 'cap-secteur-1.17.0';
 const TUILES = 'cap-secteur-tuiles';
 const IMAGES_WEB = 'cap-secteur-images-web';
 const MAX_TUILES = 3000;
@@ -17,8 +17,13 @@ const APP = [
   './icons/icon-512.png',
   './icons/icon-maskable-512.png',
   './icons/icon.svg',
+  './icons/apple-touch-icon.png',
+  './icons/glyphe.svg',
   './index.html',
   './js/app.js',
+  './js/nav-pastille.js',
+  './js/services/terrain.js',
+  './js/views/terrain.js',
   './js/ouverture.js',
   './js/carte.js',
   './js/config.js',

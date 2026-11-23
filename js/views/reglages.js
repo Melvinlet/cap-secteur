@@ -1,7 +1,7 @@
 // Réglages : profil, tournées, services en ligne, import / export des données.
 import { db, getSettings, saveSettings, STORES } from '../db.js';
 import { APP_VERSION, DUREES_ENSEIGNE, PRIORITES, OBJETS_VISITE, MODELES_RDV, PROFIL } from '../config.js';
-import { $, $$, esc, toast, pickFile, downloadBlob, confirmer, modal, today } from '../ui.js';
+import { $, $$, esc, toast, pickFile, downloadBlob, confirmer, modal, today, fmtDate } from '../ui.js';
 import { importerBaseMagasins } from '../services/excel.js';
 import { geocodeAdresse, geocodeMagasin } from '../services/geo.js';
 import { exporter, importer } from '../services/backup.js';
@@ -97,6 +97,12 @@ export async function render(el) {
 
       <div class="sticky-save"><button class="btn primary" type="submit">Enregistrer les réglages</button></div>
     </form>
+
+    <section class="settings"><h2 class="h2">Clasper Terrain</h2>
+      <p id="terrainEtat" class="muted">…</p>
+      <div class="actions"><button class="btn" id="terrainImp">Importer le fichier</button><a class="btn ghost" id="terrainOuvrir" href="#/terrain" hidden>Ouvrir</a><button class="btn ghost danger-txt" id="terrainSuppr" hidden>Retirer</button></div>
+      <p class="hint">L'outil HTML de ton collègue, rangé uniquement sur cet appareil (ni synchronisé, ni sur GitHub). Nouvelle version : réimporte le fichier, il remplace l'ancien.</p>
+    </section>
 
     <details class="settings sect-avance"><summary><h2 class="h2">Avancé</h2><small class="muted">Import de fichiers à la main : inutile si tu as rejoint ton équipe avec le kit entreprise</small></summary>
     <section><h2 class="h2">Base magasins</h2>
@@ -256,9 +262,24 @@ export async function render(el) {
     try { const r = await importer(file, 'fusion'); toast(r.type === 'profil' ? `Profil « ${r.nom || 'entreprise'} » chargé` : 'Fichier importé'); render(el); }
     catch (e) { toast(e.message, 'warn'); }
   };
+  const terrainMaj = async () => {
+    const { infosTerrain } = await import('../services/terrain.js');
+    const i = await infosTerrain();
+    $('#terrainEtat').textContent = i ? `« ${i.nom} » · version du ${fmtDate(i.importe)} · ${Math.round(i.taille / 1e5) / 10} Mo` : 'Aucun fichier importé.';
+    $('#terrainImp').textContent = i ? 'Importer une nouvelle version' : 'Importer le fichier';
+    $('#terrainOuvrir').hidden = $('#terrainSuppr').hidden = !i;
+    document.querySelector('.nav-terrain')?.toggleAttribute('hidden', !i);
+  };
+  terrainMaj();
+  $('#terrainImp').onclick = async () => { const { importer } = await import('./terrain.js'); if (await importer()) terrainMaj(); };
+  $('#terrainSuppr').onclick = async () => {
+    if (!(await confirmer('Retirer Clasper Terrain', 'Le fichier sera retiré de cet appareil. Tu pourras le réimporter quand tu veux.', 'Retirer'))) return;
+    const { retirerTerrain } = await import('../services/terrain.js'); await retirerTerrain(); terrainMaj();
+  };
   $('#wipe').onclick = async () => {
     if (!(await confirmer('Tout effacer', 'Toutes les données de cet appareil (magasins, notes, commandes, SAV, réglages) seront supprimées. Exporte une sauvegarde avant si tu en as besoin.', 'Tout effacer'))) return;
     for (const st of Object.keys(STORES)) await db.clear(st);
+    try { (await import('../services/terrain.js')).retirerTerrain(); } catch { /* */ }
     location.hash = '#/'; location.reload();
   };
 }

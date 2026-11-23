@@ -7,6 +7,7 @@ import { aRelancer, dateEnLettres, dateEffRdv, heureEffRdv } from '../services/r
 import { lienGps } from '../services/routing.js';
 import { ferie } from '../services/feries.js';
 import { aFaireOuverts, listeAFaire, brancherCoches } from '../services/afaire.js';
+import { infosTerrain } from '../services/terrain.js';
 const demain = () => { const d = new Date(today() + 'T12:00'); d.setDate(d.getDate() + 1); return d.toISOString().slice(0, 10); };
 
 export async function render(el) {
@@ -44,6 +45,7 @@ export async function render(el) {
   const prochainsRdv = rdvs.filter(r => ['acceptee', 'autreDate'].includes(r.statut)).map(r => ({ ...r, j: dateEffRdv(r), h: heureEffRdv(r) }))
     .filter(r => r.j && r.j >= today()).sort((a, b) => (a.j + a.h).localeCompare(b.j + b.h)).slice(0, 6);
 
+  const terrain = await infosTerrain().catch(() => null);
   const faitsAuj = t.etapes.filter(e => e.fait).length;
   const rdvAuj = prochainsRdv.filter(r => r.j === today()).length;
   const resume = t.etapes.length
@@ -58,6 +60,7 @@ export async function render(el) {
         <span>Aller au prochain magasin</span><strong>${esc(mProchain.nom)}</strong><small>avec ${s.gps === 'google' ? 'Google Maps' : 'Waze'}</small></a>
         <a class="btn mode-tournee" href="#/en-tournee"><span aria-hidden="true">▶</span> Mode tournée</a></div>` : ''}
     </header>
+    ${terrain ? `<a class="terrain-lien" href="#/terrain"><span class="terrain-ic" aria-hidden="true"></span><span><strong>Clasper Terrain</strong><small>version du ${fmtDate(terrain.importe)}</small></span><span class="chevron" aria-hidden="true">›</span></a>` : ''}
     ${aPlacer.length ? `<section class="alerte-retard" role="status">
       <h2 class="h2">${aPlacer.length} magasin${aPlacer.length > 1 ? 's' : ''} en retard de visite, pas encore planifié${aPlacer.length > 1 ? 's' : ''}</h2>
       <ul class="plain">${aPlacer.slice(0, 3).map(m => `<li><a href="#/magasin/${encodeURIComponent(m.id)}">${esc(m.nom)}</a> <span class="muted">dernière visite il y a ${m.joursDepuisVisite} j (tous les ${m.frequenceEff} j prévu)</span></li>`).join('')}</ul>

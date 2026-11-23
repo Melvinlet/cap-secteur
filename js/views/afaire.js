@@ -90,8 +90,9 @@ export async function render(el) {
   $$('[data-afaire]', el).forEach(c => c.onchange = async () => {
     await marquerFait(c.dataset.afaire, c.checked);
     c.closest('li').classList.toggle('fait', c.checked);
-    toast(c.checked ? 'Fait ✓' : 'Remis dans « En cours »', '', { label: 'Annuler', onclick: async () => { await marquerFait(c.dataset.afaire, !c.checked); render(el); } });
-    setTimeout(() => render(el), 900);
+    const ici = () => location.hash.startsWith('#/afaire');   // pas de rafraîchissement si on a changé d'écran entre-temps
+    toast(c.checked ? 'Fait ✓' : 'Remis dans « En cours »', '', { label: 'Annuler', onclick: async () => { await marquerFait(c.dataset.afaire, !c.checked); if (ici()) render(el); } });
+    setTimeout(() => { if (ici()) render(el); }, 900);
   });
   $$('[data-ed]', el).forEach(b => b.onclick = async () => { if (await editer(await db.get('notes', b.dataset.ed), mags)) render(el); });
   $('#ajout', el).onclick = async () => { if (await editer(null, mags)) render(el); };
