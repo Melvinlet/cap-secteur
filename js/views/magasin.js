@@ -102,12 +102,13 @@ function infos(el, { m, contacts, rangVentes }, s) {
           ${kv('Position', m.lat != null ? (m.positionManuelle ? 'Placée à la main' : m.precision === 'magasin' ? `Emplacement du magasin (${m.positionSource === 'tomtom' ? 'TomTom' : 'OpenStreetMap'})` : m.precision === 'ville' ? 'Centre de la ville (approximatif)' : m.precision === 'commune' ? 'Centre de la commune (affinée automatiquement dès que tu as du réseau)' : m.precision === 'rue' ? 'Milieu de la rue ou de la zone (approximatif : déplace le repère si besoin)' : 'Adresse trouvée') : 'Pas encore localisé')}
         </dl>
         <div id="miniMap" class="mini-map"></div>
-        <p class="hint">Mauvaise position ? Clique sur la carte à l'endroit exact du magasin.</p>
+        <p class="hint">Mauvaise position ? Clique sur la carte à l'endroit exact du magasin, ou devant le magasin : <button type="button" class="btn small" id="ici">📍 Je suis devant le magasin</button></p>
       </div>
     </div>`;
   $('#addContact').onclick = () => editContact(m);
   $$('[data-edit]').forEach(b => b.onclick = () => editContact(m, contacts.find(c => c.id === b.dataset.edit)));
   $('#editMag').onclick = () => editMagasin(m, s);
+  $('#ici').onclick = async () => { const { jeSuisDevant } = await import('../services/emplacements.js'); if (await jeSuisDevant(m.id)) dispatchEvent(new HashChangeEvent('hashchange')); };
   miniCarte(m);
 }
 

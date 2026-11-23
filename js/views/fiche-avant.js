@@ -58,19 +58,21 @@ export async function ouvrirFicheAvant(magasinId, date) {
   const savOuverts = sav.filter(x => x.statut !== 'Résolu');
   if (savOuverts.length) chiffres += `<p class="small"><span class="tag late">${savOuverts.length} SAV en cours</span> ${savOuverts.slice(0, 2).map(x => esc(x.produit || 'SAV')).join(', ')}</p>`;
 
+  const futurJ = (date || today()) > today();   // jour à venir : on prépare, on ne marque pas « visité »
   const corps = `<div class="fiche-avant">
     <p class="fa-tete">${prioTag(prioriteDe(m))} <strong>${esc(m.nom)}</strong><br><span class="muted small">${esc(m.adresse && m.cp && m.adresse.includes(m.cp) ? m.adresse : [m.adresse, `${m.cp || ''} ${m.ville || ''}`.trim()].filter(Boolean).join(', '))}${j != null ? ` · dernière visite il y a ${j} jour${j > 1 ? 's' : ''}` : ''}</span></p>
-    <p class="fa-liens">${m.lat != null ? `<a class="btn small" href="${lienGps(s.gps, m)}" target="_blank" rel="noopener">GPS</a>` : ''}${m.telMagasin ? `<a class="btn small" href="tel:${esc(m.telMagasin.replace(/\s/g, ''))}">Appeler le magasin</a>` : ''}<a class="btn small ghost" href="#/magasin/${encodeURIComponent(m.id)}">Fiche complète</a></p>
+    <p class="fa-liens">${m.lat != null ? `<a class="btn small" href="${lienGps(s.gps, m)}" target="_blank" rel="noopener">GPS</a>` : ''}${m.telMagasin ? `<a class="btn small" href="tel:${esc(m.telMagasin.replace(/\s/g, ''))}">Appeler le magasin</a>` : ''}<a class="btn small ghost" href="#/magasin/${encodeURIComponent(m.id)}">Fiche complète</a>${!m.positionManuelle && !futurJ ? '<button type="button" class="btn small ghost" id="faIci" title="La position du téléphone devient celle du magasin : le GPS t\'y emmènera directement">📍 Je suis devant</button>' : ''}</p>
     ${bloc('À faire', af.length ? listeAFaire(af) : '', 'fa-afaire')}
     ${bloc('Ton contact', contact)}
     ${bloc('Rendez-vous', rdvTxt)}
     ${bloc('Dernier compte rendu', visite)}
     ${bloc('Chiffres', chiffres)}
   </div>`;
-  const futur = (date || today()) > today();   // jour à venir : on prépare, on ne marque pas « visité »
+  const futur = futurJ;
   const p = modal({ titre: 'Avant d\'entrer', valider: futur ? 'Fermer' : 'Visité', large: true, corps });
   const dlg = document.querySelector('dialog[open]');
   brancherCoches(dlg);
+  dlg.querySelector('#faIci')?.addEventListener('click', async e => { const { jeSuisDevant } = await import('../services/emplacements.js'); if (await jeSuisDevant(magasinId)) e.target.remove(); });
   const r = await p;
   if (r === null || futur) return false;
   const v = await marquerVisite(magasinId, date);

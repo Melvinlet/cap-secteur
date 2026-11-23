@@ -7,7 +7,7 @@
 import { db, getSettings } from '../db.js';
 import { haversine } from './geo.js';
 
-const OVERPASS = ['https://overpass-api.de/api/interpreter', 'https://overpass.kumi.systems/api/interpreter'];
+const OVERPASS = ['https://overpass-api.de/api/interpreter', 'https://overpass.private.coffee/api/interpreter', 'https://overpass.kumi.systems/api/interpreter'];
 const TYPES = 'doityourself|hardware|garden_centre|trade|building_materials|agrarian|houseware|paint|tool_hire';
 const sansAccent = s => String(s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
 const colle = s => sansAccent(s).replace(/[^a-z0-9]/g, '');
@@ -119,4 +119,27 @@ export async function recalerUneFois() {
   const r = await recalerMagasins();
   try { localStorage.setItem(CLE, new Date().toISOString()); } catch { /* */ }
   return r;
+}
+
+// « Je suis devant le magasin » : la position du téléphone devient l'emplacement du magasin.
+// Placé à la main = jamais recalé ensuite, et le GPS y va tout droit (par le point, pas par le nom).
+export async function jeSuisDevant(magasinId) {
+  const { toast, modal } = await import('../ui.js');
+  const { positionTelephone } = await import('./routing.js');
+  const m = await db.get('magasins', magasinId);
+  if (!m) return false;
+  toast('Recherche de ta position…');
+  let p;
+  try { p = await positionTelephone(); } catch (e) { toast(e.message, 'warn'); return false; }
+  if (p.precision > 150) { toast(`Position trop imprécise (± ${Math.round(p.precision)} m) : réessaie dehors, devant l'entrée`, 'warn'); return false; }
+  const ecart = m.lat != null ? haversine(m, p) : null;
+  const dist = ecart == null ? '' : ecart < 1 ? `${Math.round(ecart * 1000)} m` : `${ecart.toFixed(1)} km`;
+  const ok = await modal({ titre: 'Placer le magasin ici ?', valider: 'Placer ici', corps: `
+    <p><strong>${m.nom}</strong> sera placé exactement où tu es (± ${Math.round(p.precision)} m)${dist ? `, à ${dist} de sa position actuelle` : ''}.</p>
+    ${ecart != null && ecart > 5 ? '<p class="banner warn">C\'est loin de sa position actuelle : vérifie que tu es bien devant ce magasin.</p>' : ''}
+    <p class="hint">Le GPS t'emmènera ensuite directement à ce point, et l'appli ne le déplacera plus.</p>` });
+  if (ok === null) return false;
+  await db.put('magasins', { ...m, lat: p.lat, lon: p.lon, precision: 'adresse', positionManuelle: true, positionSource: 'telephone', affinageEchec: undefined, maj: new Date().toISOString() });
+  toast(`${m.nom} : position enregistrée`);
+  return true;
 }

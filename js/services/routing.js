@@ -113,14 +113,35 @@ export async function calculerTrajets(points, s, opts = {}) {
 }
 
 // Liens de navigation GPS
+// Lien GPS vers un magasin : par son NOM et son ADRESSE (le GPS trouve la fiche du magasin et guide jusqu'à l'entrée / au parking),
+// et non par un point brut : un point au milieu du bâtiment ou d'une zone commerciale est « collé » par le GPS à la route
+// la plus proche, souvent celle de derrière (livraisons) ou de la zone d'à côté. Un magasin placé à la main garde son point.
+const parPoint = p => p.positionManuelle || !p.nom || !p.ville;
+export function lieuGps(p) {
+  if (parPoint(p)) return `${p.lat},${p.lon}`;
+  const adr = p.adresse && p.cp && p.adresse.includes(p.cp) ? p.adresse : [p.adresse, `${p.cp || ''} ${p.ville}`.trim()].filter(Boolean).join(', ');
+  return `${p.nom}, ${adr}`;
+}
 export function lienGps(app, dest, etapes = []) {
   if (app === 'google') {
     const u = new URL('https://www.google.com/maps/dir/');
     u.searchParams.set('api', '1');
-    u.searchParams.set('destination', `${dest.lat},${dest.lon}`);
+    u.searchParams.set('destination', lieuGps(dest));
     u.searchParams.set('travelmode', 'driving');
-    if (etapes.length) u.searchParams.set('waypoints', etapes.slice(0, 9).map(e => `${e.lat},${e.lon}`).join('|'));
+    if (etapes.length) u.searchParams.set('waypoints', etapes.slice(0, 9).map(lieuGps).join('|'));
     return u.toString();
   }
-  return `https://waze.com/ul?ll=${dest.lat},${dest.lon}&navigate=yes`;
+  // Waze : recherche du magasin (nom + adresse) autour de son point, puis navigation
+  return parPoint(dest) ? `https://waze.com/ul?ll=${dest.lat},${dest.lon}&navigate=yes`
+    : `https://waze.com/ul?q=${encodeURIComponent(lieuGps(dest))}&ll=${dest.lat},${dest.lon}&navigate=yes`;
+}
+
+// « Je suis devant le magasin » : la position du téléphone devient celle du magasin (placée à la main, jamais recalée)
+export function positionTelephone() {
+  return new Promise((ok, ko) => {
+    if (!navigator.geolocation) return ko(new Error('Ce téléphone ne donne pas sa position'));
+    navigator.geolocation.getCurrentPosition(p => ok({ lat: p.coords.latitude, lon: p.coords.longitude, precision: p.coords.accuracy }),
+      e => ko(new Error(e.code === 1 ? 'Autorise la localisation pour Cap Secteur dans les réglages du téléphone' : 'Position introuvable, réessaie dehors')),
+      { enableHighAccuracy: true, timeout: 20000, maximumAge: 0 });
+  });
 }
