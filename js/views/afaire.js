@@ -55,13 +55,14 @@ export async function render(el) {
 
   const item = n => { const m = byId.get(n.magasinId), pr = prochain.get(n.magasinId);
     return `<li class="af-item${n.aFaireFait ? ' fait' : ''}">
-      <label class="check"><input type="checkbox" data-afaire="${esc(n.id)}" ${n.aFaireFait ? 'checked' : ''} aria-label="Fait : ${esc(n.aFaire)}"> <span class="af-txt">${esc(n.aFaire)}</span></label>
+      <input type="checkbox" class="af-rond" id="af-${esc(n.id)}" data-afaire="${esc(n.id)}" ${n.aFaireFait ? 'checked' : ''} aria-label="Fait : ${esc(n.aFaire)}">
+      <div class="af-corps"><label class="af-txt" for="af-${esc(n.id)}">${esc(n.aFaire)}</label>
       <div class="af-meta small">
         ${etat.tri === 'magasin' && etat.vue !== 'faits' ? '' : `<a href="#/magasin/${encodeURIComponent(m.id)}">${esc(m.nom)}</a> ${prioTag(m.prio)} · `}
         <span class="muted">noté le ${fmtDate(n.date)}${n.contact ? ` · avec ${esc(n.contact)}` : ''}</span>
         ${n.echeance ? ` · <span class="${!n.aFaireFait && n.echeance < auj ? 'late-txt' : ''}">pour le ${fmtDate(n.echeance)}</span>` : ''}
         ${n.aFaireFait ? ` · <span class="ok-txt">fait le ${fmtDate(n.aFaireFait)}</span>` : pr ? ` · <a class="af-tour" href="#/tournee/${pr}">${ic('lieu')} dans ta tournée ${pr === auj ? 'aujourd\'hui' : `du ${esc(dateEnLettres(pr))}`}</a>` : ''}
-      </div>
+      </div></div>
       <div class="af-act"><a class="btn-link small" href="${lienNote(n)}">${n.type === 'Visite' ? 'compte rendu' : 'note'}</a>
         <button type="button" class="btn-icon" data-ed="${esc(n.id)}" aria-label="Modifier">${ic('crayon')}</button></div></li>`; };
 

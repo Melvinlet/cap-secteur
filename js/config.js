@@ -5,7 +5,7 @@
 // Aucune donnée d'entreprise ici : voir « Profil entreprise » en bas de fichier.
 // ─────────────────────────────────────────────────────────────────────────────
 
-export const APP_VERSION = '1.19.0';
+export const APP_VERSION = '1.19.1';
 
 export const DEFAULT_SETTINGS = {
   commercial: '',                 // ton nom, utilisé dans les exports
