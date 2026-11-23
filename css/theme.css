@@ -865,3 +865,6 @@ a.repere:active { transform: scale(.97); }
 .sim-titre { font-weight: 700; }
 @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) :is(.plan-form, .sim-jour) { border-color: var(--trait); } }
 :root[data-theme="dark"] :is(.plan-form, .sim-jour) { border-color: var(--trait); }
+/* cases et ronds : sans marge intérieure (elle les élargissait : 26 × 24 px, d'où des ronds ovales) */
+input[type=checkbox]:not(.chip-check input):not(.seg-r input) { padding: 0 !important; min-width: 0; aspect-ratio: 1; }
+input[data-afaire] { min-width: 24px !important; max-width: 24px; }
