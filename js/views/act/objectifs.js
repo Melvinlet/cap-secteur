@@ -1,10 +1,9 @@
 // Objectifs : en nombres ou en unités (jamais en euros), suivis automatiquement.
 import { db, uid, getSettings } from '../../db.js';
-import { $, $$, esc, fmtDate, modal, toast, confirmer } from '../../ui.js';
+import { $, $$, esc, fmtDate, modal, toast, confirmer, today } from '../../ui.js';
 import { INDICATEURS, ENSEIGNES_LISTE, PRIORITES, SAISON } from '../../config.js';
 import { chargerTout, indicateurs, periode } from '../../services/activite.js';
 
-const today = () => new Date().toISOString().slice(0, 10);
 
 export async function render(el) {
   const s = await getSettings();

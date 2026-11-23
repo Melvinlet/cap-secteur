@@ -3,7 +3,7 @@ import { db, getSettings } from '../db.js';
 import { magasinsEnrichis } from '../data.js';
 import { esc, borne, fmtDateLong, fmtDate, today, fmtHeure, numSemaine } from '../ui.js';
 import { getTournee, planning } from './tournee.js';
-import { aRelancer, dateEnLettres } from '../services/rdv.js';
+import { aRelancer, dateEnLettres, dateEffRdv, heureEffRdv } from '../services/rdv.js';
 import { lienGps } from '../services/routing.js';
 import { ferie } from '../services/feries.js';
 import { aFaireOuverts, listeAFaire, brancherCoches } from '../services/afaire.js';
@@ -41,17 +41,27 @@ export async function render(el) {
   const mProchain = prochain && byId.get(prochain.magasinId);
   const rdvs = await db.all('rdv');
   const relances = rdvs.filter(r => aRelancer(r, s.relanceApres));
-  const prochainsRdv = rdvs.filter(r => ['acceptee', 'autreDate'].includes(r.statut)).map(r => ({ ...r, j: r.statut === 'autreDate' ? r.dateRetenue : r.date, h: r.statut === 'autreDate' ? r.heureRetenue : r.heure }))
+  const prochainsRdv = rdvs.filter(r => ['acceptee', 'autreDate'].includes(r.statut)).map(r => ({ ...r, j: dateEffRdv(r), h: heureEffRdv(r) }))
     .filter(r => r.j && r.j >= today()).sort((a, b) => (a.j + a.h).localeCompare(b.j + b.h)).slice(0, 6);
 
-  el.innerHTML = `<div class="page">
-    <header class="hello"><a class="btn-icon settings-link" href="#/reglages" aria-label="Réglages" style="float:right">⚙</a><p class="muted">${fmtDateLong(today())} · semaine ${numSemaine(today())}${ferie(today()) ? ` · <span class="tag ferie">Férié · ${esc(ferie(today()))}</span>` : ''}${!ferie(today()) && ferie(demain()) ? ` · <span class="muted">demain férié (${esc(ferie(demain()))})</span>` : ''}</p><h1>${prenom ? `Bonjour ${esc(prenom)}` : 'Bonjour'}</h1></header>
+  const faitsAuj = t.etapes.filter(e => e.fait).length;
+  const rdvAuj = prochainsRdv.filter(r => r.j === today()).length;
+  const resume = t.etapes.length
+    ? `${t.etapes.length} magasin${t.etapes.length > 1 ? 's' : ''} aujourd'hui${faitsAuj ? ` · ${faitsAuj} visité${faitsAuj > 1 ? 's' : ''}` : ''}${t.calcul ? ` · fin vers ${fmtHeure(p.fin).replace(':', 'h')}` : ''}${rdvAuj ? ` · ${rdvAuj} RDV` : ''}`
+    : 'Rien de prévu aujourd\'hui.';
+  el.innerHTML = `<div class="page accueil">
+    <header class="hello hero"><a class="btn-icon settings-link" href="#/reglages" aria-label="Réglages" style="float:right">⚙</a>
+      <p class="hero-date">${fmtDateLong(today())} · semaine ${numSemaine(today())}${ferie(today()) ? ` · <span class="tag ferie">Férié · ${esc(ferie(today()))}</span>` : ''}${!ferie(today()) && ferie(demain()) ? ` · demain férié (${esc(ferie(demain()))})` : ''}</p>
+      <h1>${prenom ? `Bonjour ${esc(prenom)}` : 'Bonjour'}</h1>
+      <p class="hero-resume">${resume}</p>
+      ${mProchain ? `<div class="hero-actions"><a class="btn gps-prochain" href="${lienGps(s.gps, mProchain)}" target="_blank" rel="noopener">
+        <span>Aller au prochain magasin</span><strong>${esc(mProchain.nom)}</strong><small>avec ${s.gps === 'google' ? 'Google Maps' : 'Waze'}</small></a>
+        <a class="btn mode-tournee" href="#/en-tournee"><span aria-hidden="true">▶</span> Mode tournée</a></div>` : ''}
+    </header>
     ${aPlacer.length ? `<section class="alerte-retard" role="status">
       <h2 class="h2">${aPlacer.length} magasin${aPlacer.length > 1 ? 's' : ''} en retard de visite, pas encore planifié${aPlacer.length > 1 ? 's' : ''}</h2>
       <ul class="plain">${aPlacer.slice(0, 3).map(m => `<li><a href="#/magasin/${encodeURIComponent(m.id)}">${esc(m.nom)}</a> <span class="muted">dernière visite il y a ${m.joursDepuisVisite} j (tous les ${m.frequenceEff} j prévu)</span></li>`).join('')}</ul>
       <a class="btn" href="#/semaine">Préparer ma semaine</a></section>` : ''}
-    ${mProchain ? `<a class="btn primary gps-prochain" href="${lienGps(s.gps, mProchain)}" target="_blank" rel="noopener">
-      <span>Aller au prochain magasin</span><strong>${esc(mProchain.nom)}</strong><small>avec ${s.gps === 'google' ? 'Google Maps' : 'Waze'}</small></a>` : ''}
     <section class="today-tour">
       <h2 class="h2">Tournée du jour <a class="btn small" href="#/tournee">${t.etapes.length ? 'Ouvrir' : 'Préparer'}</a></h2>
       ${t.etapes.length ? `<ol class="mini-stops">${p.etapes.map((e, i) => { const m = byId.get(e.magasinId); return m ? `<li class="${e.fait ? 'done' : ''}"><span class="n">${i + 1}</span>

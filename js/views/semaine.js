@@ -4,10 +4,11 @@ import { ongletsPlanning } from './onglets-planning.js';
 import { db, getSettings, saveSettings } from '../db.js';
 import { DEFAULT_SETTINGS, PRIORITES, PROFIL } from '../config.js';
 import { magasinsEnrichis, prioriteDe } from '../data.js';
-import { $, $$, esc, prioTag, enseigneColor, fmtKm, fmtDuree, fmtHeure, parseHeure, toast, modal, confirmer, fmtDate, glisser, today, norm, tagSemaine, numSemaine } from '../ui.js';
-import { getTournee, heureRdv, choisirMagasins, exporterVersPlanning, lundiDe, estimerJour as estimer, placerRendezVous, departPourRdv, calibrer, empreinte, modifierDuree, chainer, lieuNuit, pointsJour, choisirNuit } from './tournee.js';
+import { $, $$, esc, prioTag, enseigneColor, fmtKm, fmtDuree, fmtHeure, parseHeure, toast, modal, confirmer, fmtDate, glisser, today, norm, tagSemaine, numSemaine, decale, lundiDe, boutonCalendrier, brancherCalendrier, brancherPlus } from '../ui.js';
+import { getTournee, heureRdv, choisirMagasins, exporterVersPlanning, estimerJour as estimer, placerRendezVous, departPourRdv, calibrer, empreinte, modifierDuree, chainer, lieuNuit, pointsJour, choisirNuit } from './tournee.js';
 import { planifier } from '../services/planificateur.js';
-import { dateEnLettres, tousLesRdv, tagEtatRdv } from '../services/rdv.js';
+import { dateEnLettres, tousLesRdv, tagEtatRdv, dateEffRdv, heureEffRdv } from '../services/rdv.js';
+import { htmlImposes, brancherImposes, lireImposes, htmlCiblage, lireCiblage, optionsZone, lireZone } from './remplissage.js';
 import { haversine } from '../services/geo.js';
 import { estimate, optimiserOrdre, trajet, calculerTrajets } from '../services/routing.js';
 import { carte, repere, repereDepart, animerTrace } from '../carte.js';
@@ -19,7 +20,6 @@ const JOURS = ['Lun.', 'Mar.', 'Mer.', 'Jeu.', 'Ven.', 'Sam.'];
 let map;
 let echecTomTom = null;   // TomTom en échec pendant cette session : on n'insiste pas (bouton pour réessayer)
 
-const decale = (iso, n) => { const d = new Date(iso + 'T12:00'); d.setDate(d.getDate() + n); return d.toISOString().slice(0, 10); };
 
 // Le calcul TomTom gardé correspond-il encore à la journée (mêmes étapes, même départ, même arrivée) ?
 const proche = (a, b) => a && b && Math.abs(a[0] - b.lat) < 0.05 && Math.abs(a[1] - b.lon) < 0.05;
@@ -64,7 +64,7 @@ export async function render(el, params) {
         <a class="btn-icon" href="#/semaine/${decale(lundi, -7)}" aria-label="Semaine précédente">‹</a>
         <h1>${tagSemaine(lundi)} Semaine du ${dateEnLettres(lundi).replace(/^lundi /, '')}</h1>
         <a class="btn-icon" href="#/semaine/${decale(lundi, 7)}" aria-label="Semaine suivante">›</a>
-        <input type="date" id="pick" value="${lundi}" aria-label="Choisir une semaine">
+        ${boutonCalendrier('pick', lundi, 'Choisir une semaine')}
       </div>
     </header>
     ${departOk ? '' : '<div class="banner">Indique ton point de départ dans les <a href="#/reglages">Réglages</a> pour préparer la semaine.</div>'}
@@ -76,12 +76,15 @@ export async function render(el, params) {
     </div>
     <div class="actions">
       <button class="btn primary" id="auto" ${departOk ? '' : 'disabled'}>Remplir automatiquement</button>
-      <a class="btn" href="#/simulation/${lundi}" title="Essayer un remplissage sans toucher à cette semaine, puis comparer">Simuler une tournée</a>
-      <button class="btn" id="versAgenda" title="Mettre les RDV acceptés de la semaine dans Google Agenda">RDV → Agenda</button>
       <button class="btn" id="optSem" ${departOk && tot.n > 1 ? '' : 'disabled'}>Optimiser la semaine</button>
       <a class="btn" href="#/rdv?du=${lundi}&au=${dates[dates.length - 1]}">Demander les RDV</a>
+      <button class="btn ghost plus-btn" id="plusS" aria-haspopup="dialog">Plus ⋯</button>
+    </div>
+    <div class="actions-cachees" id="plusSem" hidden>
+      <a class="btn" href="#/simulation/${lundi}" title="Essayer un remplissage sans toucher à cette semaine, puis comparer">Simuler une tournée</a>
       <button class="btn" id="planRdv" title="Un RDV pris sur place ou au téléphone : magasin, jour, heure">Planifier un RDV</button>
-      <button class="btn" id="exp">Exporter le ${esc(PROFIL.planning.nom || 'planning')}</button>
+      <button class="btn" id="versAgenda" title="Mettre les RDV acceptés de la semaine dans Google Agenda">RDV → Agenda</button>
+      <button class="btn" id="exp" title="Pour ton fichier Excel de planning">Exporter le ${esc(PROFIL.planning.nom || 'planning')}</button>
       ${s.cleTomTom && echecTomTom && tours.some(t => t.etapes.length && t.calcul?.provider !== 'tomtom') ? '<button class="btn" id="reels" title="Remplace les temps estimés par les temps TomTom">Trajets réels (TomTom)</button>' : ''}
       <button class="btn ghost" id="vider" ${tot.n ? '' : 'disabled'}>Vider la semaine</button>
     </div>
@@ -145,6 +148,8 @@ export async function render(el, params) {
   $$('[data-nuit]').forEach(b => b.onclick = async () => { const t = tours[+b.dataset.nuit]; if (await choisirNuit(t, all, s)) { await save(t); render(el, { lundi }); } });
   $$('[data-hrdv]').forEach(b => b.onclick = () => { const [i, h] = b.dataset.hrdv.split(/:(.+)/); depart(+i, h); });
   $('#pick').onchange = e => { location.hash = `#/semaine/${lundiDe(e.target.value)}`; };
+  brancherCalendrier(el);
+  brancherPlus($('#plusS'), $('#plusSem'), 'Semaine');
   $('#exp').onclick = () => exporterVersPlanning(lundi, s, { du: lundi, au: dates[dates.length - 1] });
   $('#vider').onclick = async () => {
     if (!(await confirmer('Vider la semaine', 'Retirer tous les magasins prévus cette semaine ? Les rendez-vous confirmés sont gardés.', 'Vider'))) return;
@@ -254,19 +259,10 @@ function colonne(t, i, p, mags, s, dates, rdvs, vus = new Map()) {
 export async function remplir(lundi, dates, tours, all, s, rdvs, opts = {}) {
   const deja = tours.some(t => t.etapes.length);
   const c = { ...DEFAULT_SETTINGS.ciblage, ...(s.ciblage || {}) };
-  const enseignes = [...new Set(all.map(m => m.enseigne).filter(Boolean))]
-    .sort((a, b) => all.filter(m => m.enseigne === b).length - all.filter(m => m.enseigne === a).length);
-  const deps = [...new Set(all.map(m => String(m.departement)))].sort();
-  const nb = e => all.filter(m => m.enseigne === e && PRIORITES[prioriteDe(m)]?.freq != null).length;
   const modeMax = c.modeMax || (c.maxParJour ? 'fixe' : 'libre');
   const maxJours = Array.isArray(c.maxJours) ? c.maxJours : [];
-  const etiq = m => `${m.nom} — ${m.cp || ''} ${m.ville || ''}`.trim();
   const p = modal({ titre: opts.titre || 'Remplir la semaine automatiquement', valider: opts.valider || 'Remplir la semaine', large: true, corps: `
-    <fieldset><legend>Magasins à inclure obligatoirement</legend>
-      <p class="hint">La semaine se construit autour : choisis le jour, ou laisse « le meilleur jour » et l'appli le place là où il fait le moins de route. L'heure est facultative (comme un RDV).</p>
-      <div id="imposes" class="imposes"></div>
-      <datalist id="magsDL">${all.filter(m => m.lat != null).map(m => `<option value="${esc(etiq(m))}">`).join('')}</datalist>
-      <button type="button" class="btn small" id="addImp">+ Ajouter un magasin</button></fieldset>
+    ${htmlImposes(all, 'La semaine se construit autour : choisis le jour, ou laisse « le meilleur jour » et l\'appli le place là où il fait le moins de route. L\'heure est facultative (comme un RDV).')}
     <fieldset><legend>Nombre de magasins par jour</legend>
       <div class="radio-col">
         <label class="check"><input type="radio" name="modeMax" value="libre" ${modeMax === 'libre' ? 'checked' : ''}> Pas de limite (autant que les horaires le permettent)</label>
@@ -283,67 +279,30 @@ export async function remplir(lundi, dates, tours, all, s, rdvs, opts = {}) {
     <fieldset><legend>Zone par jour</legend>
       <p class="hint">Pour rester dans le même coin toute la journée (ex. un RDV à Vannes : les autres magasins seront autour).</p>
       <div class="zones-jours">${dates.map((d, i) => { const t = tours[i]; const m0 = t.etapes.map(e => all.find(m => m.id === e.magasinId)).find(Boolean);
-        return `<label>${JOURS[i]} ${new Date(d + 'T12:00').getDate()}<select name="zone:${i}">
-          <option value="libre">Libre</option>
-          ${opts.zone?.lat != null ? `<option value="point" selected>Autour de ${esc(opts.zone.nom)}</option>` : ''}
-          ${m0 ? `<option value="autour" ${opts.zone ? '' : 'selected'}>Autour de ${esc(m0.nom)}${t.etapes.length > 1 ? ' et des magasins prévus' : ''}</option>` : ''}
-          ${deps.map(dp => `<option value="dep:${dp}" ${opts.zone?.dep === String(dp) ? 'selected' : ''}>Département ${dp}</option>`).join('')}</select></label>`; }).join('')}</div>
+        return `<label>${JOURS[i]} ${new Date(d + 'T12:00').getDate()}<select name="zone:${i}">${optionsZone(all, { point: opts.zone, autour: m0 ? `Autour de ${m0.nom}${t.etapes.length > 1 ? ' et des magasins prévus' : ''}` : null,
+          choisi: opts.zone?.lat != null ? 'point' : opts.zone?.dep ? 'dep:' + opts.zone.dep : m0 ? 'autour' : 'libre' })}</select></label>`; }).join('')}</div>
       <label class="mini-ligne">Autour = à moins de <input type="number" name="rayon" min="15" max="120" step="5" value="${c.rayonZone || 45}" class="mini-num"> min de route</label></fieldset>
-    <fieldset><legend>Enseignes prioritaires</legend>
-      <div class="chips">${enseignes.map(e => `<label class="chip-check"><input type="checkbox" name="ens:${esc(e)}" ${c.enseignes.includes(e) ? 'checked' : ''}><span>${esc(e)} <small>${nb(e)}</small></span></label>`).join('')}</div>
-      <p class="hint">Les journées sont construites autour de ces magasins. Rien de coché = toutes les enseignes à égalité.</p>
-      <div class="radio-col">
-        <label class="check"><input type="radio" name="autres" value="detour" ${c.autres === 'detour' ? 'checked' : ''}> Les autres magasins seulement s'ils sont sur le chemin</label>
-        <label class="indent">Détour maximum par petit magasin (minutes)<input type="number" name="detourPetit" min="0" step="5" value="${c.detourPetit}"></label>
-        <label class="check indent"><input type="checkbox" name="completer" ${c.completer ? 'checked' : ''}> Quand plus aucun magasin prioritaire n'est à voir, remplir la journée avec les autres</label>
-        <label class="check"><input type="radio" name="autres" value="normal" ${c.autres === 'normal' ? 'checked' : ''}> Les autres magasins normalement (sans préférence)</label>
-        <label class="check"><input type="radio" name="autres" value="aucun" ${c.autres === 'aucun' ? 'checked' : ''}> Uniquement les enseignes prioritaires</label>
-      </div></fieldset>
-    <fieldset><legend>Filtres</legend>
-      <p class="small">Priorités</p>
-      <div class="chips">${[1, 2, 3].map(k => `<label class="chip-check"><input type="checkbox" name="prio:${k}" ${c.priorites.includes(k) ? 'checked' : ''}><span>${PRIORITES[k].label}</span></label>`).join('')}</div>
-      <p class="small">Départements <span class="muted">(aucun coché = tous)</span></p>
-      <div class="chips">${deps.map(d => `<label class="chip-check"><input type="checkbox" name="dep:${d}" ${c.departements.map(String).includes(d) ? 'checked' : ''}><span>${d}</span></label>`).join('')}</div></fieldset>
+    ${htmlCiblage(all, c, s)}
     <fieldset><legend>Organisation</legend>
       ${deja ? `<label class="check"><input type="checkbox" name="garder" checked> Garder les magasins déjà prévus cette semaine</label>` : ''}
+      <label class="check"><input type="checkbox" name="boucles" ${c.boucles ? 'checked' : ''}> Organiser la semaine par coins : un coin par jour, en boucle <small class="muted">(plus de magasins P1 vus, un peu plus de route)</small></label>
       <label class="check"><input type="checkbox" name="nuits" ${s.decoucher ? 'checked' : ''}> Autoriser les nuits sur place (retour le ${['lundi', 'mardi', 'mercredi', 'jeudi', 'vendredi', 'samedi'][dates.length - 1]})</label>
-      <label>Détour accepté pour un magasin en retard de visite (minutes)<input type="number" name="detour" min="0" step="5" value="${s.detourRetard ?? 40}"></label>
       <p class="hint">Les rendez-vous (confirmés ou demandés pour un jour précis) sont toujours gardés, à leur jour et à leur heure : la journée s'organise autour, et si un RDV est tôt et loin, la veille se termine dans sa direction avec une nuit sur place. Horaires : ${s.heureDebut}–${s.heureFin}.</p>
       <label class="check"><input type="checkbox" name="memo" checked> Mémoriser ces choix pour les prochaines semaines</label></fieldset>` });
   const dlg = document.querySelector('dialog[open]');
-  let nImp = 0;
-  const ligneImp = () => { const i = nImp++; const d = document.createElement('div'); d.className = 'imp-ligne';
-    d.innerHTML = `<input name="impM:${i}" list="magsDL" placeholder="Tape le nom ou la ville du magasin" aria-label="Magasin" autocomplete="off">
-      <select name="impJ:${i}" aria-label="Jour"><option value="auto">Le meilleur jour</option>${dates.map((dd, k) => `<option value="${k}">${JOURS[k]} ${new Date(dd + 'T12:00').getDate()}${ferie(dd) ? ' (férié)' : ''}</option>`).join('')}</select>
-      <input type="time" name="impH:${i}" aria-label="Heure (facultatif)" title="Heure (facultatif)">
-      <button type="button" class="btn-icon" aria-label="Retirer">✕</button>`;
-    d.querySelector('button').onclick = () => d.remove();
-    dlg.querySelector('#imposes').append(d); d.querySelector('input').focus(); };
-  dlg.querySelector('#addImp').onclick = ligneImp;
+  brancherImposes(dlg, dates.map((dd, k) => ({ v: k, lib: `${JOURS[k]} ${new Date(dd + 'T12:00').getDate()}${ferie(dd) ? ' (férié)' : ''}` })));
   dlg.querySelectorAll('input[name=modeMax]').forEach(x => x.onchange = () => { const v = dlg.querySelector('input[name=modeMax]:checked').value === 'variable'; dlg.querySelector('#maxJours').hidden = !v; dlg.querySelector('#maxHint').hidden = !v; });
   dlg.querySelector('input[name=maxParJour]').onfocus = () => { dlg.querySelector('input[name=modeMax][value=fixe]').checked = true; dlg.querySelector('#maxJours').hidden = true; dlg.querySelector('#maxHint').hidden = true; };
   const r = await p;
   if (!r) return false;
-  // magasins imposés : étiquette du champ → magasin (ou recherche souple sur le nom / la ville)
-  const parEtiq = new Map(all.filter(m => m.lat != null).map(m => [norm(etiq(m)), m]));
-  const imposes = [], inconnus = [];
-  for (const k of Object.keys(r).filter(k => k.startsWith('impM:'))) {
-    const i = k.slice(5), txt = (r[k] || '').trim();
-    if (!txt) continue;
-    let m = parEtiq.get(norm(txt));
-    if (!m) { const c = all.filter(x => x.lat != null && norm(etiq(x)).includes(norm(txt))); if (c.length === 1) m = c[0]; }
-    if (!m) { inconnus.push(txt); continue; }
-    imposes.push({ m, jour: r['impJ:' + i] === 'auto' ? null : Number(r['impJ:' + i]), heure: r['impH:' + i] || '' });
-  }
-  if (inconnus.length) { toast(`Magasin introuvable : ${inconnus.join(', ')}. Choisis-le dans la liste proposée.`, 'warn'); return false; }
+  const { imposes, erreur } = lireImposes(r, all);
+  if (erreur) { toast(erreur, 'warn'); return false; }
+  const lu = lireCiblage(r, all);
+  if (lu.erreur) { toast(lu.erreur, 'warn'); return false; }
   const mode = r.modeMax || 'libre';
   const parJour = dates.map((_, i) => r['maxJ:' + i] === '' || r['maxJ:' + i] == null ? null : Math.max(0, Number(r['maxJ:' + i])));
-  const cible = {
-    enseignes: enseignes.filter(e => r['ens:' + e] === 'on'), autres: r.autres || 'detour', detourPetit: Number(r.detourPetit) || 0,
-    completer: r.completer === 'on', priorites: [1, 2, 3].filter(k => r['prio:' + k] === 'on'), departements: deps.filter(d => r['dep:' + d] === 'on'),
-    modeMax: mode, maxParJour: Math.max(1, Number(r.maxParJour) || 4), maxJours: parJour, finDernierJour: r.finDernierJour || '',
-  };
-  if (!cible.priorites.length) { toast('Coche au moins une priorité', 'warn'); return false; }
+  const cible = { ...lu.cible, modeMax: mode, maxParJour: Math.max(1, Number(r.maxParJour) || 4), maxJours: parJour, finDernierJour: r.finDernierJour || '', boucles: r.boucles === 'on' };
+
   if (r.memo === 'on') await saveSettings({ ciblage: { ...cible } });   // les jours sans tournée ne valent que pour cette semaine
   cible.joursOff = dates.map((_, i) => i).filter(i => r['off:' + i] === 'on' || (mode === 'variable' && parJour[i] === 0));
   cible.feriesDecides = true;   // les fériés ont été proposés ci-dessus : le choix de l'utilisateur fait foi
@@ -359,20 +318,25 @@ export async function remplir(lundi, dates, tours, all, s, rdvs, opts = {}) {
     if (ids.length) fixes.set(i, ids);
     ids.forEach(id => exclus.add(id));
   });
+  // RDV acceptés ou demandés pour un jour de cette semaine : le magasin est posé ce jour-là, même s'il n'y était plus
+  const magsIds = new Set(all.map(m => m.id));
+  for (const rv of rdvs.values()) {
+    if (!['acceptee', 'autreDate', 'envoyee', 'relancee'].includes(rv.statut) || !magsIds.has(rv.magasinId)) continue;
+    const i = dates.indexOf(dateEffRdv(rv));
+    if (i < 0 || (fixes.get(i) || []).includes(rv.magasinId)) continue;
+    for (const ids of fixes.values()) { const k = ids.indexOf(rv.magasinId); if (k >= 0) ids.splice(k, 1); }
+    fixes.set(i, [...(fixes.get(i) || []), rv.magasinId]); exclus.add(rv.magasinId);
+    if (heureEffRdv(rv)) heures.set(rv.magasinId, heureEffRdv(rv));
+  }
+  // « À faire » qui arrivent à échéance d'ici la fin de la semaine : leurs magasins passent devant
+  cible.urgents = await magasinsUrgents(dates[dates.length - 1]);
   const loc = all.filter(m => m.lat != null);
   // zone de chaque jour : autour des magasins déjà prévus (centre + rayon) ou un département (centre = moyenne des magasins)
   const rayon = Math.max(15, Number(r.rayon) || 45);
-  const centre = l => l.length ? { lat: l.reduce((a, m) => a + m.lat, 0) / l.length, lon: l.reduce((a, m) => a + m.lon, 0) / l.length } : null;
-  cible.zones = dates.map((_, i) => {
-    const v = r['zone:' + i] || 'libre';
-    if (v === 'autour') { const c0 = centre(tours[i].etapes.map(e => loc.find(m => m.id === e.magasinId)).filter(Boolean)); return c0 ? { ...c0, rayon } : null; }
-    if (v === 'point' && opts.zone?.lat != null) return { lat: opts.zone.lat, lon: opts.zone.lon, rayon };   // depuis la carte de couverture
-    if (v.startsWith('dep:')) { const dep = v.slice(4); const c0 = centre(loc.filter(m => String(m.departement) === dep)); return c0 ? { ...c0, dep } : null; }
-    return null;
-  });
+  cible.zones = dates.map((_, i) => lireZone(r['zone:' + i] || 'libre', all, { prevus: tours[i].etapes.map(e => loc.find(m => m.id === e.magasinId)), point: opts.zone, rayon }));
   if (r.memo === 'on') await saveSettings({ ciblage: { ...(await getSettings()).ciblage, rayonZone: rayon } });
   let retires = 0;
-  const sPlan = { ...s, decoucher: r.nuits === 'on', detourRetard: Number(r.detour) || 0, joursTerrain: dates.length };
+  const sPlan = { ...s, decoucher: r.nuits === 'on', detourRetard: lu.detour, joursTerrain: dates.length };
   // magasins imposés : un jour choisi → fixé ce jour-là ; « le meilleur jour » → placé là où il est le plus près de ce qui est prévu
   const fixer = (j, im) => { fixes.set(j, [...(fixes.get(j) || []).filter(id => id !== im.m.id), im.m.id]); exclus.add(im.m.id); if (im.heure) heures.set(im.m.id, im.heure); };
   for (const im of imposes) for (const ids of fixes.values()) { const k = ids.indexOf(im.m.id); if (k >= 0) ids.splice(k, 1); }   // déjà prévu ailleurs : il bouge
@@ -457,7 +421,7 @@ function bilan(tours, mags, s, rdvs) {
     nuits: tours.filter(t => t.etapes.length && !t.retour).length, deplaces: tours.reduce((a, t) => a + t.etapes.filter(e => e.deplace).length, 0) };
 }
 export function optimiserSemaine(tours, mags, s, rdvs, { nuits = true, deplacer = false } = {}) {
-  const H = s.depart, auj = new Date().toISOString().slice(0, 10);
+  const H = s.depart, auj = today();
   const cal = s.calibration || {};
   const dt = (a, b) => trajet(a, b, s).min;
   const pos = t => t.depart?.lat != null ? t.depart : H;
@@ -586,79 +550,36 @@ export async function remplirJour(date, t, all, s, rdvs, opts = {}) {
     if (d === date) continue;
     (await db.get('tournees', d))?.etapes?.forEach(e => autres.set(e.magasinId, d));
   }
-  const enseignes = [...new Set(all.map(m => m.enseigne).filter(Boolean))]
-    .sort((a, b) => all.filter(m => m.enseigne === b).length - all.filter(m => m.enseigne === a).length);
-  const deps = [...new Set(all.map(m => String(m.departement)))].sort();
-  const etiq = m => `${m.nom} — ${m.cp || ''} ${m.ville || ''}`.trim();
   const byId = new Map(all.map(m => [m.id, m]));
   const prevus = t.etapes.map(e => byId.get(e.magasinId)).filter(Boolean);
   const maxDefaut = c.modeMax === 'fixe' || (!c.modeMax && c.maxParJour) ? (c.maxParJour || 4) : '';
   const p = modal({ titre: opts.titre || 'Remplir la journée automatiquement', valider: opts.valider || 'Remplir la journée', large: true, corps: `
     <p class="hint">${prevus.length ? `Les ${prevus.length} magasin${prevus.length > 1 ? 's' : ''} déjà prévu${prevus.length > 1 ? 's' : ''} restent : l'appli complète autour.` : 'La journée est vide : l\'appli la construit selon les priorités et les retards de visite.'} Les magasins prévus les autres jours de la semaine ne sont pas repris.</p>
-    <fieldset><legend>Magasins à inclure obligatoirement</legend>
-      <p class="hint">La journée se construit autour. L'heure est facultative (comme un RDV).</p>
-      <div id="imposes" class="imposes"></div>
-      <datalist id="magsDLj">${all.filter(m => m.lat != null).map(m => `<option value="${esc(etiq(m))}">`).join('')}</datalist>
-      <button type="button" class="btn small" id="addImp">+ Ajouter un magasin</button></fieldset>
+    ${htmlImposes(all, 'La journée se construit autour. L\'heure est facultative (comme un RDV).')}
     <fieldset><legend>Nombre de magasins</legend>
       <label class="mini-ligne">Maximum <input type="number" name="max" min="1" max="15" value="${esc(maxDefaut)}" placeholder="libre" class="mini-num" aria-label="Magasins maximum dans la journée"> magasins dans la journée <small class="muted">(déjà prévus compris · vide = autant que les horaires le permettent)</small></label>
       <div class="row"><label>Finir au plus tard à <small class="muted">(vide = ${s.heureFin})</small><input type="time" name="fin" value=""></label></div></fieldset>
     <fieldset><legend>Zone</legend>
-      <label>Rester dans le coin de<select name="zone">
-        <option value="libre">Libre</option>
-        ${prevus.some(m => m.lat != null) ? `<option value="autour" selected>Autour de ${esc(prevus[0].nom)}${prevus.length > 1 ? ' et des magasins prévus' : ''}</option>` : ''}
-        ${deps.map(dp => `<option value="dep:${dp}">Département ${dp}</option>`).join('')}</select></label>
+      <label>Rester dans le coin de<select name="zone">${optionsZone(all, { autour: prevus.some(m => m.lat != null) ? `Autour de ${prevus[0].nom}${prevus.length > 1 ? ' et des magasins prévus' : ''}` : null, choisi: prevus.some(m => m.lat != null) ? 'autour' : 'libre' })}</select></label>
       <label class="mini-ligne">Autour = à moins de <input type="number" name="rayon" min="15" max="120" step="5" value="${c.rayonZone || 45}" class="mini-num"> min de route</label></fieldset>
     <details class="plus-options"><summary>Enseignes, priorités, départements</summary>
-      <fieldset><legend>Enseignes prioritaires</legend>
-        <div class="chips">${enseignes.map(e => `<label class="chip-check"><input type="checkbox" name="ens:${esc(e)}" ${c.enseignes.includes(e) ? 'checked' : ''}><span>${esc(e)}</span></label>`).join('')}</div>
-        <div class="radio-col">
-          <label class="check"><input type="radio" name="autres" value="detour" ${c.autres === 'detour' ? 'checked' : ''}> Les autres magasins seulement s'ils sont sur le chemin</label>
-          <label class="check"><input type="radio" name="autres" value="normal" ${c.autres === 'normal' ? 'checked' : ''}> Les autres magasins normalement</label>
-          <label class="check"><input type="radio" name="autres" value="aucun" ${c.autres === 'aucun' ? 'checked' : ''}> Uniquement les enseignes prioritaires</label>
-        </div></fieldset>
-      <fieldset><legend>Filtres</legend>
-        <div class="chips">${[1, 2, 3].map(k => `<label class="chip-check"><input type="checkbox" name="prio:${k}" ${c.priorites.includes(k) ? 'checked' : ''}><span>${PRIORITES[k].label}</span></label>`).join('')}</div>
-        <p class="small">Départements <span class="muted">(aucun coché = tous)</span></p>
-        <div class="chips">${deps.map(d => `<label class="chip-check"><input type="checkbox" name="dep:${d}" ${c.departements.map(String).includes(d) ? 'checked' : ''}><span>${d}</span></label>`).join('')}</div>
-        <label>Détour accepté pour un magasin en retard de visite (minutes)<input type="number" name="detour" min="0" step="5" value="${s.detourRetard ?? 40}"></label></fieldset>
+      ${htmlCiblage(all, c, s)}
     </details>
     <p class="hint">Les rendez-vous du jour sont toujours gardés, à leur heure. Horaires : ${t.heureDebut || s.heureDebut}–${s.heureFin}.</p>` });
-  const dlg = document.querySelector('dialog[open]');
-  let nImp = 0;
-  dlg.querySelector('#addImp').onclick = () => {
-    const i = nImp++; const d = document.createElement('div'); d.className = 'imp-ligne';
-    d.innerHTML = `<input name="impM:${i}" list="magsDLj" placeholder="Tape le nom ou la ville du magasin" aria-label="Magasin" autocomplete="off">
-      <input type="time" name="impH:${i}" aria-label="Heure (facultatif)" title="Heure (facultatif)">
-      <button type="button" class="btn-icon" aria-label="Retirer">✕</button>`;
-    d.querySelector('button').onclick = () => d.remove();
-    dlg.querySelector('#imposes').append(d); d.querySelector('input').focus();
-  };
+  brancherImposes(document.querySelector('dialog[open]'));
   const r = await p;
   if (!r) return false;
-  const parEtiq = new Map(all.filter(m => m.lat != null).map(m => [norm(etiq(m)), m]));
-  const imposes = [], inconnus = [];
-  for (const k of Object.keys(r).filter(k => k.startsWith('impM:'))) {
-    const txt = (r[k] || '').trim();
-    if (!txt) continue;
-    let m = parEtiq.get(norm(txt));
-    if (!m) { const l = all.filter(x => x.lat != null && norm(etiq(x)).includes(norm(txt))); if (l.length === 1) m = l[0]; }
-    if (!m) { inconnus.push(txt); continue; }
-    imposes.push({ m, heure: r['impH:' + k.slice(5)] || '' });
-  }
-  if (inconnus.length) { toast(`Magasin introuvable : ${inconnus.join(', ')}. Choisis-le dans la liste proposée.`, 'warn'); return false; }
-  const prios = [1, 2, 3].filter(k => r['prio:' + k] === 'on');
-  if (!prios.length) { toast('Coche au moins une priorité', 'warn'); return false; }
+  const { imposes, erreur } = lireImposes(r, all);
+  if (erreur) { toast(erreur, 'warn'); return false; }
+  const lu = lireCiblage(r, all);
+  if (lu.erreur) { toast(lu.erreur, 'warn'); return false; }
+  const prios = lu.cible.priorites;
   const max = r.max === '' || r.max == null ? null : Math.max(1, Number(r.max) || 1);
   const loc = all.filter(m => m.lat != null);
   const rayon = Math.max(15, Number(r.rayon) || 45);
-  const centre = l => l.length ? { lat: l.reduce((a, m) => a + m.lat, 0) / l.length, lon: l.reduce((a, m) => a + m.lon, 0) / l.length } : null;
-  const z = r.zone || 'libre';
-  const zone = z === 'autour' ? (() => { const c0 = centre([...prevus, ...imposes.map(i => i.m)].filter(m => m.lat != null)); return c0 ? { ...c0, rayon } : null; })()
-    : z.startsWith('dep:') ? (() => { const dep = z.slice(4); const c0 = centre(loc.filter(m => String(m.departement) === dep)); return c0 ? { ...c0, dep } : null; })() : null;
+  const zone = lireZone(r.zone || 'libre', all, { prevus: [...prevus, ...imposes.map(i => i.m)], rayon });
   const cible = {
-    enseignes: enseignes.filter(e => r['ens:' + e] === 'on'), autres: r.autres || 'detour', detourPetit: Number(c.detourPetit) || 0,
-    completer: c.completer, priorites: prios, departements: deps.filter(d => r['dep:' + d] === 'on'),
+    ...lu.cible, urgents: await magasinsUrgents(date),
     limites: [max], joursOff: [], feriesDecides: true, debuts: [t.heureDebut || null], finDernierJour: r.fin || '', zones: [zone],
   };
   // déjà prévus + imposés : gardés ; heures de RDV respectées
@@ -668,7 +589,7 @@ export async function remplirJour(date, t, all, s, rdvs, opts = {}) {
   const ids = [...new Set([...t.etapes.map(e => e.magasinId), ...imposes.map(im => im.m.id)])];
   const fixes = new Map([[0, ids]]);
   const exclus = new Set([...ids, ...autres.keys()]);
-  const sPlan = { ...s, decoucher: false, detourRetard: Number(r.detour) || 0, joursTerrain: 1 };
+  const sPlan = { ...s, decoucher: false, detourRetard: lu.detour, joursTerrain: 1 };
   const plan = planifier(loc, sPlan, { debut: date, semaines: 1, fixes, exclus, cible, heures });
   const j = plan.jours[0] || { etapes: [], detours: [], ajouts: {} };
   const anciens = new Map(t.etapes.map(e => [e.magasinId, e]));
@@ -695,6 +616,12 @@ export async function remplirJour(date, t, all, s, rdvs, opts = {}) {
   toast(`${ajoutes > 0 ? `${ajoutes} magasin${ajoutes > 1 ? 's' : ''} ajouté${ajoutes > 1 ? 's' : ''}` : 'Aucun magasin à ajouter avec ces réglages'} · ${t.etapes.length} dans la journée`
     + `${retires ? ` · ${retires} retiré${retires > 1 ? 's' : ''} pour tenir les RDV` : ''}${dejaAilleurs.length ? ` · attention : ${dejaAilleurs.join(', ')}` : ''}`, dejaAilleurs.length ? 'warn' : undefined);
   return res;
+}
+
+// magasins dont un « À faire » ouvert arrive à échéance au plus tard ce jour-là
+async function magasinsUrgents(jusquau) {
+  const { estOuvert } = await import('../services/afaire.js');
+  return new Set((await db.all('notes')).filter(n => estOuvert(n) && n.echeance && n.echeance <= jusquau).map(n => n.magasinId));
 }
 
 // « Optimiser la semaine » depuis la vue Jour : même traitement que le bouton de la Semaine

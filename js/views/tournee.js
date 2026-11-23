@@ -4,11 +4,11 @@ import { db, getSettings, saveSettings } from '../db.js';
 import { magasinsEnrichis, dureeVisite, numeroVisite } from '../data.js';
 import { OBJETS_VISITE, STATUTS_VISITE, ENSEIGNES_LISTE, PRIORITES, PROFIL } from '../config.js';
 import { exporterPlanning, heurePlanning, HEURES_PLANNING } from '../services/excel.js';
-import { downloadBlob, $, $$, esc, borne, prioTag, enseigneColor, fmtKm, fmtDuree, fmtHeure, parseHeure, fmtDateLong, today, toast, modal, confirmer, norm, fmtDate, glisser, tagSemaine } from '../ui.js';
+import { downloadBlob, $, $$, esc, borne, prioTag, enseigneColor, fmtKm, fmtDuree, fmtHeure, parseHeure, fmtDateLong, today, toast, modal, confirmer, norm, fmtDate, glisser, tagSemaine, decale, lundiDe, boutonCalendrier, brancherCalendrier, brancherPlus } from '../ui.js';
 import { optimiserOrdre, calculerTrajets, lienGps, estimate, trajet, trajetBrut } from '../services/routing.js';
 import { geocodeMagasin, haversine } from '../services/geo.js';
 import { carte, repere, repereDepart, animerTrace } from '../carte.js';
-import { tousLesRdv, labelStatut, tagEtatRdv } from '../services/rdv.js';
+import { tousLesRdv, labelStatut, tagEtatRdv, dateEffRdv } from '../services/rdv.js';
 import { marquerVisite, annulerVisite, visitesDuJour, lienDetails, estVide } from '../services/visite.js';
 import { ferie } from '../services/feries.js';
 import { aFaireOuverts } from '../services/afaire.js';
@@ -73,7 +73,6 @@ export function boutonVisite(e, i, v, date) {
   return `<button class="btn small btn-visite fait" data-fait="${i}" aria-pressed="true" title="Appuyer pour retirer">Visité ✓</button>${v ? `<a class="btn-link" href="${lienDetails(v)}">ajouter des détails</a>` : ''}`;
 }
 let justeFait = null;   // magasin qu'on vient de marquer visité (petite animation)
-const decale = (date, n) => { const d = new Date(date + 'T12:00'); d.setDate(d.getDate() + n); return d.toISOString().slice(0, 10); };
 
 // Horaires prévisionnels : départ, trajets, visites, pause déjeuner.
 // Heure de rendez-vous à respecter : confirmée sur l'étape, ou demandée / souhaitée au magasin pour ce jour-là
@@ -250,11 +249,9 @@ export async function render(el, { date = today() }) {
         <a class="btn-icon" href="#/tournee/${decale(date, -1)}" aria-label="Jour précédent">‹</a>
         <h1>${fmtDateLong(date)} ${tagSemaine(date)}</h1>
         <a class="btn-icon" href="#/tournee/${decale(date, 1)}" aria-label="Jour suivant">›</a>
-        <input type="date" id="pickDate" value="${date}" aria-label="Choisir une date">
+        ${boutonCalendrier('pickDate', date)}
       </div>
       ${ferie(date) ? `<p class="banner ferie">Jour férié : ${esc(ferie(date))}.${t.etapes.length ? ' Vérifie que les magasins sont ouverts avant d\'y aller.' : ' Pas de tournée prévue par défaut.'}</p>` : ''}
-      <a class="btn ghost" href="#/rdv?du=${lundiDe(date)}&au=${vendrediDe(date)}">Demander les RDV de la semaine</a>
-      <button class="btn ghost" id="expPlanning">Exporter le ${esc(PROFIL.planning.nom || 'planning')}</button>
     </header>
     ${departOk ? '' : `<div class="banner">Indique ton point de départ (domicile) dans les <a href="#/reglages">Réglages</a> pour calculer les trajets.</div>`}
     ${t.calcul && p.depasse ? `<div class="banner warn"><strong>Journée trop chargée :</strong> fin estimée à ${fmtHeure(p.fin)} au lieu de ${s.heureFin}.
@@ -275,17 +272,21 @@ export async function render(el, { date = today() }) {
             <span class="rdv-jour-m"><a href="#/magasin/${encodeURIComponent(x.m.id)}">${esc(x.m.nom)}</a> <small class="muted">${esc(x.m.ville || '')}</small><br><span class="tag ${x.etat === 'ok' ? 'ok' : x.etat === 'attente' ? 'wait' : ''}">${esc(x.lib)}</span>${x.r.objet ? ` <small class="muted">${esc(x.r.objet)}</small>` : ''}</span>
             ${x.etat !== 'reporte' && !dansTour.has(x.m.id) ? `<button class="btn small" data-addrdv="${esc(x.m.id)}">Ajouter à la tournée</button>` : x.etat !== 'reporte' ? '<small class="muted">dans la tournée</small>' : ''}</li>`).join('')}</ul>
           <a class="small" href="#/rdv?du=${date}&au=${date}">Tous les RDV de ce jour</a></section>` : ''}
+        ${t.etapes.length && date >= today() ? `<a class="btn mode-tournee" href="#/en-tournee/${date}"><span aria-hidden="true">▶</span> Mode tournée</a>` : ''}
         <div class="actions">
           <button class="btn primary" id="add">Ajouter des magasins</button>
           <button class="btn" id="autoJ" ${departOk ? '' : 'disabled'} title="Complète la journée selon les priorités et les retards de visite">Remplir automatiquement</button>
           <button class="btn" id="opt" ${t.etapes.length < 2 || !departOk ? 'disabled' : ''} title="Meilleur ordre, heures de RDV respectées, nuit sur place si le lendemain est plus près">Optimiser la journée</button>
-          <button class="btn ghost" id="calc" ${!t.etapes.length || !departOk ? 'disabled' : ''}>Recalculer</button>
+          <button class="btn ghost plus-btn" id="plusJ" aria-haspopup="dialog">Plus ⋯</button>
         </div>
-        <div class="actions actions-2">
+        <div class="actions-cachees" id="plusJour" hidden>
+          <button class="btn ghost" id="calc" ${!t.etapes.length || !departOk ? 'disabled' : ''} title="Refait le calcul des trajets et des heures">Recalculer les trajets</button>
           <button class="btn small ghost" id="planRdv" title="Un RDV pris sur place ou au téléphone : magasin, jour, heure">Planifier un RDV</button>
           <a class="btn small ghost" href="#/simulation/${date}?jour=1" title="Essayer un remplissage sans toucher à cette journée, puis comparer">Simuler la journée</a>
           <button class="btn small ghost" id="optSem" ${departOk ? '' : 'disabled'} title="Réordonne toute la semaine de ce jour (moins de route, RDV respectés, nuits sur place)">Optimiser la semaine</button>
           <button class="btn small ghost" id="viderJ" ${t.etapes.some(e => !e.rdv && !e.fait) ? '' : 'disabled'}>Vider la journée</button>
+          <a class="btn ghost" href="#/rdv?du=${lundiDe(date)}&au=${vendrediDe(date)}">Demander les RDV de la semaine</a>
+          <button class="btn ghost" id="expPlanning" title="Pour ton fichier Excel de planning">Exporter le ${esc(PROFIL.planning.nom || 'planning')}</button>
         </div>
         <label class="check"><input type="checkbox" id="retour" ${t.retour ? 'checked' : ''}> Retour au domicile le soir (sinon nuit sur place)</label>
         <ol class="stops">
@@ -294,22 +295,26 @@ export async function render(el, { date = today() }) {
             ${hRdv && hRdv !== (t.heureDebut || s.heureDebut) ? `<button class="btn small ${p.rdvRates ? 'primary' : ''}" id="hDepRdv">Partir à ${esc(hRdv.replace(':', 'h'))} pour être à l'heure au RDV</button>` : ''}</div></li>` : ''}
           ${p.etapes.map((e, i) => { const m = mags.get(e.magasinId); return `
           ${e.leg ? `<li class="drive ${e.leg.min > 150 ? 'long' : ''}">${fmtKm(e.leg.km)} · ${fmtDuree(e.leg.min)}${e.leg.min > 150 ? ' — trajet très long : vérifie la position de ce magasin' : ''}</li>` : ''}
-          <li class="stop ${e.fait ? 'done' : ''} ${e.fait && e.magasinId === justeFait ? 'juste-fait' : ''} ${e.hors ? 'hors' : ''}" data-k="${i}">
+          <li class="stop ${e.fait ? 'done' : ''} ${e.fait && e.magasinId === justeFait ? 'juste-fait' : ''} ${e.hors ? 'hors' : ''}" data-k="${i}" style="--c:${enseigneColor(m.enseigne)}">
             <button type="button" class="poignee" aria-label="Changer l'ordre de ${esc(m.nom)} : glisser, ou flèches haut et bas" title="Glisser pour changer l'ordre"><i></i></button>
             <span class="time">${t.calcul ? '' : '<small>≈</small>'}${fmtHeure(e.arrivee)}<small>→ ${fmtHeure(e.depart)}</small></span>
             <span class="pin num" style="--c:${enseigneColor(m.enseigne)}">${i + 1}</span>
             <div class="stop-body">
               <a href="#/magasin/${encodeURIComponent(m.id)}"><strong>${esc(m.nom)}</strong></a>
+              ${!e.fait && !e.rdv && FERME_MIDI.test(m.enseigne || '') && e.arrivee >= 720 && e.arrivee < 840 ? '<p class="midi-avert">🕛 Arrivée pendant le midi : beaucoup de magasins indépendants ferment, vérifie qu\'il est ouvert</p>' : ''}
               ${afaires.get(e.magasinId)?.length ? `<p class="afaire-rappel">📌 À faire : ${afaires.get(e.magasinId).map(n => esc(n.aFaire)).join(' · ')}</p>` : ''}
               <p class="muted">${e.rdv ? `<span class="tag ok">RDV ${e.rdv.heure ? esc(e.rdv.heure) : 'confirmé'}</span> ` : e.heureImposee ? `<span class="tag ok">à ${esc(e.heureImposee)}</span> ` : `${tagEtatRdv(rdvs.get(e.magasinId), date, s.relanceApres)} `}${e.retardRdv ? `<span class="tag late">arrivée ${e.retardRdv} min après le RDV</span> ` : ''}${esc(m.ville)} · <button type="button" class="btn-link duree${t.etapes[i]?.duree ? ' modifiee' : ''}" data-duree="${i}" title="Changer le temps passé dans ce magasin">visite ${e.duree} min</button>${m.savOuverts ? ` · <span class="tag warn">${m.savOuverts} SAV</span>` : ''}${m.lat == null ? ' · <span class="tag late">non localisé</span>' : ''}</p>
               <div class="stop-actions">
                 ${m.lat != null ? `<a class="btn small" href="${lienGps(s.gps, m)}" target="_blank" rel="noopener">GPS</a>` : ''}
                 <button class="btn small" data-avant="${i}" title="Contact, RDV, à faire, dernier compte rendu, chiffres">Avant d'entrer${afaires.get(e.magasinId)?.length ? ` <span class="badge">${afaires.get(e.magasinId).length}</span>` : ''}</button>
                 ${boutonVisite(e, i, vus.get(e.magasinId), date)}
-                <select class="objet" data-objet="${i}" aria-label="Objet de la visite">${OBJETS_VISITE.map(o => `<option ${o === (e.objet || s.objetDefaut) ? 'selected' : ''}>${o}</option>`).join('')}</select>
-                <input class="motif" data-motif="${i}" value="${esc(e.motif || '')}" placeholder="Pourquoi j'y vais (précision)" aria-label="Précision sur l'objet de la visite">
-                <span class="ordre"><button class="btn-icon" data-del="${i}" aria-label="Retirer de la tournée">✕</button></span>
               </div>
+              <details class="stop-plus"><summary>${esc(e.objet || s.objetDefaut)}${e.motif ? ` · ${esc(e.motif)}` : ''}</summary>
+                <div class="stop-plus-corps">
+                  <select class="objet" data-objet="${i}" aria-label="Objet de la visite">${OBJETS_VISITE.map(o => `<option ${o === (e.objet || s.objetDefaut) ? 'selected' : ''}>${o}</option>`).join('')}</select>
+                  <input class="motif" data-motif="${i}" value="${esc(e.motif || '')}" placeholder="Pourquoi j'y vais (précision)" aria-label="Précision sur l'objet de la visite">
+                  <button class="btn small ghost danger-txt" data-del="${i}">Retirer de la journée</button>
+                </div></details>
             </div></li>`; }).join('')}
           ${p.retour ? `<li class="drive">${fmtKm(p.retour.km)} · ${fmtDuree(p.retour.min)}</li><li class="stop home"><span></span><span class="time">${fmtHeure(p.fin)}</span><span class="pin home">⌂</span><div><strong>Retour</strong></div></li>` : ''}
           ${p.versHotel ? `<li class="drive">${fmtKm(p.versHotel.km)} · ${fmtDuree(p.versHotel.min)} jusqu'à l'hôtel</li>` : ''}
@@ -325,6 +330,8 @@ export async function render(el, { date = today() }) {
 
   const save = async (recalc = true) => { if (recalc) t.calcul = null; await db.put('tournees', t); await recalerLendemain(t, mags); await render(el, { date }); if (recalc && departOk && t.etapes.length) calculer(false); };
   $('#pickDate').onchange = e => { location.hash = `#/tournee/${e.target.value}`; };
+  brancherCalendrier(el);
+  brancherPlus($('#plusJ'), $('#plusJour'), 'Journée');
   $('#retour').onchange = e => { t.retour = e.target.checked; if (t.retour) delete t.hotel; save(); };
   $('#nuitVille')?.addEventListener('click', async () => { if (await choisirNuit(t, all, s)) save(); });
   const changerDepart = async h => { if (!h || h === s.heureDebut) delete t.heureDebut; else t.heureDebut = h; await save(false); toast(`Départ à ${(t.heureDebut || s.heureDebut).replace(':', 'h')} ce jour-là`); };
@@ -499,7 +506,7 @@ export async function exporterVersPlanning(date, s, periode = null) {
   // statut du RDV → statut de visite du planning (Planifiée, Confirmée, Réalisée, Reportée, Annulée)
   const statutRdv = (rv, jour) => {
     if (!rv) return null;
-    const date = rv.statut === 'autreDate' ? rv.dateRetenue : rv.date;
+    const date = dateEffRdv(rv);
     if (date !== jour) return rv.statut === 'autreDate' && rv.date === jour ? 'Reportée' : null;
     return { acceptee: 'Confirmée', autreDate: 'Confirmée', refusee: 'Annulée' }[rv.statut] || 'Planifiée';
   };
@@ -512,7 +519,7 @@ export async function exporterVersPlanning(date, s, periode = null) {
       const nm = notes.filter(n => n.magasinId === m.id);
       const v = nm.find(n => n.type === 'Visite' && n.date === t.id);
       const rv = rdvs.get(m.id);
-      const rvJour = rv && (rv.statut === 'autreDate' ? rv.dateRetenue : rv.date) === t.id ? rv : null;
+      const rvJour = rv && dateEffRdv(rv) === t.id ? rv : null;
       const ct = rvJour && ctById.get(rvJour.contactId);
       lignes.push({ t, k, jour: t.id, heure: heurePlanning(e.heureFixee || e.rdv?.heure || e.heureImposee || e.rdvHeure || '') || (e.arrivee != null ? arrondi(e.arrivee) : ''), chef: s.commercial || '',
         enseigne: enseigneDe(m), magasin: m.libellePlanning || `${m.cp} ${m.ville.toUpperCase()} – ${m.nom}`, nom: m.nom,
@@ -580,7 +587,6 @@ async function copierPlanning(lignes) {
   await p;
 }
 
-export const lundiDe = date => { const d = new Date(date + 'T12:00'); d.setDate(d.getDate() - ((d.getDay() + 6) % 7)); return d.toISOString().slice(0, 10); };
 const vendrediDe = date => { const d = new Date(lundiDe(date) + 'T12:00'); d.setDate(d.getDate() + 4); return d.toISOString().slice(0, 10); };
 
 // Prochain jour de terrain (lundi → jours de terrain par semaine)
@@ -611,6 +617,9 @@ function gpsTout(t, mags, s) {
   const pts = t.etapes.map(e => mags.get(e.magasinId)).filter(m => m.lat != null);
   return t.retour && s.depart.lat != null ? [s.depart, pts] : [pts[pts.length - 1], pts.slice(0, -1)];  // départ = position actuelle du téléphone
 }
+
+// enseignes souvent indépendantes, qui ferment fréquemment entre 12 h et 14 h
+const FERME_MIDI = /bricomarch|bricolage|weldom|briconaute|sans enseigne/i;
 
 // Fenêtre de choix des magasins : recherche, filtres, magasins proches ou en retard en premier.
 // Choix des magasins à ajouter : filtres (enseigne, priorité, à voir, département) et tri,

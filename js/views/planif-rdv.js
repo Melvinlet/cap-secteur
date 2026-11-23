@@ -4,13 +4,13 @@
 import { db, getSettings } from '../db.js';
 import { magasinsEnrichis, dureeVisite, trierContacts } from '../data.js';
 import { OBJETS_VISITE } from '../config.js';
-import { esc, fmtHeure, parseHeure, modal, norm, toast, today, fmtDate } from '../ui.js';
+import { esc, fmtHeure, parseHeure, modal, norm, toast, today, fmtDate, decale } from '../ui.js';
 import { getRdv, tousLesRdv, changerStatut, dateEnLettres } from '../services/rdv.js';
 import { evenementRdv, proposerAgenda } from '../services/agenda.js';
 import { ferie } from '../services/feries.js';
+import { etiquetteMagasin, datalistMagasins, trouverMagasin, messageIntrouvable } from '../champ-magasin.js';
 import { getTournee, estimerJour, placerRendezVous, departPourRdv, chainer, recalerLendemain } from './tournee.js';
 
-const decale = (date, n) => { const d = new Date(date + 'T12:00'); d.setDate(d.getDate() + n); return d.toISOString().slice(0, 10); };
 const hh = min => fmtHeure(min).replace(':', 'h');
 
 // Simule la journée avec ce RDV, sans rien enregistrer
@@ -75,14 +75,12 @@ export async function planifierRdv(pre = {}) {
   const s = await getSettings();
   const all = await magasinsEnrichis(s);
   const mags = new Map(all.map(m => [m.id, m]));
-  const etiq = m => `${m.nom} — ${m.cp || ''} ${m.ville || ''}`.trim();
-  const parEtiq = new Map(all.map(m => [norm(etiq(m)), m]));
-  const trouver = txt => { const q = norm(txt || ''); if (!q) return null; const m = parEtiq.get(q); if (m) return m; const l = all.filter(x => norm(etiq(x)).includes(q)); return l.length === 1 ? l[0] : null; };
+  const trouver = txt => trouverMagasin(txt, all);
   const m0 = pre.magasinId ? mags.get(pre.magasinId) : null;
   const p = modal({ titre: 'Planifier un RDV', valider: 'Enregistrer le RDV', large: true, corps: `
     <p class="hint">Un rendez-vous pris sur place ou au téléphone : il passe en « Acceptée » et entre dans ta tournée de ce jour, à son heure.</p>
-    <label>Magasin<input name="mag" list="dlPlanRdv" value="${m0 ? esc(etiq(m0)) : ''}" placeholder="Tape le nom ou la ville du magasin" autocomplete="off" required></label>
-    <datalist id="dlPlanRdv">${all.map(m => `<option value="${esc(etiq(m))}">`).join('')}</datalist>
+    <label>Magasin<input name="mag" list="dlPlanRdv" value="${m0 ? esc(etiquetteMagasin(m0)) : ''}" placeholder="Tape le nom ou la ville du magasin" autocomplete="off" required></label>
+    ${datalistMagasins('dlPlanRdv', all)}
     <div class="row"><label>Jour<input type="date" name="date" value="${esc(pre.date && pre.date >= today() ? pre.date : today())}" min="${today()}" required></label>
       <label>Heure<input type="time" name="heure" value="${esc(pre.heure || '')}" step="300" required></label></div>
     <div class="row"><label>Objet de la visite<select name="objet"><option value="">—</option>${OBJETS_VISITE.map(o => `<option value="${esc(o.id || o)}">${esc(o.label || o)}</option>`).join('')}</select></label>
@@ -132,7 +130,7 @@ export async function planifierRdv(pre = {}) {
   const r = await p;
   if (!r) return false;
   const m = trouver(r.mag);
-  if (!m) { toast(`Magasin introuvable : « ${r.mag} ». Choisis-le dans la liste proposée.`, 'warn'); return false; }
+  if (!m) { toast(messageIntrouvable(r.mag), 'warn'); return false; }
   if (!r.date || !r.heure) { toast('Indique le jour et l\'heure du rendez-vous', 'warn'); return false; }
   if (r.date < today()) { toast('Pas de rendez-vous dans le passé : choisis aujourd\'hui ou un jour à venir', 'warn'); return false; }
 

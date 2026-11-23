@@ -1,13 +1,12 @@
 // Notes de frais : dépenses, ce qui m'est dû, ce qui a été remboursé, justificatifs, export.
 import { db, uid, getSettings, saveSettings } from '../../db.js';
-import { $, $$, esc, fmtDate, modal, toast, downloadBlob, confirmer } from '../../ui.js';
+import { $, $$, esc, fmtDate, modal, toast, downloadBlob, confirmer, decale, today } from '../../ui.js';
 import { STATUTS_FRAIS, DEFAULT_SETTINGS, PROFIL } from '../../config.js';
 import { periode, decaler, libellePeriode } from '../../services/activite.js';
 import { reduireImage, imageURL } from '../../services/images.js';
 import { loadExcelJS } from '../../services/excel.js';
 import { genererNdf, genererNdfPdf, nomFichierNdf, colonneNdf, estIkm, baremeProfil, estPdf } from '../../services/ndf.js';
 
-const today = () => new Date().toISOString().slice(0, 10);
 const euros = v => `${(Math.round((Number(v) || 0) * 100) / 100).toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} €`;
 let f = { type: 'mois', du: null, au: null, statut: '', cat: '', ouverts: new Set() };
 const pdfDe = f => f.type === 'application/pdf' || /\.pdf$/i.test(f.name || '');
@@ -178,14 +177,13 @@ async function editer(x, s, base) {
 
 // Note de frais au format du profil entreprise : période (du … au …), choix des dépenses, puis Excel et/ou PDF avec justificatifs.
 // La période ne suit pas forcément le mois : on envoie souvent la note avant la fin du mois, le reste part sur la note suivante.
-const decaleJ = (iso, n) => { const d = new Date(iso + 'T12:00'); d.setDate(d.getDate() + n); return d.toISOString().slice(0, 10); };
 async function noteEntreprise(tous, s, format = 'xlsx') {
   const defaut = x => x.payeur === 'moi' && x.remboursable !== false && x.statut !== 'refusee' && x.statut !== 'remboursee';
   const tri = tous.slice().sort((a, b) => a.date.localeCompare(b.date));
   const auj = today(), debutMois = auj.slice(0, 8) + '01';
-  const moisPrec = (() => { const d = new Date(debutMois + 'T12:00'); d.setMonth(d.getMonth() - 1); const a = d.toISOString().slice(0, 10); return [a, decaleJ(debutMois, -1)]; })();
+  const moisPrec = (() => { const d = new Date(debutMois + 'T12:00'); d.setMonth(d.getMonth() - 1); const a = d.toISOString().slice(0, 10); return [a, decale(debutMois, -1)]; })();
   // période proposée : depuis le lendemain de la dernière note (sinon la plus ancienne dépense à déclarer, sinon le début du mois) jusqu'à aujourd'hui
-  const apresDerniere = s.ndfDernierAu ? decaleJ(s.ndfDernierAu, 1) : '';
+  const apresDerniere = s.ndfDernierAu ? decale(s.ndfDernierAu, 1) : '';
   const plusAncienne = tri.find(x => x.statut === 'aDeclarer' && defaut(x))?.date || '';
   const du0 = apresDerniere && apresDerniere <= auj ? apresDerniere : plusAncienne && plusAncienne < debutMois ? plusAncienne : debutMois;
   const raccourcis = [

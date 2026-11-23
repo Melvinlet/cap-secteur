@@ -40,6 +40,10 @@ export const fmtHeure = min => { min = Math.round(min); return `${String(Math.fl
 export const parseHeure = s => { const [h, m] = (s || '0:0').split(':').map(Number); return h * 60 + (m || 0); };
 // date du jour en heure locale (pas UTC : entre minuit et 1 h, l'UTC donnerait encore la veille)
 export const today = () => { const d = new Date(); return new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 10); };
+// ── Dates (AAAA-MM-JJ, heure locale) : une seule version pour toute l'appli ──
+export const decale = (iso, n) => { const d = new Date(iso + 'T12:00'); d.setDate(d.getDate() + n); return d.toISOString().slice(0, 10); };
+export const lundiDe = iso => decale(iso, -((new Date(iso + 'T12:00').getDay() + 6) % 7));
+export const joursEntre = (a, b) => Math.round((new Date(b + 'T12:00') - new Date(a + 'T12:00')) / 86400000);
 export const joursDepuis = d => d ? Math.floor((Date.now() - new Date(d).getTime()) / 86400000) : null;
 export const norm = s => (s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
 
@@ -211,4 +215,30 @@ export function glisser(liste, { item = 'li[data-k]', poignee = '.poignee', onDe
       h.addEventListener('pointermove', move); h.addEventListener('pointerup', fin); h.addEventListener('pointercancel', fin);
     });
   });
+}
+
+// ── « Plus d'actions » : les actions secondaires d'une page restent des boutons cachés (mêmes réglages, mêmes clics),
+// et ce bouton les présente dans une feuille qui monte du bas de l'écran.
+export function brancherPlus(bouton, conteneur, titre = 'Plus d\'actions') {
+  if (!bouton || !conteneur) return;
+  bouton.onclick = () => {
+    const items = [...conteneur.querySelectorAll('button, a.btn')];
+    const d = document.createElement('dialog');
+    d.className = 'feuille';
+    d.innerHTML = `<div class="feuille-poignee" aria-hidden="true"></div><h2 class="feuille-titre">${esc(titre)}</h2>
+      <div class="feuille-liste">${items.map((b, i) => `<button type="button" data-i="${i}" ${b.disabled ? 'disabled' : ''}>${esc(b.textContent.trim())}${b.title ? `<small>${esc(b.title)}</small>` : ''}</button>`).join('')}</div>
+      <button type="button" class="btn ghost feuille-fermer">Fermer</button>`;
+    document.body.append(d);
+    d.onclose = () => d.remove();
+    d.addEventListener('click', e => { if (e.target === d) d.close(); });
+    d.querySelector('.feuille-fermer').onclick = () => d.close();
+    d.querySelectorAll('[data-i]').forEach(x => x.onclick = () => { d.close(); items[+x.dataset.i].click(); });
+    d.showModal();
+  };
+}
+// bouton calendrier : ouvre le sélecteur de date natif sans afficher le champ (qui s'affiche au format du téléphone, ex. 11/23/2026)
+export const boutonCalendrier = (id, valeur, label = 'Choisir une date') =>
+  `<span class="cal-btn"><button type="button" class="btn-icon" data-cal="${id}" aria-label="${esc(label)}" title="${esc(label)}"><svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><rect x="3.5" y="5" width="17" height="15.5" rx="3"/><path d="M3.5 10h17M8 3v4M16 3v4"/></svg></button><input type="date" id="${id}" value="${esc(valeur)}" tabindex="-1" aria-hidden="true"></span>`;
+export function brancherCalendrier(racine = document) {
+  racine.querySelectorAll('[data-cal]').forEach(b => b.onclick = () => { const i = racine.querySelector('#' + b.dataset.cal); try { i.showPicker(); } catch { i.focus(); i.click(); } });
 }

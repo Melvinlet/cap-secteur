@@ -1,6 +1,6 @@
 // Historique des visites : tous les comptes rendus, filtrables, exportables.
 import { getSettings } from '../../db.js';
-import { $, $$, esc, borne, fmtDate, norm, downloadBlob, prioTag } from '../../ui.js';
+import { $, $$, esc, borne, fmtDate, norm, downloadBlob, prioTag, today } from '../../ui.js';
 import { ACTIONS_VISITE } from '../../config.js';
 import { prioriteDe } from '../../data.js';
 import { chargerTout, periode, libellePeriode, decaler } from '../../services/activite.js';
@@ -8,7 +8,6 @@ import { imageURL } from '../../services/images.js';
 import { db } from '../../db.js';
 import { loadExcelJS } from '../../services/excel.js';
 
-const today = () => new Date().toISOString().slice(0, 10);
 let f = { type: 'mois', du: null, au: null, q: '', ens: '', action: '' };
 
 export async function render(el) {

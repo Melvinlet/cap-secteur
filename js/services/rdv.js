@@ -55,8 +55,7 @@ export function quand(date, heure, approx = true) {
 // Remplit un modèle avec les infos du magasin, du contact et de la demande
 export function genererMessage(type, { m = {}, contact, rdv = {}, s }) {
   const md = modeles(s)[type] || modeles(s).demande;
-  const date = rdv.statut === 'autreDate' ? rdv.dateRetenue : rdv.date;
-  const heure = rdv.statut === 'autreDate' ? rdv.heureRetenue : rdv.heure;
+  const date = dateEffRdv(rdv), heure = heureEffRdv(rdv);
   const nom = (contact?.nom || '').trim();
   const v = {
     bonjour: bonjourDe(contact), contact: nom,   // « Bonjour Monsieur / Madame », jamais le prénom
@@ -84,8 +83,7 @@ export async function changerStatut(rdv, statut, extra = {}) {
   await db.put('rdv', r);
   let ajoute = null;
   if (statut === 'acceptee' || statut === 'autreDate') {
-    const jour = statut === 'autreDate' ? r.dateRetenue : r.date;
-    const heure = statut === 'autreDate' ? r.heureRetenue : r.heure;
+    const jour = dateEffRdv({ ...r, statut }), heure = heureEffRdv({ ...r, statut });
     if (jour) {
       await ajouterEtape(jour, r.magasinId);
       const t = await db.get('tournees', jour);
@@ -106,6 +104,9 @@ export function aRelancer(r, jours = 3) {
   return d && (Date.now() - new Date(d + 'T12:00').getTime()) / 86400000 >= jours;
 }
 
+// Date / heure effectives d'un RDV : la date retenue si le magasin en a proposé une autre
+export const dateEffRdv = r => (r ? (r.statut === 'autreDate' ? r.dateRetenue : r.date) : '') || '';
+export const heureEffRdv = r => (r ? (r.statut === 'autreDate' ? r.heureRetenue : r.heure) : '') || '';
 export const labelStatut = st => STATUTS_RDV[st]?.label || st;
 
 // Où en est le RDV d'un magasin, vu depuis un jour de tournée (plannings Jour et Semaine) :
@@ -116,8 +117,7 @@ export function etatRdvJour(r, jour, relanceApres = 3) {
   const d0 = new Date(), auj = new Date(d0.getTime() - d0.getTimezoneOffset() * 60000).toISOString().slice(0, 10);
   const nonDemande = (plus = '') => jour >= auj ? { cls: 'non', txt: `RDV non demandé${plus}` } : null;
   if (!r || r.statut === 'aFaire') return nonDemande(r?.date === jour && r.heure ? ` (souhaité ${r.heure})` : '');
-  const dR = r.statut === 'autreDate' ? r.dateRetenue : r.date;
-  const hR = r.statut === 'autreDate' ? r.heureRetenue : r.heure;
+  const dR = dateEffRdv(r), hR = heureEffRdv(r);
   const perime = d => d && d < auj && d < jour;   // demande ou RDV d'une date passée : c'était pour une autre visite
   if (['acceptee', 'autreDate'].includes(r.statut)) {
     if (dR === jour) return { cls: 'ok', txt: `RDV accepté${hR ? ` ${hR}` : ''}` };

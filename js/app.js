@@ -10,6 +10,7 @@ const ROUTES = [
   [/^\/?$/, 'aujourdhui', () => import('./views/aujourdhui.js')],
   [/^\/tournee(?:\/(\d{4}-\d{2}-\d{2}))?$/, 'tournee', () => import('./views/tournee.js'), ['date']],
   [/^\/plan$/, 'tournee', () => import('./views/plan.js')],
+  [/^\/en-tournee(?:\/(\d{4}-\d{2}-\d{2}))?$/, 'tournee', () => import('./views/en-tournee.js'), ['date']],
   [/^\/semaine(?:\/(\d{4}-\d{2}-\d{2}))?$/, 'tournee', () => import('./views/semaine.js'), ['lundi']],
   [/^\/simulation(?:\/(\d{4}-\d{2}-\d{2}))?$/, 'tournee', () => import('./views/simulation.js'), ['lundi']],
   [/^\/couverture$/, 'tournee', () => import('./views/couverture.js')],
@@ -120,6 +121,11 @@ import('./services/affinage.js').then(({ affinerPositions }) => {
     affinerPositions();
   }, 8000);
   addEventListener('online', () => setTimeout(() => affinerPositions(), 5000));
+});
+// rappels : calculés à l'ouverture et au retour sur l'appli (la notification du jour ne s'affiche qu'une fois)
+import('./services/rappels.js').then(({ majRappels }) => {
+  setTimeout(() => majRappels().catch(() => {}), 4000);
+  document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') majRappels().catch(() => {}); });
 });
 
 if ('serviceWorker' in navigator && location.protocol !== 'file:') {

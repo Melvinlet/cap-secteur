@@ -3,9 +3,9 @@
 import { civiliteDevinee } from '../services/civilite.js';
 import { db, getSettings } from '../db.js';
 import { magasinsEnrichis, trierContacts, roleDe } from '../data.js';
-import { $, $$, esc, borne, prioTag, fmtDate, fmtHeure, toast, modal, norm, today, tagSemaine, numSemaine } from '../ui.js';
+import { $, $$, esc, borne, prioTag, fmtDate, fmtHeure, toast, modal, norm, today, tagSemaine, numSemaine, lundiDe, decale } from '../ui.js';
 import { STATUTS_RDV, OBJETS_VISITE } from '../config.js';
-import { getRdv, tousLesRdv, genererMessage, lienMail, lienSms, estMobile, changerStatut, aRelancer, modeles, dateEnLettres, lienMailCci, separateurMails } from '../services/rdv.js';
+import { getRdv, tousLesRdv, genererMessage, lienMail, lienSms, estMobile, changerStatut, aRelancer, modeles, dateEnLettres, lienMailCci, separateurMails, dateEffRdv, heureEffRdv } from '../services/rdv.js';
 import { planning } from './tournee.js';
 import { evenementRdv, proposerAgenda } from '../services/agenda.js';
 import { ferie } from '../services/feries.js';
@@ -34,8 +34,7 @@ export async function render(el, params = {}) {
   // lignes : magasins des tournées de la période, ou tous les magasins
   let lignes = [];
   const auj0 = today();
-  const dateEff = r => (r.statut === 'autreDate' ? r.dateRetenue : r.date) || '';
-  const heureEff = r => (r.statut === 'autreDate' ? r.heureRetenue : r.heure) || '';
+  const dateEff = dateEffRdv, heureEff = heureEffRdv;
   if (etat.mode === 'mesRdv') {
     // à venir (par date) → demandes sans date → passés (le plus récent d'abord)
     const rang = r => { const d = dateEff(r); return d >= auj0 ? 0 : !d ? 1 : 2; };
@@ -57,7 +56,7 @@ export async function render(el, params = {}) {
   const vus = new Map();
   for (const l of lignes) {
     const r = rdvs.get(l.m.id);
-    const jourRdv = r && (r.statut === 'autreDate' ? r.dateRetenue : r.date);
+    const jourRdv = dateEffRdv(r);
     if (!vus.has(l.m.id) || l.date === jourRdv) vus.set(l.m.id, l);
   }
   lignes = [...vus.values()];
@@ -68,7 +67,7 @@ export async function render(el, params = {}) {
     l.jourTournee = (l.date && l.date >= auj ? l.date : '') || prochain.get(l.m.id) || '';   // jamais une date passée
     l.rdv = rdvs.get(l.m.id) || { id: `rdv-${l.m.id}`, magasinId: l.m.id, statut: 'aFaire', historique: [] };
     // demande ou RDV d'une date passée : c'était pour une ancienne visite → nouvelle demande, pas de relance
-    const dR = l.rdv.statut === 'autreDate' ? l.rdv.dateRetenue : l.rdv.date;
+    const dR = dateEffRdv(l.rdv);
     l.perime = l.rdv.statut !== 'aFaire' && !!dR && dR < auj;
     l.relance = !l.perime && aRelancer(l.rdv, s.relanceApres);
     l.contacts = trierContacts(ctBy.get(l.m.id) || []);
@@ -112,7 +111,7 @@ export async function render(el, params = {}) {
       <button class="btn primary" id="lot" disabled>Préparer les demandes</button>
       <button class="btn" id="tous" title="Un seul mail générique (sans prénom ni adresse), tous les contacts en copie cachée">Un seul mail à tous</button></div>` : ''}
     ${q && !visibles.length ? `<div class="empty"><p>Rien ne correspond à « ${esc(etat.q)} »${etat.mode === 'semaine' ? ' dans tes tournées de cette période' : ''}.</p>${etat.mode === 'semaine' ? '<button class="btn" id="chTous">Chercher dans tous les magasins</button>' : ''}</div>` : ''}
-    <ul class="rdv-list">${visibles.map((l, i) => ligneHTML(l, i)).join('')}</ul>
+    <ul class="rdv-list">${visibles.map((l, i) => (etat.mode === 'mesRdv' ? enTete(l, visibles[i - 1]) : '') + ligneHTML(l, i)).join('')}</ul>
   </div>`;
 
   $('#planRdv').onclick = async () => { const { planifierRdv } = await import('./planif-rdv.js'); if (await planifierRdv({})) render(el); };
@@ -131,11 +130,27 @@ export async function render(el, params = {}) {
   $$('[data-ecrire]').forEach(b => b.onclick = () => rediger([visibles[+b.dataset.ecrire]], s, () => render(el)));
   $('#tous')?.addEventListener('click', () => { const sel = $$('.rdv-sel:checked').map(c => visibles[+c.dataset.i]); mailGroupe(sel.length ? sel : visibles, s, () => render(el)); });
   $$('[data-agenda]').forEach(b => b.onclick = () => agenda(visibles[+b.dataset.agenda], visibles[+b.dataset.agenda].rdv, s));
+  $$('[data-st]').forEach(b => b.onclick = async () => { await reponse(visibles[+b.dataset.st], b.dataset.v, s); render(el); });
   $$('[data-statut]').forEach(sel => sel.onchange = async () => {
     const l = visibles[+sel.dataset.statut];
     await reponse(l, sel.value, s);
     render(el);
   });
+}
+
+// « Mes RDV » : un titre par semaine, puis par jour (les demandes sans date et les RDV passés à part)
+function groupeDe(l) {
+  const d = dateEffRdv(l.rdv), auj = today();
+  if (!d) return { s: 'sansdate', lib: 'Demandes sans date' };
+  if (d < auj) return { s: 'passes', lib: 'RDV passés' };
+  return { s: lundiDe(d), lib: `${numSemaine(d) ? `Semaine ${numSemaine(d)} · ` : ''}du ${fmtDate(lundiDe(d))} au ${fmtDate(decale(lundiDe(d), 6))}`, j: d };
+}
+function enTete(l, prec) {
+  const g = groupeDe(l), gp = prec ? groupeDe(prec) : null;
+  let h = '';
+  if (!gp || gp.s !== g.s) h += `<li class="rdv-groupe" role="presentation"><h2>${esc(g.lib)}</h2></li>`;
+  if (g.j && (!gp || gp.j !== g.j)) h += `<li class="rdv-jour-titre" role="presentation">${esc(dateEnLettres(g.j))}</li>`;
+  return h;
 }
 
 function ligneHTML(l, i) {
@@ -153,6 +168,7 @@ function ligneHTML(l, i) {
         ${r.dateEnvoi ? ` · envoyée le ${fmtDate(r.dateEnvoi)}` : ''}${l.perime && l.jourTournee ? ` · <b class="wait-txt">prévu dans ta tournée le ${esc(dateEnLettres(l.jourTournee))}</b>` : ''}${r.relances ? ` · ${r.relances} relance${r.relances > 1 ? 's' : ''}` : ''}${l.relance ? ' · <b class="late-txt">à relancer</b>' : ''}</small>
     </div>
     <div class="rdv-act">
+      ${['envoyee', 'relancee'].includes(r.statut) ? `<span class="st-rapide" role="group" aria-label="Réponse du magasin"><button class="btn small ok-btn" data-st="${i}" data-v="acceptee">Acceptée</button><button class="btn small" data-st="${i}" data-v="autreDate">Autre date</button><button class="btn small" data-st="${i}" data-v="refusee">Refusée</button></span>` : ''}
       <select data-statut="${i}" aria-label="Réponse du magasin" class="st-sel">${Object.entries(STATUTS_RDV).map(([k, v]) => `<option value="${k}" ${k === r.statut ? 'selected' : ''}>${v.label}</option>`).join('')}</select>
       ${['acceptee', 'autreDate'].includes(r.statut) && date ? `<button class="btn small" data-agenda="${i}" title="Ajouter à mon agenda">Agenda</button>` : ''}
       <button class="btn small ${r.statut === 'aFaire' || l.relance || (l.perime && l.jourTournee) ? 'primary' : ''}" data-ecrire="${i}" ${l.perime && l.jourTournee ? `title="Nouvelle demande pour le ${esc(dateEnLettres(l.jourTournee))}"` : ''}>${r.statut === 'aFaire' ? 'Rédiger' : l.perime ? 'Nouvelle demande' : l.relance ? 'Relancer' : ['acceptee', 'autreDate'].includes(r.statut) ? 'Confirmer' : 'Écrire'}</button>
@@ -275,7 +291,7 @@ function rediger(file, s, fin) {
     $('#cMail', d).onclick = async e => {
       const b = e.currentTarget;
       b.href = lienMail(contact()?.email, $('#cSujet', d).value, $('#cCorps', d).value);
-      r.mailOuvert = new Date().toISOString().slice(0, 10);
+      r.mailOuvert = today();
       b.classList.add('deja'); b.classList.remove('primary'); b.textContent = 'Messagerie ouverte ✓ · rouvrir';   // on voit qu'on a déjà appuyé
       await marquer(); l.rdv.mailOuvert = r.mailOuvert; await db.put('rdv', { ...l.rdv, mailOuvert: r.mailOuvert });
     };
@@ -318,7 +334,7 @@ async function mailGroupe(lignes, s, fin) {
     b.classList.add('deja'); b.classList.remove('primary'); b.textContent = 'Messagerie ouverte ✓ · rouvrir';
     if (q('#gMarquer').checked && !b.dataset.fait) {
       b.dataset.fait = '1';
-      const jour = new Date().toISOString().slice(0, 10);
+      const jour = today();
       for (const { l } of avecMail) {
         const r = l.rdv, st = r.statut === 'aFaire' ? 'envoyee' : ['envoyee', 'relancee'].includes(r.statut) ? 'relancee' : null;
         // rattachée au jour prévu dans la tournée : le planning affiche « RDV demandé » ce jour-là

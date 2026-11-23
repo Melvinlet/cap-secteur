@@ -2,13 +2,13 @@
 // rangées par échéance, à cocher quand c'est fait. Les faits restent consultables.
 import { db, uid, getSettings } from '../db.js';
 import { magasinsEnrichis } from '../data.js';
-import { $, $$, esc, fmtDate, modal, toast, today, norm, prioTag } from '../ui.js';
+import { $, $$, esc, fmtDate, modal, toast, today, norm, prioTag, decale } from '../ui.js';
 import { marquerFait } from '../services/afaire.js';
+import { datalistMagasins, trouverMagasin, messageIntrouvable } from '../champ-magasin.js';
 import { lienDetails } from '../services/visite.js';
 import { dateEnLettres } from '../services/rdv.js';
 
 let etat = { vue: 'ouverts', q: '', dep: '', tri: 'echeance' };
-const decale = (iso, n) => { const d = new Date(iso + 'T12:00'); d.setDate(d.getDate() + n); return d.toISOString().slice(0, 10); };
 const lienNote = n => n.type === 'Visite' ? lienDetails(n) : `#/magasin/${encodeURIComponent(n.magasinId)}/suivi`;
 
 export async function render(el) {
@@ -99,11 +99,10 @@ export async function render(el) {
 
 // Ajouter (note « À faire » rattachée à un magasin) ou modifier le texte / l'échéance
 async function editer(n, mags) {
-  const etiq = m => `${m.nom} — ${m.cp || ''} ${m.ville || ''}`.trim();
   const m0 = n ? mags.find(m => m.id === n.magasinId) : null;
   const p = modal({ titre: n ? 'Modifier l\'à faire' : 'Ajouter un à faire', valider: 'Enregistrer', corps: `
     ${n ? `<p><strong>${esc(m0?.nom || '')}</strong></p>` : `<label>Magasin<input name="mag" list="dlAF" placeholder="Tape le nom ou la ville du magasin" autocomplete="off" required></label>
-      <datalist id="dlAF">${mags.map(m => `<option value="${esc(etiq(m))}">`).join('')}</datalist>`}
+      ${datalistMagasins('dlAF', mags)}`}
     <label>À faire<input name="aFaire" value="${esc(n?.aFaire || '')}" placeholder="ex. Rappeler le chef de rayon pour la PLV" required></label>
     <label>Pour le <small class="muted">(facultatif)</small><input type="date" name="echeance" value="${esc(n?.echeance || '')}"></label>
     ${n ? '<button type="button" class="btn small danger" id="sansAF">Retirer cet à faire</button>' : ''}` });
@@ -121,9 +120,8 @@ async function editer(n, mags) {
     toast('À faire modifié');
     return true;
   }
-  const q = norm(r.mag);
-  const m = mags.find(x => norm(etiq(x)) === q) || (l => l.length === 1 ? l[0] : null)(mags.filter(x => norm(etiq(x)).includes(q)));
-  if (!m) { toast(`Magasin introuvable : « ${r.mag} ». Choisis-le dans la liste proposée.`, 'warn'); return false; }
+  const m = trouverMagasin(r.mag, mags);
+  if (!m) { toast(messageIntrouvable(r.mag), 'warn'); return false; }
   await db.put('notes', { id: uid('n'), magasinId: m.id, type: 'Note', date: today(), texte: '', aFaire: r.aFaire.trim(), echeance: r.echeance || '', maj: new Date().toISOString() });
   toast(`À faire ajouté : ${m.nom}`);
   return true;

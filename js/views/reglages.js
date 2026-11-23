@@ -42,6 +42,12 @@ export async function render(el) {
             <button type="button" class="btn small ghost" data-reset="${k}">Revenir au texte d'origine</button></fieldset>`; }).join('')}
         </details></section>
 
+      <section><h2 class="h2">Rappels</h2>
+        <p class="hint">Une notification le jour où il faut relancer une demande de RDV, quand un « À faire » arrive à échéance, et le matin d'un RDV.</p>
+        <p id="rapEtat" class="small">${!('Notification' in window) ? 'Ce navigateur ne gère pas les notifications.' : s.rappels && Notification.permission === 'granted' ? '✓ Rappels activés sur cet appareil.' : 'Rappels désactivés sur cet appareil.'}</p>
+        <div class="actions"><button type="button" class="btn" id="rapOn" ${'Notification' in window ? '' : 'disabled'}>${s.rappels && 'Notification' in window && Notification.permission === 'granted' ? 'Tester un rappel maintenant' : 'Activer les rappels'}</button>
+          ${s.rappels ? '<button type="button" class="btn ghost" id="rapOff">Désactiver</button>' : ''}</div></section>
+
       <section><h2 class="h2">Notes de frais</h2>
         <label>Catégories (une par ligne)<textarea name="categoriesFrais" rows="5">${esc((s.categoriesFrais || []).join('\n'))}</textarea></label>
         <label>Indemnité kilométrique (€/km, 0 = pas d'indemnité)<input name="tauxKm" type="number" min="0" step="0.001" value="${s.tauxKm ?? 0}"></label>
@@ -231,6 +237,19 @@ export async function render(el) {
     } catch (e) { toast(e.message, 'warn'); }
   };
   $('#impAll').onclick = imp;
+  $('#rapOn')?.addEventListener('click', async () => {
+    const { activerRappels, majRappels, calculerRappels, notificationDuJour } = await import('../services/rappels.js');
+    const r = await activerRappels();
+    if (!r.ok) { toast(r.raison, 'warn'); return; }
+    await saveSettings({ rappels: true });
+    // test : la notification du jour, ou un exemple s'il n'y a rien aujourd'hui
+    const n = notificationDuJour(await calculerRappels()) || { titre: 'Cap Secteur : rappels activés', corps: 'Rien à relancer aujourd\'hui. Tu seras prévenu le jour venu.', tag: 'cap-test', url: '#/' };
+    try { await (await navigator.serviceWorker.ready).showNotification(n.titre, { body: n.corps, tag: n.tag, icon: 'icons/icon-192.png', data: { url: n.url } }); }
+    catch { toast('Notifications bloquées par le navigateur : vérifie l\'autorisation pour Cap Secteur', 'warn'); }
+    await majRappels({ montrer: false });
+    $('#rapEtat').textContent = r.fond ? '✓ Rappels activés : ils arrivent même appli fermée (le téléphone choisit le moment, en général le matin).' : '✓ Rappels activés : ils s\'affichent à l\'ouverture de l\'appli (ce téléphone ne permet pas le réveil en arrière-plan).';
+  });
+  $('#rapOff')?.addEventListener('click', async () => { await saveSettings({ rappels: false }); try { (await navigator.serviceWorker.ready).periodicSync?.unregister('cap-rappels'); } catch { /* */ } toast('Rappels désactivés'); render(el); });
   $('#impProfil').onclick = async () => {
     const file = await pickFile('.json,application/json');
     if (!file) return;

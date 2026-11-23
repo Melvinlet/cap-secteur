@@ -1,11 +1,10 @@
 // Rapport d'activité de date à date + comparateur (S-1 / M-1 / année-1, et N-1).
 import { getSettings } from '../../db.js';
-import { $, $$, esc, fmtKm, fmtDuree, downloadBlob, toast } from '../../ui.js';
+import { $, $$, esc, fmtKm, fmtDuree, downloadBlob, toast, today } from '../../ui.js';
 import { chargerTout, indicateurs, periode, precedente, anPasse, decaler, libellePeriode } from '../../services/activite.js';
 import { loadExcelJS } from '../../services/excel.js';
 import { SAISON } from '../../config.js';
 
-const today = () => new Date().toISOString().slice(0, 10);
 let f = { type: 'semaine', du: null, au: null };
 
 const euros = v => `${(Math.round(v * 100) / 100).toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} €`;

@@ -28,13 +28,14 @@ export async function render(el) {
       <div class="bornes" role="group" aria-label="Départements">
         ${deps.map(d => `<button class="borne-btn" data-dep="${d}" aria-pressed="${filtres.dep === d}">${borne(d)}</button>`).join('')}
       </div>
+      <details class="filtres-plus" ${matchMedia('(min-width: 900px)').matches ? 'open' : ''}><summary class="btn ghost">Filtres et tri <span class="badge" id="nbF" hidden></span></summary><div class="filtres-corps">
       <select id="ens" aria-label="Enseigne"><option value="">Toutes les enseignes</option>${ens.map(e => `<option ${filtres.ens === e ? 'selected' : ''}>${esc(e)}</option>`).join('')}</select>
       <select id="prio" aria-label="Priorité"><option value="">Toutes priorités</option>${ORDRE_PRIORITES.map(p => `<option value="${p}" ${filtres.prio === String(p) ? 'selected' : ''}>${PRIORITES[p].label}</option>`).join('')}</select>
       <select id="etat" aria-label="Suivi">
         <option value="">Tous</option><option value="retard">Visite en retard</option><option value="jamais">Jamais visité</option>
         <option value="sav">SAV en cours</option><option value="nonloc">Non localisé</option>
         <option value="ventes">Avec des ventes 2026</option><option value="sansventes">Sans vente 2026</option></select>
-      <select id="tri" aria-label="Trier par"><option value="lieu">Tri : département, ville</option><option value="ventes">Tri : meilleures ventes 2026</option><option value="nom">Tri : nom</option><option value="visite">Tri : visite la plus ancienne</option></select>
+      <select id="tri" aria-label="Trier par"><option value="lieu">Tri : département, ville</option><option value="ventes">Tri : meilleures ventes 2026</option><option value="nom">Tri : nom</option><option value="visite">Tri : visite la plus ancienne</option></select></div></details>
     </div>
     <div class="count-row"><p class="count" id="count"></p><button class="btn small ghost" id="bulk">Changer la priorité des magasins affichés</button></div>
     <div id="liste" class="store-list"></div>
@@ -44,6 +45,8 @@ export async function render(el) {
   $('#etat').value = filtres.etat; $('#tri').value = filtres.tri;
 
   const apply = () => {
+    const nbF = [filtres.ens, filtres.prio, filtres.etat, filtres.tri !== 'lieu' ? 'x' : ''].filter(Boolean).length;
+    $('#nbF').hidden = !nbF; $('#nbF').textContent = nbF;
     const q = norm(filtres.q);
     const list = mags.filter(m =>
       (!filtres.dep || m.departement === filtres.dep) && (!filtres.ens || m.enseigne === filtres.ens) &&

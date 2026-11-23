@@ -3,7 +3,7 @@
 // IMPORTANT : à chaque mise en ligne d'une nouvelle version, change VERSION
 // (sinon les téléphones garderont l'ancienne version en cache).
 // ─────────────────────────────────────────────────────────────────────────────
-const VERSION = 'cap-secteur-1.13.4';
+const VERSION = 'cap-secteur-1.16.0';
 const TUILES = 'cap-secteur-tuiles';
 const IMAGES_WEB = 'cap-secteur-images-web';
 const MAX_TUILES = 3000;
@@ -11,12 +11,8 @@ const MAX_TUILES = 3000;
 const APP = [
   './',
   './css/app.css',
-  './fonts/barlow-condensed-latin-600-normal.woff2',
-  './fonts/barlow-condensed-latin-700-normal.woff2',
-  './fonts/barlow-latin-400-normal.woff2',
-  './fonts/barlow-latin-500-normal.woff2',
-  './fonts/barlow-latin-600-normal.woff2',
-  './fonts/barlow-latin-700-normal.woff2',
+  './css/theme.css',
+  './fonts/inter-latin-opsz-normal.woff2',
   './icons/icon-192.png',
   './icons/icon-512.png',
   './icons/icon-maskable-512.png',
@@ -67,6 +63,10 @@ const APP = [
   './js/views/simulation.js',
   './js/views/planif-rdv.js',
   './js/views/afaire.js',
+  './js/services/rappels.js',
+  './js/views/en-tournee.js',
+  './js/views/remplissage.js',
+  './js/champ-magasin.js',
   './js/views/couverture.js',
   './js/views/fiche-avant.js',
   './js/services/afaire.js',
@@ -151,3 +151,29 @@ async function trim(c) {
   for (let i = 0; i < keys.length - MAX_TUILES; i++) await c.delete(keys[i]);
   trimming = false;
 }
+
+// ── Rappels (relances de RDV, « À faire » à échéance, RDV du jour) ──
+// L'appli prépare les notifications des 14 prochains jours (réglage local « rappels ») ; ici on affiche celle du jour,
+// une seule fois, quand le téléphone réveille l'appli en arrière-plan (synchronisation périodique).
+const jourLocal = () => { const d = new Date(); return new Date(d - d.getTimezoneOffset() * 60000).toISOString().slice(0, 10); };
+const ouvrirBase = () => new Promise((ok, ko) => { const r = indexedDB.open('cap-secteur'); r.onsuccess = () => ok(r.result); r.onerror = () => ko(r.error); });
+const lire = (base, cle) => new Promise(ok => { const g = base.transaction('reglages').objectStore('reglages').get(cle); g.onsuccess = () => ok(g.result || null); g.onerror = () => ok(null); });
+const ecrire = (base, rec) => new Promise(ok => { const tx = base.transaction('reglages', 'readwrite'); tx.objectStore('reglages').put(rec); tx.oncomplete = ok; tx.onerror = ok; });
+async function rappelDuJour() {
+  const base = await ouvrirBase();
+  const rec = await lire(base, 'rappels');
+  const j = jourLocal(), v = rec?.valeur;
+  const n = v?.parJour?.[j];
+  if (!n || v.vu === j) return;
+  await self.registration.showNotification(n.titre, { body: n.corps, tag: n.tag, icon: 'icons/icon-192.png', badge: 'icons/icon-192.png', data: { url: n.url } });
+  await ecrire(base, { ...rec, valeur: { ...v, vu: j } });
+}
+self.addEventListener('periodicsync', e => { if (e.tag === 'cap-rappels') e.waitUntil(rappelDuJour().catch(() => {})); });
+self.addEventListener('notificationclick', e => {
+  e.notification.close();
+  const url = new URL(self.registration.scope).href + (e.notification.data?.url || '#/');
+  e.waitUntil(clients.matchAll({ type: 'window', includeUncontrolled: true }).then(l => {
+    const c = l.find(x => x.url.startsWith(self.registration.scope));
+    return c ? c.focus().then(w => w && w.navigate ? w.navigate(url) : null) : clients.openWindow(url);
+  }));
+});

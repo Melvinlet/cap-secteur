@@ -8,7 +8,7 @@ import { STATUTS_SAV, TYPES_NOTE, PRIORITES, STATUTS_VISITE, OBJETS_VISITE, SAIS
 import { lienGps } from '../services/routing.js';
 import { exporterCommande } from '../services/excel.js';
 import { ajouterEtape } from './tournee.js';
-import { getRdv, labelStatut, dateEnLettres } from '../services/rdv.js';
+import { getRdv, labelStatut, dateEnLettres, dateEffRdv } from '../services/rdv.js';
 import { carte, repere } from '../carte.js';
 import { imageURL } from '../services/images.js';
 import { marquerVisite, annulerVisite, lienDetails, estVide } from '../services/visite.js';
@@ -31,7 +31,7 @@ export async function render(el, { id, onglet = 'infos' }) {
   const { m } = d;
   const vuAuj = d.notes.find(n => n.type === 'Visite' && n.date === today() && n.statut === 'Réalisée');
   const rdv = await getRdv(m.id);
-  const rdvDate = rdv.statut === 'autreDate' ? rdv.dateRetenue : rdv.date;
+  const rdvDate = dateEffRdv(rdv);
   const cnt = { suivi: d.notes.length, commandes: d.commandes.length,
     sav: d.sav.filter(x => x.statut !== 'Résolu').length, implantations: d.implantations.length };
   el.innerHTML = `<div class="page">

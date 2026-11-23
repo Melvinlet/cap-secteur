@@ -6,6 +6,7 @@ import { DUREES_ENSEIGNE, PRIORITES, PRIORITE_ENSEIGNE, PRIORITE_DEFAUT, SAISON,
 // Durée de visite : réglage du magasin > réglage de l'enseigne > durée par défaut
 export function dureeVisite(m, s) {
   if (Number(m.dureeVisite)) return Number(m.dureeVisite);
+  if (Number(m.dureeMesuree)) return Number(m.dureeMesuree);   // apprise de tes visites (heures d'arrivée et de départ)
   const tab = { ...DUREES_ENSEIGNE, ...(s.dureesEnseigne || {}) };
   const k = Object.keys(tab).filter(e => (m.enseigne || '').startsWith(e)).sort((a, b) => b.length - a.length)[0];
   return Number(k ? tab[k] : s.dureeVisite);
@@ -33,13 +34,24 @@ export async function magasinsEnrichis(settings) {
   const auj = today();
   for (const n of notes) if (n.type === 'Visite' && n.date <= auj && !['Planifiée', 'Confirmée', 'Annulée', 'Reportée'].includes(n.statut)
     && (!last.has(n.magasinId) || n.date > last.get(n.magasinId))) last.set(n.magasinId, n.date);
+  // durée réelle des visites : heures d'arrivée et de départ notées (compte rendu ou mode tournée), médiane des 5 dernières
+  const durees = new Map();
+  const mn = h => { const [a, b] = String(h).split(':').map(Number); return a * 60 + (b || 0); };
+  for (const n of [...notes].sort((a, b) => (b.date || '').localeCompare(a.date || ''))) {
+    if (n.type !== 'Visite' || !n.arrivee || !n.depart) continue;
+    const d = mn(n.depart) - mn(n.arrivee);
+    if (d < 10 || d > 240) continue;
+    const l = durees.get(n.magasinId) || []; if (l.length < 5) l.push(d); durees.set(n.magasinId, l);
+  }
+  const mediane = l => { const t = [...l].sort((a, b) => a - b); return Math.round(t[Math.floor((t.length - 1) / 2)] / 5) * 5; };
   for (const s of sav) if (s.statut !== 'Résolu') savOuv.set(s.magasinId, (savOuv.get(s.magasinId) || 0) + 1);
   for (const c of cmds) nbCmd.set(c.magasinId, (nbCmd.get(c.magasinId) || 0) + 1);
   return mags.map(m => {
     const derniereVisite = last.get(m.id) || null;
     const freq = frequenceDe(m, settings);
     const j = joursDepuis(derniereVisite);
-    return { ...m, derniereVisite, joursDepuisVisite: j, frequenceEff: freq, prio: prioriteDe(m),
+    const dm = durees.get(m.id);
+    return { ...m, derniereVisite, joursDepuisVisite: j, frequenceEff: freq, prio: prioriteDe(m), ...(dm?.length >= 2 ? { dureeMesuree: mediane(dm) } : {}),
       // urgence : > 1 = visite en retard ; un magasin jamais visité est considéré comme dû
       urgence: freq == null ? 0 : j == null ? 1 : j / freq,
       enRetard: j == null || freq == null ? null : j > freq, savOuverts: savOuv.get(m.id) || 0, nbCommandes: nbCmd.get(m.id) || 0 };

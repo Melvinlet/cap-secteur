@@ -5,7 +5,7 @@ import { db, getSettings } from '../db.js';
 import { magasinComplet, prioriteDe } from '../data.js';
 import { esc, modal, fmtDate, joursDepuis, prioTag, toast, today } from '../ui.js';
 import { PROFIL } from '../config.js';
-import { getRdv, labelStatut, dateEnLettres } from '../services/rdv.js';
+import { getRdv, labelStatut, dateEnLettres, dateEffRdv, heureEffRdv } from '../services/rdv.js';
 import { bonjourDe } from '../services/civilite.js';
 import { estOuvert, listeAFaire, brancherCoches } from '../services/afaire.js';
 import { lienGps } from '../services/routing.js';
@@ -25,7 +25,7 @@ export async function ouvrirFicheAvant(magasinId, date) {
     ${contacts.filter(c => c !== ct && c.nom).length ? `<p class="small muted">Aussi : ${contacts.filter(c => c !== ct && c.nom).slice(0, 3).map(c => esc(c.nom + (c.fonction ? ` (${c.fonction})` : ''))).join(', ')}</p>` : ''}` : '<p class="muted small">Aucun contact enregistré : pense à demander le nom du chef de rayon.</p>';
 
   // RDV
-  const rDate = rdv.statut === 'autreDate' ? rdv.dateRetenue : rdv.date, rHeure = rdv.statut === 'autreDate' ? rdv.heureRetenue : rdv.heure;
+  const rDate = dateEffRdv(rdv), rHeure = heureEffRdv(rdv);
   const rdvTxt = rdv.statut === 'aFaire' ? '' : `<p><span class="tag ${['acceptee', 'autreDate'].includes(rdv.statut) ? 'ok' : ''}">${esc(labelStatut(rdv.statut))}</span>${rDate ? ` ${esc(dateEnLettres(rDate))}` : ''}${rHeure ? ` à ${esc(rHeure)}` : ''}${rdv.objet ? ` <span class="muted">· ${esc(rdv.objet)}</span>` : ''}</p>`;
 
   // à faire encore ouverts

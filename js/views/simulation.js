@@ -4,14 +4,13 @@
 import { ongletsPlanning } from './onglets-planning.js';
 import { db, getSettings } from '../db.js';
 import { magasinsEnrichis } from '../data.js';
-import { esc, fmtKm, fmtDuree, fmtHeure, fmtDateLong, toast, modal, today, prioTag, tagSemaine, numSemaine } from '../ui.js';
-import { getTournee, lundiDe, estimerJour as estimer, chainer } from './tournee.js';
+import { esc, fmtKm, fmtDuree, fmtHeure, fmtDateLong, toast, modal, today, prioTag, tagSemaine, numSemaine, decale, lundiDe } from '../ui.js';
+import { getTournee, estimerJour as estimer, chainer } from './tournee.js';
 import { remplir, remplirJour } from './semaine.js';
 import { tousLesRdv } from '../services/rdv.js';
 import { ferie } from '../services/feries.js';
 
 const JOURS = ['Lun.', 'Mar.', 'Mer.', 'Jeu.', 'Ven.', 'Sam.'];
-const decale = (iso, n) => { const d = new Date(iso + 'T12:00'); d.setDate(d.getDate() + n); return d.toISOString().slice(0, 10); };
 const cle = id => id.includes(':') ? `simulation-${id}` : `simulation:${id}`;   // semaine : « simulation:lundi » ; journée : « simulation-jour:date »
 const copie = x => JSON.parse(JSON.stringify(x));
 const lireBrouillon = async lundi => (await db.get('reglages', cle(lundi)))?.valeur || null;

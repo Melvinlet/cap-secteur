@@ -1006,3 +1006,69 @@ h2 .tag-sem { font-size: .7em; }
 .exp-sortie .check { align-items: flex-start; }
 .exp-motif { margin-left: 1.6rem; font-size: .88rem; color: var(--gris); }
 .exp-tsv { width: 100%; font: .78rem/1.4 ui-monospace, Consolas, monospace; white-space: pre; overflow: auto; }
+.midi-avert { margin: .2rem 0; font-size: .82rem; color: #8A4705; }
+
+/* ── v1.15 : actions secondaires (feuille), calendrier, cartes compactes, filtres repliés ── */
+.actions-cachees { display: none !important; }
+.plus-btn { font-weight: 700; }
+dialog.feuille { margin: auto auto 0; width: min(560px, 100%); max-width: 100%; border: 0; border-radius: 22px 22px 0 0; padding: .5rem 1rem calc(1rem + env(safe-area-inset-bottom)); background: var(--surface); box-shadow: 0 -10px 40px rgba(0,0,0,.18); animation: feuilleMonte .22s ease-out; }
+dialog.feuille::backdrop { background: rgba(10, 20, 40, .35); backdrop-filter: blur(2px); }
+@keyframes feuilleMonte { from { transform: translateY(40px); opacity: .4; } to { transform: none; opacity: 1; } }
+@media (prefers-reduced-motion: reduce) { dialog.feuille { animation: none; } }
+.feuille-poignee { width: 42px; height: 5px; border-radius: 3px; background: var(--trait); margin: .2rem auto .6rem; }
+.feuille-titre { font-size: 1rem; margin: 0 0 .5rem; color: var(--gris); font-weight: 600; }
+.feuille-liste { display: flex; flex-direction: column; gap: 2px; border-radius: 14px; overflow: hidden; margin-bottom: .8rem; }
+.feuille-liste button { text-align: left; min-height: 52px; padding: .7rem 1rem; border: 0; background: var(--papier); font: 600 1rem var(--sans); color: var(--encre); display: flex; flex-direction: column; justify-content: center; cursor: pointer; }
+.feuille-liste button small { font-weight: 400; font-size: .78rem; color: var(--gris); margin-top: .1rem; }
+.feuille-liste button:disabled { opacity: .45; }
+.feuille-liste button:not(:disabled):active { filter: brightness(.95); }
+.feuille-fermer { width: 100%; min-height: 48px; }
+.cal-btn { position: relative; display: inline-flex; }
+.cal-btn input[type=date] { position: absolute; inset: 0; opacity: 0; pointer-events: none; width: 100%; }
+.stop-plus { margin-top: .35rem; }
+.stop-plus > summary { list-style: none; cursor: pointer; font-size: .82rem; color: var(--gris); display: inline-flex; align-items: center; gap: .3rem; min-height: 32px; }
+.stop-plus > summary::-webkit-details-marker { display: none; }
+.stop-plus > summary::before { content: '⋯'; font-weight: 700; letter-spacing: 1px; color: var(--bleu); }
+.stop-plus[open] > summary::before { content: '▾'; }
+.stop-plus-corps { display: flex; flex-wrap: wrap; gap: .4rem; align-items: center; padding-top: .3rem; }
+.stop-plus-corps .motif { flex: 1 1 180px; min-width: 0; }
+.danger-txt { color: var(--rouge, #C8371D) !important; }
+.filtres-plus { width: 100%; }
+.filtres-plus > summary { list-style: none; display: inline-flex; align-items: center; gap: .4rem; cursor: pointer; }
+.filtres-plus > summary::-webkit-details-marker { display: none; }
+.filtres-corps { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 200px), 1fr)); gap: .5rem; margin-top: .5rem; }
+.rdv-groupe { list-style: none; padding: 1rem 0 .2rem; border: 0 !important; background: none !important; }
+.rdv-groupe h2 { font: 700 1.05rem var(--cond); letter-spacing: .01em; margin: 0; color: var(--bleu); }
+.rdv-jour-titre { list-style: none; font-size: .82rem; font-weight: 700; color: var(--gris); padding: .4rem 0 .15rem; text-transform: none; border: 0 !important; background: none !important; }
+.st-rapide { display: inline-flex; gap: .3rem; flex-wrap: wrap; }
+.ok-btn { border-color: var(--vert) !important; color: var(--vert) !important; }
+.cal-btn .btn-icon { color: var(--bleu); }
+
+/* ── Mode tournée ── */
+.mode-tournee { display: flex; align-items: center; justify-content: center; gap: .5rem; width: 100%; min-height: 48px; margin: .6rem 0; font-weight: 700; border: 1.5px solid var(--bleu); color: var(--bleu); background: var(--bleu-pale); }
+.tm { max-width: 640px; }
+.tm-tete { display: flex; align-items: center; gap: .6rem; margin-bottom: .4rem; }
+.tm-date { margin: 0; font: 700 1.25rem var(--cond); }
+.tm-prog { margin: 0; color: var(--gris); font-size: .9rem; }
+.tm-barre { height: 6px; border-radius: 3px; background: var(--trait); overflow: hidden; margin-bottom: 1rem; }
+.tm-barre i { display: block; height: 100%; background: linear-gradient(90deg, var(--bleu), #3D7BE0); border-radius: 3px; transition: width .4s ease; }
+.tm-carte { position: relative; background: var(--surface); border-radius: 20px; padding: 1.1rem 1.1rem 1rem; box-shadow: 0 8px 30px rgba(20, 40, 80, .12); border-top: 6px solid var(--c, var(--bleu)); }
+.tm-etiq { margin: 0; font-size: .8rem; font-weight: 700; color: var(--c, var(--bleu)); letter-spacing: .02em; }
+.tm-carte h1 { font: 700 clamp(1.6rem, 7vw, 2.2rem)/1.1 var(--cond); margin: .2rem 0 .3rem; }
+.tm-adr { margin: 0 0 .4rem; color: var(--gris); }
+.tm-heure { margin: 0 0 .6rem; font-size: 1rem; display: flex; flex-wrap: wrap; gap: .4rem; align-items: center; }
+.tm-afaire { background: #FFF6E5; border-radius: 12px; padding: .5rem .7rem; margin: .4rem 0 .7rem; }
+.tm-afaire > p { margin: 0 0 .2rem; font-weight: 700; font-size: .85rem; color: #8A4705; }
+.tm-actions { display: grid; grid-template-columns: 1fr 1fr; gap: .5rem; }
+.tm-actions .tm-gros { min-height: 58px; font-size: 1.1rem; font-weight: 700; border-radius: 14px; display: flex; align-items: center; justify-content: center; }
+.tm-actions > :only-child, .tm-actions .tm-gros:only-of-type { grid-column: 1 / -1; }
+.tm-actions .btn:not(.tm-gros) { min-height: 46px; }
+.tm-liens { margin: .7rem 0 0; font-size: .88rem; color: var(--gris); }
+.tm-fin { border-top-color: var(--vert); }
+.tm-suite h2 { font: 700 1rem var(--cond); color: var(--gris); margin: 1.4rem 0 .4rem; }
+.tm-liste { list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 6px; }
+.tm-liste li { display: grid; grid-template-columns: 3.2rem minmax(0, 1fr) auto; gap: .5rem; align-items: center; padding: .55rem .7rem; background: var(--surface); border-radius: 12px; border-left: 4px solid var(--c, var(--trait)); min-height: 48px; }
+.tm-liste li.fait { opacity: .55; }
+.tm-liste li.courant { box-shadow: 0 0 0 2px var(--bleu) inset; }
+.tm-h { font-variant-numeric: tabular-nums; font-weight: 700; color: var(--gris); }
+.tm-n { min-width: 0; overflow-wrap: anywhere; font-weight: 600; }

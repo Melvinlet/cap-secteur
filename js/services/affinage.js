@@ -3,7 +3,7 @@
 // Une seule passe à la fois (verrou), polie avec le service public (pause entre deux recherches).
 import { db, getSettings } from '../db.js';
 import { geocodeMagasin, haversine } from './geo.js';
-import { toast } from '../ui.js';
+import { toast, today } from '../ui.js';
 
 const VERROU = 'cap-affinage';
 let enCours = false;
@@ -26,7 +26,7 @@ export async function affinerPositions({ silencieux = false } = {}) {
         const loin = g && actuel.lat != null && haversine(actuel, g) > 25;
         if (g && ['adresse', 'rue'].includes(g.precision) && !loin && actuel.precision !== 'magasin') { await db.put('magasins', { ...actuel, lat: g.lat, lon: g.lon, precision: g.precision }); ok++; }
         else if (g && actuel.lat == null) { await db.put('magasins', { ...actuel, lat: g.lat, lon: g.lon, precision: g.precision }); ok++; }
-        else { await db.put('magasins', { ...actuel, affinageEchec: new Date().toISOString().slice(0, 10) }); ko++; }
+        else { await db.put('magasins', { ...actuel, affinageEchec: today() }); ko++; }
       } catch { ko++; if (!navigator.onLine) break; }
       await new Promise(r => setTimeout(r, 150));
       try { localStorage.setItem(VERROU, String(Date.now())); } catch { /* */ }

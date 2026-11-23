@@ -1,10 +1,9 @@
 // Concurrence : marques, produits, offres et mises en avant relevés en magasin.
 import { db, uid } from '../../db.js';
-import { $, $$, esc, fmtDate, modal, toast, confirmer, norm, downloadBlob } from '../../ui.js';
+import { $, $$, esc, fmtDate, modal, toast, confirmer, norm, downloadBlob, today } from '../../ui.js';
 import { MARQUES_CONCURRENTES, TYPES_CONCURRENCE } from '../../config.js';
 import { loadExcelJS } from '../../services/excel.js';
 
-const today = () => new Date().toISOString().slice(0, 10);
 let f = { q: '', marque: '', type: '', ens: '' };
 
 export async function render(el) {

@@ -80,6 +80,81 @@ export function planifier(magasins, s, { debut, semaines = 8, fixes = new Map(),
   const principaux = modeAutres === 'normal' ? candidats : candidats.filter(estCible);
   const petits = modeAutres === 'detour' ? candidats.filter(m => !estCible(m)) : [];
 
+  // magasins à pousser : un « À faire » arrive à échéance (traités comme dus et en retard)
+  const urgents = cible?.urgents instanceof Set ? cible.urgents : new Set(cible?.urgents || []);
+  for (const m of actifs) if (urgents.has(m.id)) due.set(m, Math.min(due.get(m), -0.5));
+  // poids des ventes : à trajet égal, le magasin qui vend le plus passe devant (bonus jusqu'à 10 min)
+  const ventesMax = Math.max(1, ...magasins.map(m => Number(m.ventes2026) || 0));
+  const bonusVentes = m => 10 * (Number(m.ventes2026) || 0) / ventesMax;
+
+  // ── Boucle de la semaine ──
+  // Avant de construire les journées, les magasins à voir de la semaine sont répartis en secteurs autour du domicile
+  // (comme les parts d'un gâteau), un secteur par jour, dans l'ordre du tour : la semaine fait une boucle
+  // au lieu de repasser deux fois par la même zone, et les nuits sur place s'enchaînent d'un secteur au voisin.
+  // C'est une préférence (pénalité pour sortir du secteur), pas une interdiction : RDV, zones et détours restent prioritaires.
+  const offW = (w, j) => (joursOff.has(j) || ferieOff(w * 7 + j)) && !(fixes.get(w * 7 + j) || []).length;
+  const cosLat = Math.cos((H?.lat || 47) * Math.PI / 180);
+  const angle = m => Math.atan2(m.lat - H.lat, (m.lon - H.lon) * cosLat);
+  const centreDe = l => ({ lat: l.reduce((a, m) => a + m.lat, 0) / l.length, lon: l.reduce((a, m) => a + m.lon, 0) / l.length });
+  // mesuré sur ton secteur : +6 magasins P1 vus par mois, mais ~5 % de route en plus → option, désactivée par défaut
+  const boucles = !!cible?.boucles;
+  function secteursSemaine(w) {
+    const ouverts = [...Array(nbJours).keys()].filter(j => !offW(w, j) && !zoneDu(j));
+    const o0 = w * 7;
+    let l = principaux.filter(m => due.get(m) <= o0 + 6);
+    if (l.length < ouverts.length * 2) l = [...l, ...petits.filter(m => due.get(m) <= o0 + 6)];
+    if (!boucles || ouverts.length < 2 || l.length < ouverts.length * 2) return new Map();
+    const k = ouverts.length;
+    let groupes;
+    if (cible?.boucles === 'angle') {
+      l = l.map(m => ({ m, a: angle(m) })).sort((x, y) => x.a - y.a);
+      let coupe = 0, vide = -1;
+      for (let i = 0; i < l.length; i++) { const g = (i ? l[i].a - l[i - 1].a : l[0].a + 2 * Math.PI - l[l.length - 1].a); if (g > vide) { vide = g; coupe = i; } }
+      l = [...l.slice(coupe), ...l.slice(0, coupe)].map(x => x.m);
+      const charge = m => visite(m) + dt(H, m) * 0.6, total = l.reduce((a, m) => a + charge(m), 0);
+      groupes = ouverts.map(() => []);
+      let cumul = 0;
+      for (const m of l) { const g = Math.min(k - 1, Math.floor(cumul / total * k)); groupes[g].push(m); cumul += charge(m); }
+    } else {
+      // groupes géographiques (k-moyennes) de taille équilibrée : chaque jour = un coin compact
+      const cap = Math.ceil(l.length / k) + 1;
+      let centres = [...l].sort((a, b) => dt(H, b) - dt(H, a)).filter((m, i, arr) => i % Math.max(1, Math.floor(arr.length / k)) === 0).slice(0, k).map(m => ({ lat: m.lat, lon: m.lon }));
+      for (let it = 0; it < 12; it++) {
+        groupes = centres.map(() => []);
+        // affectation équilibrée : les magasins les plus « décidés » d'abord
+        const choix = l.map(m => { const d = centres.map(c => haversine(c, m)); const o = d.map((x, i) => i).sort((a, b) => d[a] - d[b]); return { m, d, o }; })
+          .sort((x, y) => (x.d[x.o[1]] - x.d[x.o[0]]) < (y.d[y.o[1]] - y.d[y.o[0]]) ? 1 : -1);
+        for (const { m, o } of choix) { const g = o.find(i => groupes[i].length < cap) ?? o[0]; groupes[g].push(m); }
+        centres = groupes.map((g, i) => g.length ? centreDe(g) : centres[i]);
+      }
+      // ordre de la semaine : les coins pris dans le sens du tour autour du domicile (on part d'un côté, on revient par l'autre),
+      // en commençant après le plus grand vide pour ne pas couper la boucle
+      const ang = groupes.map((g, i) => ({ i, a: g.length ? angle(centres[i]) : 9 })).sort((x, y) => x.a - y.a);
+      let coupe = 0, vide = -1;
+      for (let i = 0; i < ang.length; i++) { const g = i ? ang[i].a - ang[i - 1].a : ang[0].a + 2 * Math.PI - ang[ang.length - 1].a; if (g > vide) { vide = g; coupe = i; } }
+      const ordre = [...ang.slice(coupe), ...ang.slice(0, coupe)].map(x => x.i);
+      groupes = ordre.map(i => groupes[i]);
+    }
+    // jours avec RDV / magasins imposés : ils prennent le secteur le plus proche de leurs rendez-vous
+    const attrib = new Map(), libres = new Set(groupes.keys());
+    for (const j of ouverts) {
+      const pins = (fixes.get(o0 + j) || []).map(id => byId.get(id)).filter(m => m?.lat != null);
+      if (!pins.length) continue;
+      const c = centreDe(pins);
+      const g = [...libres].filter(k => groupes[k].length).sort((a, b) => haversine(c, centreDe(groupes[a])) - haversine(c, centreDe(groupes[b])))[0];
+      if (g != null) { attrib.set(j, g); libres.delete(g); }
+    }
+    // les autres jours, dans l'ordre du tour
+    const reste = [...libres].sort((a, b) => a - b);
+    for (const j of ouverts) if (!attrib.has(j)) attrib.set(j, reste.shift());
+    const sect = new Map();
+    for (const [j, g] of attrib) if (g != null) for (const m of groupes[g]) sect.set(m, j);
+    return sect;
+  }
+  let secteur = new Map();
+  const penSecteur = Number(cible?.penaliteSecteur ?? 30);
+  const horsSecteur = (m, d) => secteur.size && secteur.has(m) && secteur.get(m) !== d ? penSecteur : 0;
+
   const jours = [];
   const rentrer = j => {
     const der = byId.get(j.etapes[j.etapes.length - 1]);
@@ -91,6 +166,7 @@ export function planifier(magasins, s, { debut, semaines = 8, fixes = new Map(),
   const dansZone = (z, m) => !z || (z.dep ? String(m.departement) === z.dep : dt(z, m) <= z.rayon);
   for (let w = 0; w < semaines; w++) {
     let pos = H;
+    secteur = secteursSemaine(w);
     for (let d = 0; d < nbJours; d++) {
       const o = w * 7 + d;                                               // jour du plan
       const off = j => (joursOff.has(j) || ferieOff(w * 7 + j)) && !(fixes.get(w * 7 + j) || []).length;   // jour sans tournée (sauf RDV imposé)
@@ -131,7 +207,9 @@ export function planifier(magasins, s, { debut, semaines = 8, fixes = new Map(),
       if (pins.length) {
         seed = pins[0];
       } else if (dus.length) {
-        const c = [...dus];
+        // d'abord les magasins du secteur du jour (boucle de la semaine), sinon tous
+        const duSect = dus.filter(m => !secteur.size || !secteur.has(m) || secteur.get(m) === d);
+        const c = [...(duSect.length ? duSect : dus)];
         if (depuisDomicile) {
           // le plus loin d'abord, en avançant les magasins les plus en retard
           if (versDemain) c.sort((a, b) => (dt(a, pinDemain) + dt(H, a)) - (dt(b, pinDemain) + dt(H, b)) + (due.get(a) - due.get(b)) * 2);
@@ -174,7 +252,7 @@ export function planifier(magasins, s, { debut, semaines = 8, fixes = new Map(),
           // un magasin « bonus » doit être sur le chemin ; un magasin en retard vaut un détour
           if (dd > (du ? sautMax + (enRetard ? detour : 0) : 30)) continue;
           if (t + dd + visite(c) + fin(c) > budget) continue;
-          const score = dd + (du ? 0 : 20) - (enRetard ? Math.min(detour, 15 + 15 * Math.min(r, 2)) : 0)
+          const score = dd + (du ? 0 : 20) - (enRetard ? Math.min(detour, 15 + 15 * Math.min(r, 2)) : 0) + horsSecteur(c, d) - bonusVentes(c)
             + (dernierJour ? Math.max(0, dt(c, H) - dt(cur, H)) * 0.5 : 0)
             + (versDemain ? Math.max(0, dt(c, pinDemain) - dt(cur, pinDemain)) * 0.7 : 0);
           if (score < bestScore) { bestScore = score; best = c; }
@@ -213,6 +291,24 @@ export function planifier(magasins, s, { debut, semaines = 8, fixes = new Map(),
           }
           if (!best) break;
           liste = best.essai; pris.add(best.c); ajouts[best.c.id] = Math.round(best.cout);
+        }
+        // journée qui finirait très tôt (plus de 2 h avant la fin) : on accepte un détour deux fois plus long
+        // pour un magasin de plus, même au-delà du maximum par jour (une fois)
+        const libre = budget - duree(liste, retour);
+        if (libre > 120 && cible?.journeesCourtes !== false) {
+          let best = null;
+          for (const c of petits) {
+            if (pris.has(c) || !ok(c) || !(estDu(c) || estBonus(c))) continue;
+            for (let k = 0; k <= liste.length; k++) {
+              const a = k ? liste[k - 1] : pos, b = k < liste.length ? liste[k] : (retour ? H : null);
+              const cout = dt(a, c) + (b ? dt(c, b) - dt(a, b) : 0);
+              if (cout > detourPetit * 2 || (best && cout >= best.cout)) continue;
+              const essai = [...liste.slice(0, k), c, ...liste.slice(k)];
+              if (duree(essai, retour) > budget - 30) continue;
+              best = { c, cout, essai };
+            }
+          }
+          if (best) { liste = best.essai; pris.add(best.c); ajouts[best.c.id] = Math.round(best.cout); liste = optimiserOrdre(pos, liste, retour, H).map(i => liste[i]); }
         }
         if (Object.keys(ajouts).length) liste = optimiserOrdre(pos, liste, retour, H).map(i => liste[i]);
       }
