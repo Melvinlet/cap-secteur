@@ -42,7 +42,7 @@ export async function render(el, { id, onglet = 'infos' }) {
         <h1>${esc(m.nom)} ${prioTag(prioriteDe(m))}</h1>
         <p class="muted">${esc(m.adresse || '')}${m.adresse ? ', ' : ''}${esc(m.cp)} ${esc(m.ville)}${m.telMagasin ? ` · ${telLink(m.telMagasin)}` : ''}</p></div>
     </header>
-    <div class="actions">
+    <div class="actions actions-grille">
       ${vuAuj ? `<button class="btn btn-visite fait" id="visite" aria-pressed="true" title="${estVide(vuAuj) ? 'Appuyer pour retirer' : 'Ouvrir le compte rendu'}">Visité aujourd'hui ✓</button>
         <a class="btn ${estVide(vuAuj) ? 'primary' : ''}" href="${lienDetails(vuAuj)}">${estVide(vuAuj) ? 'Ajouter des détails' : 'Voir le compte rendu'}</a>`
         : `<button class="btn primary btn-visite" id="visite">Visité</button>`}

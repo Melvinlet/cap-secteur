@@ -61,7 +61,7 @@ export async function render(el, params = {}) {
   el.innerHTML = `<div class="page tm">
     <header class="tm-tete"><a class="btn-icon" href="#/tournee/${date}" aria-label="Retour au planning">‹</a>
       <div><p class="tm-date">${fmtDateLong(date)}</p><p class="tm-prog">${faits} visité${faits > 1 ? 's' : ''} sur ${t.etapes.length} · fin vers ${hh(p.fin)}</p></div></header>
-    <div class="tm-barre" role="progressbar" aria-valuemin="0" aria-valuemax="${t.etapes.length}" aria-valuenow="${faits}"><i style="width:${Math.round(100 * faits / t.etapes.length)}%"></i></div>
+    <div class="tm-barre" role="progressbar" aria-label="Visites faites" aria-valuemin="0" aria-valuemax="${t.etapes.length}" aria-valuenow="${faits}"><i style="width:${Math.round(100 * faits / t.etapes.length)}%"></i></div>
     ${carte}
     <section class="tm-suite"><h2>La journée</h2><ol class="tm-liste">${t.etapes.map((x, i) => { const mm = mags.get(x.magasinId);
       return `<li class="${x.fait ? 'fait' : ''} ${i === k ? 'courant' : ''}" style="--c:${enseigneColor(mm.enseigne)}">

@@ -97,17 +97,17 @@ export async function render(el, params = {}) {
     <div class="rdv-f">
       ${etat.mode === 'mesRdv' ? `<label class="check rdv-pardates"><input type="checkbox" id="parDates" ${etat.parDates ? 'checked' : ''}> Filtrer par dates</label>` : ''}
       ${etat.mode === 'semaine' || (etat.mode === 'mesRdv' && etat.parDates) ? `<div class="row rdv-periode"><label>Du<input type="date" id="du" value="${etat.du}"></label><label>Au<input type="date" id="au" value="${etat.au}"></label><span class="rdv-sem">${numSemaine(etat.du) === numSemaine(etat.au) ? tagSemaine(etat.du) : `${tagSemaine(etat.du)} → ${tagSemaine(etat.au)}`}</span></div>` : ''}
-      <input type="search" id="q" placeholder="Magasin, ville, nom ou e-mail d'un contact…" value="${esc(etat.q)}" aria-label="Rechercher">
+      <input type="search" id="q" placeholder="Magasin, ville ou contact…" value="${esc(etat.q)}" aria-label="Rechercher">
       <select id="dep" aria-label="Département"><option value="">Tous départements</option>${deps.map(d => `<option ${etat.dep === d ? 'selected' : ''}>${d}</option>`).join('')}</select>
     </div>
-    <div class="chips" role="group" aria-label="Statut">
+    <div class="chips chips-defile" role="group" aria-label="Statut">
       <button class="chip" data-st="" aria-pressed="${!etat.statut}">Tous (${lignes.length})</button>
       ${Object.entries(STATUTS_RDV).map(([k, v]) => `<button class="chip st-${k}" data-st="${k}" aria-pressed="${etat.statut === k}">${v.court} (${compte(k)})</button>`).join('')}
       <button class="chip st-relancer" data-st="relancer" aria-pressed="${etat.statut === 'relancer'}">À relancer (${compte('relancer')})</button>
     </div>
     ${etat.mode === 'mesRdv' && !lignes.length ? `<div class="empty"><p>${etat.parDates ? `Aucun rendez-vous du ${fmtDate(etat.du)} au ${fmtDate(etat.au)}.` : 'Aucun rendez-vous pour l\'instant.'}</p><p class="muted">Les demandes envoyées et les RDV acceptés apparaissent ici. Pour en demander, passe sur « Mes tournées » ; pour un RDV pris sur place, « Planifier un RDV ».</p></div>` : ''}
     ${etat.mode === 'semaine' && !lignes.length ? `<div class="empty"><p>Aucune tournée prévue du ${fmtDate(etat.du)} au ${fmtDate(etat.au)}. Prépare d'abord tes tournées (ou ton plan de secteur), ou passe sur « Tous les magasins ».</p><a class="btn" href="#/tournee/${etat.du}">Ouvrir la tournée du ${fmtDate(etat.du)}</a></div>` : ''}
-    ${visibles.length ? `<div class="actions"><label class="check"><input type="checkbox" id="all"> Tout sélectionner</label>
+    ${visibles.length ? `<div class="actions actions-grille"><label class="check"><input type="checkbox" id="all"> Tout sélectionner</label>
       <button class="btn primary" id="lot" disabled>Préparer les demandes</button>
       <button class="btn" id="tous" title="Un seul mail générique (sans prénom ni adresse), tous les contacts en copie cachée">Un seul mail à tous</button></div>` : ''}
     ${q && !visibles.length ? `<div class="empty"><p>Rien ne correspond à « ${esc(etat.q)} »${etat.mode === 'semaine' ? ' dans tes tournées de cette période' : ''}.</p>${etat.mode === 'semaine' ? '<button class="btn" id="chTous">Chercher dans tous les magasins</button>' : ''}</div>` : ''}
@@ -148,8 +148,8 @@ function groupeDe(l) {
 function enTete(l, prec) {
   const g = groupeDe(l), gp = prec ? groupeDe(prec) : null;
   let h = '';
-  if (!gp || gp.s !== g.s) h += `<li class="rdv-groupe" role="presentation"><h2>${esc(g.lib)}</h2></li>`;
-  if (g.j && (!gp || gp.j !== g.j)) h += `<li class="rdv-jour-titre" role="presentation">${esc(dateEnLettres(g.j))}</li>`;
+  if (!gp || gp.s !== g.s) h += `<li class="rdv-groupe"><h2>${esc(g.lib)}</h2></li>`;
+  if (g.j && (!gp || gp.j !== g.j)) h += `<li class="rdv-jour-titre">${esc(dateEnLettres(g.j))}</li>`;
   return h;
 }
 

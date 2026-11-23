@@ -22,7 +22,7 @@
   --orange: #B4500F;
   --rouge: #B3261E;
   --encre: #14212B;
-  --gris: #616B76;
+  --gris: #59626C;
   --trait: rgba(20, 33, 43, .11);
   --papier: #EDF1F6;
   --surface: #FFFFFF;
@@ -38,8 +38,8 @@
   --r-carte: 18px;
   --r-hero: 24px;
   /* statuts : une seule palette pour tout l'appli */
-  --st-ok: #2E7D4F;   --st-ok-fond: #DDF1E4;
-  --st-att: #A84B0C;  --st-att-fond: #FDEBD8;
+  --st-ok: #23663D;   --st-ok-fond: #DDF1E4;
+  --st-att: #9A4409;  --st-att-fond: #FDEBD8;
   --st-ko: #B3261E;   --st-ko-fond: #FBE2DF;
   --st-autre: #0B5CAD; --st-autre-fond: #E2ECF9;
   --hero: radial-gradient(130% 150% at 100% 0%, rgba(255, 255, 255, .20), transparent 46%),
@@ -345,3 +345,80 @@ dialog.feuille { background: color-mix(in srgb, var(--surface) 82%, transparent)
 .pick-det.loin { color: var(--st-ko); }
 @media (max-width: 520px) { .pick { gap: .55rem; padding: .5rem .6rem; } .pick-droite { max-width: 32%; } .pick-droite small { white-space: normal; } }
 .pick-map { border-radius: 14px; }
+
+/* ════ v1.16.1 — passe « lisible et propre » (audit accessibilité + critique) ════ */
+
+/* Segmentés : même pastille blanche pour tous les états « choisi » */
+.seg button[aria-pressed="true"], .seg .seg-r:has(input:checked) { background: var(--surface); color: var(--encre); box-shadow: 0 1px 2px rgba(0, 0, 0, .08), 0 3px 8px rgba(0, 0, 0, .08); }
+@media (prefers-color-scheme: dark) { .seg button[aria-pressed="true"], .seg .seg-r:has(input:checked) { background: #3A4456; } }
+.seg .seg-r { border: 0; border-radius: 10px; background: transparent; color: var(--encre); }
+
+/* « Fait » : grisé par la couleur, pas par la transparence (sinon le texte devient illisible) */
+.wstops li.done, .tm-liste li.fait, .mini-stops .done a, .stops .stop.done > .stop-body, .rdv-list .rdv.passe { opacity: 1; }
+.wstops li.done a, .wstops li.done small, .wstops li.done .hrs, .wstops li.done .vis { color: var(--gris); }
+.wstops li.done a { text-decoration: line-through; }
+.wstops li.done .pin.num { filter: grayscale(.6); }
+.tm-liste li.fait .tm-n, .mini-stops .done a { color: var(--gris); text-decoration: line-through; }
+.tm-liste li.fait { background: color-mix(in srgb, var(--verre-fort) 55%, transparent); box-shadow: none; }
+.stops .stop.done > .stop-body { background: color-mix(in srgb, var(--verre-fort) 55%, transparent); box-shadow: none; }
+.stops .stop.done .stop-body strong { color: var(--gris); }
+.rdv-list .rdv.passe .rdv-nom, .rdv-list .rdv.passe small { color: var(--gris); }
+
+/* Priorités : pastilles lisibles dans les deux modes */
+.prio { font-size: .72rem; border-radius: 6px; padding: 3px 5px; }
+.prio.p1 { color: #fff; background: #B3261E; border-color: #B3261E; }
+.prio.p4 { color: #fff; background: #59626C; border-color: #59626C; }
+.prio.p5 { color: var(--st-ko); }
+.midi-avert { color: var(--st-att); }
+.afaire-rappel { color: var(--st-att); }
+
+/* Petits boutons-liens : zone tactile d'au moins 24 px */
+.btn-link { padding-block: 4px; }
+.wstops .vis { padding-block: 5px; }
+
+/* Leaflet : mention lisible */
+.leaflet-control-attribution { background: var(--verre-fort) !important; color: var(--gris); border-radius: 8px 0 0 0; }
+.leaflet-control-attribution a { color: var(--bleu); }
+.leaflet-bar a { background: var(--verre-fort); color: var(--encre); border-color: var(--trait); }
+
+/* Liens dans les listes et cartes : pas de soulignement (iOS), le nom en gras suffit */
+.plain li > a:first-child, .rdv-jour-m > a, .rdv-main a, .mini-stops a, .af-item a, .store-list a, .accueil .plain a { text-decoration: none; font-weight: 600; }
+.plain li > a:first-child:hover, .rdv-jour-m > a:hover { text-decoration: underline; }
+
+/* Rangées d'actions : grille 2 colonnes au téléphone, 1re action en pleine largeur */
+@media (max-width: 600px) {
+  .actions-grille { display: grid; grid-template-columns: 1fr 1fr; gap: .5rem; }
+  .actions-grille > .btn { white-space: normal; text-align: center; line-height: 1.2; min-height: 48px; padding: .5rem .6rem; margin: 0; }
+  .actions-grille > :first-child { grid-column: 1 / -1; }
+  .actions-grille > :last-child:nth-child(even) { grid-column: 1 / -1; }
+}
+
+/* RDV : filtres de statut sur une seule ligne qui défile */
+.chips-defile { flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; margin: .5rem -16px; padding: 2px 16px; -webkit-mask-image: linear-gradient(90deg, transparent 0, #000 12px, #000 calc(100% - 24px), transparent); mask-image: linear-gradient(90deg, transparent 0, #000 12px, #000 calc(100% - 24px), transparent); }
+.chips-defile::-webkit-scrollbar { display: none; }
+.chips-defile .chip { flex: none; }
+@media (max-width: 600px) {
+  .rdv-f { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: .5rem; align-items: center; }
+  .rdv-f > .rdv-pardates, .rdv-f > .rdv-periode, .rdv-f > input[type=search], .rdv-f > :last-child { grid-column: 1 / -1; }
+  .rdv-f > select { width: 100%; }
+  .rdv-f input, .rdv-f select { margin: 0; }
+}
+
+/* Rendez-vous du jour : heure | magasin, alignés en haut */
+.rdv-jour { border-left: 4px solid var(--st-ok) !important; padding: .7rem .9rem; }
+.rdv-jour-l { align-items: start; padding: .5rem 0; }
+.rdv-jour-h { padding-top: 1px; }
+
+/* Titres de section : une échelle (iOS) */
+.h2, .accueil .h2 { font-size: 1.125rem; }
+.rdv-jour h2, .h3 { font-size: 1rem; }
+small, .hint, .small { font-size: .8125rem; }
+.seg .seg-r span { background: transparent; color: var(--encre); border-radius: 10px; min-height: 36px; padding: .35rem .95rem; }
+.seg .seg-r input:checked + span { background: transparent; color: var(--encre); }
+.btn-visite.fait, .btn-visite.fait:hover { background: linear-gradient(180deg, #2E8A56 0%, #23663D 100%); border-color: transparent; color: #fff; }
+
+/* Semaine : commandes de chaque magasin discrètes (elles servent peu, le nom reste le repère) */
+.wact { gap: .25rem; }
+.wact select { background: transparent; color: var(--gris); border: 1px solid var(--trait); border-radius: 8px; min-height: 32px; font-size: .78rem; padding: 0 1.4rem 0 .5rem; }
+.wact .btn-icon { min-width: 32px; min-height: 32px; color: var(--gris); }
+.rdv-f select { font-size: .92rem; }

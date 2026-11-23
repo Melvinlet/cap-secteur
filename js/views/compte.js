@@ -64,7 +64,7 @@ const atobSafe = k => { try { return atob((k.split('.')[1] || '').replace(/-/g, 
 function ecranConnexion(z, el, onglet = 'connexion') {
   const q = s => z.querySelector(s);
   const creer = onglet === 'creer';
-  z.innerHTML = `<div class="seg" role="tablist"><button data-o="connexion" aria-selected="${!creer}">Se connecter</button><button data-o="creer" aria-selected="${creer}">Créer un compte</button></div>
+  z.innerHTML = `<div class="seg" role="tablist"><button role="tab" data-o="connexion" aria-selected="${!creer}">Se connecter</button><button role="tab" data-o="creer" aria-selected="${creer}">Créer un compte</button></div>
     <form id="f" class="settings auth">
       <label>E-mail<input name="email" type="email" autocomplete="email" required></label>
       <label>Mot de passe<input name="mdp" type="password" autocomplete="${creer ? 'new-password' : 'current-password'}" required></label>

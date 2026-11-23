@@ -74,7 +74,7 @@ export async function render(el, params) {
       <div><span class="big">${tot.nuits}</span> nuit${tot.nuits > 1 ? 's' : ''} sur place</div>
       <div><span class="big">${tot.detours}</span> détour${tot.detours > 1 ? 's' : ''} pour retard</div>
     </div>
-    <div class="actions">
+    <div class="actions actions-grille">
       <button class="btn primary" id="auto" ${departOk ? '' : 'disabled'}>Remplir automatiquement</button>
       <button class="btn" id="optSem" ${departOk && tot.n > 1 ? '' : 'disabled'}>Optimiser la semaine</button>
       <a class="btn" href="#/rdv?du=${lundi}&au=${dates[dates.length - 1]}">Demander les RDV</a>

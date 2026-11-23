@@ -33,7 +33,7 @@ export async function render(el) {
 
   el.innerHTML = `
     <div class="periode">
-      <div class="seg">${[['semaine', 'Semaine'], ['mois', 'Mois'], ['annee', 'Année'], ['perso', 'Dates']].map(([k, l]) => `<button data-type="${k}" aria-selected="${f.type === k}">${l}</button>`).join('')}</div>
+      <div class="seg" role="tablist" aria-label="Période">${[['semaine', 'Semaine'], ['mois', 'Mois'], ['annee', 'Année'], ['perso', 'Dates']].map(([k, l]) => `<button role="tab" data-type="${k}" aria-selected="${f.type === k}">${l}</button>`).join('')}</div>
       ${f.type === 'perso' ? `<label>Du<input type="date" id="du" value="${f.du}"></label><label>Au<input type="date" id="au" value="${f.au}"></label>`
         : `<button class="btn-icon" id="prev" aria-label="Précédent">‹</button><strong class="per-lab">${esc(libellePeriode(f.type, f.du, f.au))}</strong><button class="btn-icon" id="next" aria-label="Suivant">›</button>`}
     </div>

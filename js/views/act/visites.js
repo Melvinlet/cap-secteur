@@ -24,14 +24,14 @@ export async function render(el) {
 
   el.innerHTML = `
     <div class="periode">
-      <div class="seg">${[['semaine', 'Semaine'], ['mois', 'Mois'], ['annee', 'Année'], ['perso', 'Dates']].map(([k, l]) => `<button data-type="${k}" aria-selected="${f.type === k}">${l}</button>`).join('')}</div>
+      <div class="seg" role="tablist" aria-label="Période">${[['semaine', 'Semaine'], ['mois', 'Mois'], ['annee', 'Année'], ['perso', 'Dates']].map(([k, l]) => `<button role="tab" data-type="${k}" aria-selected="${f.type === k}">${l}</button>`).join('')}</div>
       ${f.type === 'perso' ? `<label>Du<input type="date" id="du" value="${f.du}"></label><label>Au<input type="date" id="au" value="${f.au}"></label>`
         : `<button class="btn-icon" id="prev" aria-label="Précédent">‹</button><strong class="per-lab">${esc(libellePeriode(f.type, f.du, f.au))}</strong><button class="btn-icon" id="next" aria-label="Suivant">›</button>`}
     </div>
     <div class="rdv-f">
       <input type="search" id="q" placeholder="Magasin, ville, mot du compte rendu…" value="${esc(f.q)}" aria-label="Rechercher">
-      <select id="ens"><option value="">Toutes les enseignes</option>${ens.map(e => `<option ${e === f.ens ? 'selected' : ''}>${esc(e)}</option>`).join('')}</select>
-      <select id="action"><option value="">Toutes les actions</option>${ACTIONS_VISITE.map(a => `<option ${a === f.action ? 'selected' : ''}>${esc(a)}</option>`).join('')}</select>
+      <select id="ens" aria-label="Enseigne"><option value="">Toutes les enseignes</option>${ens.map(e => `<option ${e === f.ens ? 'selected' : ''}>${esc(e)}</option>`).join('')}</select>
+      <select id="action" aria-label="Action"><option value="">Toutes les actions</option>${ACTIONS_VISITE.map(a => `<option ${a === f.action ? 'selected' : ''}>${esc(a)}</option>`).join('')}</select>
       <button class="btn" id="xls" ${liste.length ? '' : 'disabled'}>Exporter (Excel)</button>
     </div>
     <p class="count">${liste.length} visite${liste.length > 1 ? 's' : ''}</p>

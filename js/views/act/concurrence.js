@@ -23,7 +23,7 @@ export async function render(el) {
     <div class="rdv-f">
       <input type="search" id="q" placeholder="Produit, offre, magasin…" value="${esc(f.q)}" aria-label="Rechercher">
       <select id="type"><option value="">Tous les types</option>${TYPES_CONCURRENCE.map(t => `<option ${t === f.type ? 'selected' : ''}>${t}</option>`).join('')}</select>
-      <select id="ens"><option value="">Toutes les enseignes</option>${ens.map(e => `<option ${e === f.ens ? 'selected' : ''}>${esc(e)}</option>`).join('')}</select>
+      <select id="ens" aria-label="Enseigne"><option value="">Toutes les enseignes</option>${ens.map(e => `<option ${e === f.ens ? 'selected' : ''}>${esc(e)}</option>`).join('')}</select>
     </div>
     ${liste.length ? '' : '<p class="muted vide">Aucun relevé. Ajoute-les ici ou directement dans tes comptes rendus de visite.</p>'}
     <table class="table conc" ${liste.length ? '' : 'hidden'}><thead><tr><th>Date</th><th>Marque</th><th>Produit</th><th>Type</th><th>Observation / offre</th><th>Magasin</th><th></th></tr></thead><tbody>

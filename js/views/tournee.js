@@ -273,7 +273,7 @@ export async function render(el, { date = today() }) {
             ${x.etat !== 'reporte' && !dansTour.has(x.m.id) ? `<button class="btn small" data-addrdv="${esc(x.m.id)}">Ajouter à la tournée</button>` : x.etat !== 'reporte' ? '<small class="muted">dans la tournée</small>' : ''}</li>`).join('')}</ul>
           <a class="small" href="#/rdv?du=${date}&au=${date}">Tous les RDV de ce jour</a></section>` : ''}
         ${t.etapes.length && date >= today() ? `<a class="btn mode-tournee" href="#/en-tournee/${date}"><span aria-hidden="true">▶</span> Mode tournée</a>` : ''}
-        <div class="actions">
+        <div class="actions actions-grille">
           <button class="btn primary" id="add">Ajouter des magasins</button>
           <button class="btn" id="autoJ" ${departOk ? '' : 'disabled'} title="Complète la journée selon les priorités et les retards de visite">Remplir automatiquement</button>
           <button class="btn" id="opt" ${t.etapes.length < 2 || !departOk ? 'disabled' : ''} title="Meilleur ordre, heures de RDV respectées, nuit sur place si le lendemain est plus près">Optimiser la journée</button>
