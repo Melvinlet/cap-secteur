@@ -6,6 +6,7 @@
 import { persistStorage, chargerProfil } from './db.js';
 import { $, $$, esc, animerEntree, toast } from './ui.js';
 import { placerPastille } from './nav-pastille.js';
+import { initBarreTitre, majBarreTitre } from './barre-titre.js';
 
 const ROUTES = [
   [/^\/?$/, 'aujourdhui', () => import('./views/aujourdhui.js')],
@@ -28,6 +29,7 @@ const ROUTES = [
 ];
 
 let current = null;
+const SQUELETTE = `<div class="page squelette" aria-busy="true" aria-label="Chargement"><div class="sq sq-titre"></div><div class="sq sq-bloc"></div>${'<div class="sq sq-ligne"></div>'.repeat(5)}</div>`;
 
 async function route(_, { garder = false } = {}) {
   if (/[#&](access_token|error_description)=/.test(location.hash)) {   // lien reçu par mail ouvert dans un onglet déjà ouvert
@@ -48,16 +50,21 @@ async function route(_, { garder = false } = {}) {
   $$('.nav a[data-route]').forEach(a => a.toggleAttribute('aria-current', a.dataset.route === nav));
   placerPastille();
   document.body.dataset.view = nav;
+  // écran lent à préparer : des silhouettes grises scintillent à la place de l'écran blanc
+  const sq = garder ? 0 : setTimeout(() => { if (!main.childElementCount || main.dataset.sq) { main.innerHTML = SQUELETTE; main.dataset.sq = '1'; } }, 140);
   try {
     current = await loader();
-    main.innerHTML = '';
+    if (!main.dataset.sq) main.innerHTML = '';
     if (garder) delete main.dataset.entree; else main.dataset.entree = '1';   // les écrans animent leur carte seulement à l'arrivée
     await current.render(main, params);
+    clearTimeout(sq); delete main.dataset.sq;
     if (!params.keepScroll && !garder) window.scrollTo(0, 0);
     if (!garder) animerEntree(main);
+    majBarreTitre();
     delete main.dataset.entree;
   } catch (e) {
     console.error(e);
+    clearTimeout(sq); delete main.dataset.sq;
     main.innerHTML = `<div class="page"><h1>Cet écran n'a pas pu s'afficher</h1><p class="muted">${esc(e.message)}</p><p><a href="#/">Revenir à l'accueil</a></p></div>`;
   }
 }
@@ -78,6 +85,7 @@ window.__retourMail = await nuage.lireRetourMail().catch(() => null);
 if (!window.__retourMail && /^#?\/?$/.test(location.hash)) {
   try { if (await (await import('./views/bienvenue.js')).aMontrer()) history.replaceState(null, '', location.pathname + '#/bienvenue'); } catch { /* accueil normal */ }
 }
+initBarreTitre();
 await route();
 dispatchEvent(new Event('cap-pret'));   // l'écran de lancement peut s'effacer
 import('./services/terrain.js').then(async ({ infosTerrain }) => { if (await infosTerrain()) { $('.nav-terrain')?.removeAttribute('hidden'); placerPastille({ animer: false }); } }).catch(() => {});

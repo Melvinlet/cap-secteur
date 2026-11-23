@@ -3,7 +3,7 @@
 // Les détails (compte rendu, photos…) restent facultatifs : on les ajoute ensuite sur la même visite.
 import { db, getSettings } from '../db.js';
 import { numeroVisite } from '../data.js';
-import { today } from '../ui.js';
+import { today, vibrer } from '../ui.js';
 
 const ANNULEES = ['Annulée', 'Reportée'];
 // Même identifiant sur le téléphone et le PC : deux « visité » du même jour ne font qu'une visite après la synchro
@@ -22,6 +22,7 @@ async function cocherEtape(magasinId, date, fait) {
 
 // Note la visite du magasin ce jour-là (aujourd'hui par défaut) et renvoie la visite
 export async function marquerVisite(magasinId, date = today()) {
+  vibrer(16);
   const notes = await db.byMagasin('notes', magasinId);
   let v = visiteDuJour(notes, date);
   const e = await cocherEtape(magasinId, date, true);

@@ -1,5 +1,6 @@
 // Espace « Activité » : historique des visites, rapport, notes de frais, objectifs, concurrence.
 import { $, esc } from '../ui.js';
+import { ic } from '../icones.js';
 
 const ONGLETS = [
   ['visites', 'Visites', () => import('./act/visites.js')],
@@ -13,7 +14,7 @@ let courant = null;
 export async function render(el, params) {
   const onglet = ONGLETS.find(o => o[0] === params.onglet) || ONGLETS[0];
   el.innerHTML = `<div class="page wide">
-    <header class="page-head"><h1>Activité</h1><a class="btn-icon settings-link" href="#/reglages" aria-label="Réglages">⚙</a></header>
+    <header class="page-head"><h1>Activité</h1><a class="btn-icon settings-link" href="#/reglages" aria-label="Réglages">${ic('reglages')}</a></header>
     <nav class="tabs" role="tablist">${ONGLETS.map(([k, l]) => `<a role="tab" href="#/activite/${k}" aria-selected="${k === onglet[0]}">${esc(l)}</a>`).join('')}</nav>
     <section id="act"></section></div>`;
   courant = await onglet[2]();

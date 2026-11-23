@@ -1,7 +1,7 @@
 // Réglages : profil, tournées, services en ligne, import / export des données.
 import { db, getSettings, saveSettings, STORES } from '../db.js';
 import { APP_VERSION, DUREES_ENSEIGNE, PRIORITES, OBJETS_VISITE, MODELES_RDV, PROFIL } from '../config.js';
-import { $, $$, esc, toast, pickFile, downloadBlob, confirmer, modal, today, fmtDate } from '../ui.js';
+import { $, $$, esc, toast, pickFile, downloadBlob, confirmer, modal, today, fmtDate, themeChoisi, appliquerTheme } from '../ui.js';
 import { importerBaseMagasins } from '../services/excel.js';
 import { geocodeAdresse, geocodeMagasin } from '../services/geo.js';
 import { exporter, importer } from '../services/backup.js';
@@ -26,6 +26,9 @@ export async function render(el) {
 
     </section>
     <form id="f" class="settings">
+      <section><h2 class="h2">Apparence</h2>
+        <div class="seg" role="tablist" aria-label="Thème">${[['auto', 'Automatique'], ['light', 'Clair'], ['dark', 'Sombre']].map(([k, l]) => `<button type="button" role="tab" data-theme-choix="${k}" aria-selected="${themeChoisi() === k}">${l}</button>`).join('')}</div>
+        <p class="hint">Automatique suit le réglage du téléphone ou de l'ordinateur. Ce choix ne vaut que pour cet appareil.</p></section>
       <section><h2 class="h2">Toi</h2>
         <label>Ton nom (bons de commande et colonne « Chef de secteur » du planning)<input name="commercial" value="${esc(s.commercial)}" autocomplete="name"></label></section>
 
@@ -262,6 +265,10 @@ export async function render(el) {
     try { const r = await importer(file, 'fusion'); toast(r.type === 'profil' ? `Profil « ${r.nom || 'entreprise'} » chargé` : 'Fichier importé'); render(el); }
     catch (e) { toast(e.message, 'warn'); }
   };
+  $$('[data-theme-choix]').forEach(b => b.onclick = () => {
+    appliquerTheme(b.dataset.themeChoix);
+    $$('[data-theme-choix]').forEach(x => x.setAttribute('aria-selected', x === b));
+  });
   const terrainMaj = async () => {
     const { infosTerrain } = await import('../services/terrain.js');
     const i = await infosTerrain();

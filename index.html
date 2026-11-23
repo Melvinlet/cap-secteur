@@ -7,6 +7,8 @@
   <meta name="description" content="Tournées, fiches magasins, rendez-vous et commandes du chef de secteur.">
   <meta name="theme-color" content="#0B5CAD" media="(prefers-color-scheme: light)">
   <meta name="theme-color" content="#0A111D" media="(prefers-color-scheme: dark)">
+  <script>/* thème choisi dans les Réglages (sur cet appareil), appliqué avant l'affichage pour éviter un flash */
+    try { var t = localStorage.getItem('cap-theme'); if (t === 'light' || t === 'dark') { document.documentElement.dataset.theme = t; document.querySelectorAll('meta[name=theme-color]').forEach(function (m) { m.content = t === 'dark' ? '#0A111D' : '#0B5CAD'; }); } } catch (e) {}</script>
   <link rel="manifest" href="manifest.webmanifest">
   <link rel="icon" href="icons/icon.svg" type="image/svg+xml">
   <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
@@ -20,7 +22,37 @@
   <!-- écran de lancement (une fois par lancement) : js/ouverture.js ; l'appli se charge derrière -->
   <div id="ouverture" aria-hidden="true" hidden>
     <div class="ov-scene">
-      <div class="ov-logo"><span class="ov-trainee"></span><img src="icons/glyphe.svg" alt="" width="96" height="141"></div>
+      <svg viewBox="40 60 432 410">
+        <defs>
+          <linearGradient id="ov-g-corps" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#FFFFFF"/><stop offset="1" stop-color="#DCE6F3"/></linearGradient>
+          <linearGradient id="ov-g-chapeau" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#FFE45C"/><stop offset="1" stop-color="#FFBF00"/></linearGradient>
+          <filter id="ov-f-ombre" x="-40%" y="-40%" width="180%" height="180%"><feDropShadow dx="0" dy="8" stdDeviation="10" flood-color="#021933" flood-opacity=".35"/></filter>
+        </defs>
+        <g id="ov-roule">
+          <!-- traits de vitesse : on devine que la borne arrive vite, sans la voir traverser l'écran -->
+          <g id="ov-vitesses" stroke-linecap="round">
+            <line class="vitesse" x1="40"  y1="196" x2="150" y2="196" stroke="#FFD84A" stroke-width="10"/>
+            <line class="vitesse" x1="20"  y1="250" x2="140" y2="250" stroke="#ffffff" stroke-width="8" stroke-opacity=".8"/>
+            <line class="vitesse" x1="56"  y1="310" x2="150" y2="310" stroke="#FFD84A" stroke-width="8"/>
+            <line class="vitesse" x1="34"  y1="366" x2="130" y2="366" stroke="#ffffff" stroke-width="6" stroke-opacity=".6"/>
+          </g>
+          <ellipse id="ov-ombre" cx="256" cy="432" rx="100" ry="10" fill="#021933" opacity=".35"/>
+          <g id="ov-freine"><g id="ov-cabre">
+            <g id="ov-corps"><g transform="translate(256 268)" filter="url(#ov-f-ombre)">
+              <path d="M-92 -8 H92 V128 Q92 150 70 150 H-70 Q-92 150 -92 128 Z" fill="url(#ov-g-corps)"/>
+              <rect x="-50" y="40" width="100" height="14" rx="7" fill="#B9C9DE"/>
+              <rect x="-50" y="76" width="64" height="14" rx="7" fill="#B9C9DE"/>
+            </g></g>
+            <g id="ov-chapeau"><g transform="translate(256 268)">
+              <path d="M-92 -6 V-62 A92 92 0 0 1 92 -62 V-6 Z" fill="url(#ov-g-chapeau)"/>
+              <path d="M-84 -70 A84 84 0 0 1 84 -70" fill="none" stroke="#fff" stroke-opacity=".55" stroke-width="5"/>
+              <path d="M-40 -60 H40 M14 -84 L40 -60 L14 -36" fill="none" stroke="#0B2E57" stroke-width="16" stroke-linecap="round" stroke-linejoin="round"/>
+            </g></g>
+            <!-- éclair du « clac » sur la jointure -->
+            <line id="ov-clip" x1="170" y1="262" x2="342" y2="262" stroke="#ffffff" stroke-width="8" stroke-linecap="round"/>
+          </g></g>
+        </g>
+      </svg>
       <p class="ov-titre">Cap Secteur</p>
       <div class="ov-barre"><i></i></div>
       <p class="ov-phrase"></p>

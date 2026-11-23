@@ -1,6 +1,6 @@
 // Rapport d'activité de date à date + comparateur (S-1 / M-1 / année-1, et N-1).
 import { getSettings } from '../../db.js';
-import { $, $$, esc, fmtKm, fmtDuree, downloadBlob, toast, today } from '../../ui.js';
+import { $, $$, esc, fmtKm, fmtDuree, downloadBlob, toast, today, pastilleEnseigne, enseigneColor } from '../../ui.js';
 import { chargerTout, indicateurs, periode, precedente, anPasse, decaler, libellePeriode } from '../../services/activite.js';
 import { loadExcelJS } from '../../services/excel.js';
 import { SAISON } from '../../config.js';
@@ -30,6 +30,8 @@ export async function render(el) {
   const fmt = (k, v, i, fn) => fn ? fn(v, i) : (Number.isInteger(v) ? v : Math.round(v));
   const actions = Object.entries(cur.actions).sort((a, b) => b[1] - a[1]);
   const enseignes = [...new Set([...Object.keys(cur.parEnseigne), ...Object.keys(prev.parEnseigne)])].sort();
+  const maxE = Math.max(1, ...enseignes.map(e => cur.parEnseigne[e] || 0)), maxA = Math.max(1, ...actions.map(([, v]) => v));
+  const mini = (v, max, c = '') => `<span class="mini-barre" style="--p:${Math.round(v / max * 100)}%${c ? `;--c:${c}` : ''}" aria-hidden="true"></span>`;
 
   el.innerHTML = `
     <div class="periode">
@@ -51,9 +53,9 @@ export async function render(el) {
     <div class="grid2">
       <section><h2 class="h2">Visites par enseigne</h2>
         <table class="table"><thead><tr><th>Enseigne</th><th class="num">Période</th><th class="num">${labP}</th></tr></thead><tbody>
-        ${enseignes.map(e => `<tr><td>${esc(e)}</td><td class="num">${cur.parEnseigne[e] || 0}</td><td class="num">${prev.parEnseigne[e] || 0}</td></tr>`).join('') || '<tr><td colspan="3" class="muted">Aucune visite.</td></tr>'}</tbody></table></section>
+        ${enseignes.map(e => `<tr><td>${pastilleEnseigne(e)}${esc(e)}</td><td class="num">${mini(cur.parEnseigne[e] || 0, maxE, enseigneColor(e))}${cur.parEnseigne[e] || 0}</td><td class="num">${prev.parEnseigne[e] || 0}</td></tr>`).join('') || '<tr><td colspan="3" class="muted">Aucune visite.</td></tr>'}</tbody></table></section>
       <section><h2 class="h2">Actions réalisées</h2>
-        <table class="table"><tbody>${actions.map(([a, v]) => `<tr><td>${esc(a)}</td><td class="num">${v}</td></tr>`).join('') || '<tr><td class="muted">Aucune action notée dans les comptes rendus.</td></tr>'}</tbody></table></section>
+        <table class="table"><tbody>${actions.map(([a, v]) => `<tr><td>${esc(a)}</td><td class="num">${mini(v, maxA)}${v}</td></tr>`).join('') || '<tr><td class="muted">Aucune action notée dans les comptes rendus.</td></tr>'}</tbody></table></section>
     </div>`;
 
   $$('[data-type]', el).forEach(b => b.onclick = () => { f.type = b.dataset.type; if (f.type !== 'perso') [f.du, f.au] = periode(f.type, today() >= f.du && today() <= f.au ? today() : f.du); render(el); });

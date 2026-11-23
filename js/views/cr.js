@@ -9,6 +9,7 @@ import { STATUTS_VISITE, OBJETS_VISITE, ACTIONS_VISITE, ETIQUETTES_PHOTO, MARQUE
 import { reduireImage, imageURL, oublierImage } from '../services/images.js';
 import { estVide } from '../services/visite.js';
 import { estOuvert, listeAFaire, brancherCoches } from '../services/afaire.js';
+import { ic } from '../icones.js';
 
 const maintenant = () => { const d = new Date(); return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`; };
 
@@ -52,15 +53,15 @@ export async function render(el, { magasin, note }) {
         <div class="chips">${ACTIONS_VISITE.map(a => `<label class="chip-check"><input type="checkbox" name="act" value="${esc(a)}" ${(cr.actions || []).includes(a) ? 'checked' : ''}><span>${esc(a)}</span></label>`).join('')}</div>
       </section>
 
-      <section class="cr-sec"><h2 class="h2">Compte rendu <button type="button" class="btn small" id="mic" hidden>🎤 Dicter</button></h2>
+      <section class="cr-sec"><h2 class="h2">Compte rendu <button type="button" class="btn small" id="mic" hidden>${ic('micro')} Dicter</button></h2>
         <textarea name="texte" rows="6" placeholder="Ce qui s'est dit, l'état du rayon, les besoins du magasin…">${esc(cr.texte || '')}</textarea>
       </section>
 
       <section class="cr-sec"><h2 class="h2">Photos de rayon</h2>
         <div class="photo-grid" id="photos"></div>
         <div class="choix-photo">
-          <label class="btn" for="pic">📷 Prendre une photo</label>
-          <label class="btn" for="picGal">🖼️ Choisir dans mes photos</label>
+          <label class="btn" for="pic">${ic('photo')} Prendre une photo</label>
+          <label class="btn" for="picGal">${ic('image')} Choisir dans mes photos</label>
         </div>
         <input type="file" id="pic" accept="image/*" capture="environment" multiple hidden>
         <input type="file" id="picGal" accept="image/*" multiple hidden>
@@ -96,7 +97,7 @@ export async function render(el, { magasin, note }) {
     $('#photos').innerHTML = photos.map((p, i) => `<figure><img src="${urls[i]}" alt="">
       <select data-et="${i}" aria-label="Type de photo">${ETIQUETTES_PHOTO.map(x => `<option ${x === p.etiquette ? 'selected' : ''}>${x}</option>`).join('')}</select>
       <input data-leg="${i}" value="${esc(p.legende || '')}" placeholder="Légende">
-      <button type="button" class="btn-icon" data-rm="${i}" aria-label="Retirer la photo">✕</button></figure>`).join('');
+      <button type="button" class="btn-icon" data-rm="${i}" aria-label="Retirer la photo">${ic('croix')}</button></figure>`).join('');
     $$('[data-et]').forEach(x => x.onchange = () => { photos[+x.dataset.et].etiquette = x.value; });
     $$('[data-leg]').forEach(x => x.oninput = () => { photos[+x.dataset.leg].legende = x.value; });
     $$('[data-rm]').forEach(x => x.onclick = () => { photos.splice(+x.dataset.rm, 1); dessinerPhotos(); });
@@ -118,7 +119,7 @@ export async function render(el, { magasin, note }) {
     <label class="grow">Produit / gamme<input class="c-produit" value="${esc(c.produit || '')}"></label>
     <label>Type<select class="c-type">${TYPES_CONCURRENCE.map(x => `<option ${x === c.type ? 'selected' : ''}>${x}</option>`).join('')}</select></label></div>
     <label>Observation / offre constatée<input class="c-obs" value="${esc(c.observation || '')}" placeholder="ex. tête de gondole, promo -20 %, 3 modèles en facing…"></label>
-    <button type="button" class="btn-icon c-rm" aria-label="Retirer ce relevé">✕</button></div>`;
+    <button type="button" class="btn-icon c-rm" aria-label="Retirer ce relevé">${ic('croix')}</button></div>`;
   $('#concur').innerHTML = concur.map(ligneC).join('');
   const bindC = () => $$('.c-rm').forEach(b => b.onclick = () => { b.closest('.concur').remove(); });
   bindC();

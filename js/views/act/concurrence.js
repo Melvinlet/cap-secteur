@@ -3,6 +3,7 @@ import { db, uid } from '../../db.js';
 import { $, $$, esc, fmtDate, modal, toast, confirmer, norm, downloadBlob, today } from '../../ui.js';
 import { MARQUES_CONCURRENTES, TYPES_CONCURRENCE } from '../../config.js';
 import { loadExcelJS } from '../../services/excel.js';
+import { ic } from '../../icones.js';
 
 let f = { q: '', marque: '', type: '', ens: '' };
 
@@ -29,7 +30,7 @@ export async function render(el) {
     <table class="table conc" ${liste.length ? '' : 'hidden'}><thead><tr><th>Date</th><th>Marque</th><th>Produit</th><th>Type</th><th>Observation / offre</th><th>Magasin</th><th></th></tr></thead><tbody>
     ${liste.map(c => { const m = byId.get(c.magasinId); return `<tr><td>${fmtDate(c.date)}</td><td><strong>${esc(c.marque)}</strong></td><td>${esc(c.produit || '')}</td><td>${esc(c.type || '')}</td>
       <td>${esc(c.observation || '')}</td><td>${m ? `<a href="#/magasin/${encodeURIComponent(m.id)}">${esc(m.nom)}</a>` : ''}${c.noteId ? ` <a class="muted" href="#/cr/${encodeURIComponent(c.magasinId)}/${c.noteId}">(visite)</a>` : ''}</td>
-      <td><button class="btn-icon" data-ed="${c.id}" aria-label="Modifier">✎</button></td></tr>`; }).join('') || '<tr><td colspan="7" class="muted">Aucun relevé. Ajoute-les ici ou directement dans tes comptes rendus de visite.</td></tr>'}</tbody></table>`;
+      <td><button class="btn-icon" data-ed="${c.id}" aria-label="Modifier">${ic('crayon')}</button></td></tr>`; }).join('') || '<tr><td colspan="7" class="muted">Aucun relevé. Ajoute-les ici ou directement dans tes comptes rendus de visite.</td></tr>'}</tbody></table>`;
 
   $('#q', el).oninput = e => { f.q = e.target.value; clearTimeout(f.t); f.t = setTimeout(() => render(el).then(() => { const i = $('#q', el); i.focus(); i.setSelectionRange(i.value.length, i.value.length); }), 300); };
   $('#type', el).onchange = e => { f.type = e.target.value; render(el); };

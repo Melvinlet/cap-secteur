@@ -2,11 +2,12 @@
 // rangées par échéance, à cocher quand c'est fait. Les faits restent consultables.
 import { db, uid, getSettings } from '../db.js';
 import { magasinsEnrichis } from '../data.js';
-import { $, $$, esc, fmtDate, modal, toast, today, norm, prioTag, decale } from '../ui.js';
+import { $, $$, esc, fmtDate, modal, toast, today, norm, prioTag, decale, vibrer } from '../ui.js';
 import { marquerFait } from '../services/afaire.js';
 import { datalistMagasins, trouverMagasin, messageIntrouvable } from '../champ-magasin.js';
 import { lienDetails } from '../services/visite.js';
 import { dateEnLettres } from '../services/rdv.js';
+import { ic } from '../icones.js';
 
 let etat = { vue: 'ouverts', q: '', dep: '', tri: 'echeance' };
 const lienNote = n => n.type === 'Visite' ? lienDetails(n) : `#/magasin/${encodeURIComponent(n.magasinId)}/suivi`;
@@ -59,10 +60,10 @@ export async function render(el) {
         ${etat.tri === 'magasin' && etat.vue !== 'faits' ? '' : `<a href="#/magasin/${encodeURIComponent(m.id)}">${esc(m.nom)}</a> ${prioTag(m.prio)} · `}
         <span class="muted">noté le ${fmtDate(n.date)}${n.contact ? ` · avec ${esc(n.contact)}` : ''}</span>
         ${n.echeance ? ` · <span class="${!n.aFaireFait && n.echeance < auj ? 'late-txt' : ''}">pour le ${fmtDate(n.echeance)}</span>` : ''}
-        ${n.aFaireFait ? ` · <span class="ok-txt">fait le ${fmtDate(n.aFaireFait)}</span>` : pr ? ` · <a class="af-tour" href="#/tournee/${pr}">📍 dans ta tournée ${pr === auj ? 'aujourd\'hui' : `du ${esc(dateEnLettres(pr))}`}</a>` : ''}
+        ${n.aFaireFait ? ` · <span class="ok-txt">fait le ${fmtDate(n.aFaireFait)}</span>` : pr ? ` · <a class="af-tour" href="#/tournee/${pr}">${ic('lieu')} dans ta tournée ${pr === auj ? 'aujourd\'hui' : `du ${esc(dateEnLettres(pr))}`}</a>` : ''}
       </div>
       <div class="af-act"><a class="btn-link small" href="${lienNote(n)}">${n.type === 'Visite' ? 'compte rendu' : 'note'}</a>
-        <button type="button" class="btn-icon" data-ed="${esc(n.id)}" aria-label="Modifier">✎</button></div></li>`; };
+        <button type="button" class="btn-icon" data-ed="${esc(n.id)}" aria-label="Modifier">${ic('crayon')}</button></div></li>`; };
 
   const nbRetard = ouverts.filter(n => n.echeance && n.echeance < auj).length;
   el.innerHTML = `<div class="page">
@@ -88,6 +89,7 @@ export async function render(el) {
   $('#dep', el).onchange = e => { etat.dep = e.target.value; render(el); };
   $('#tri', el)?.addEventListener('change', e => { etat.tri = e.target.value; render(el); });
   $$('[data-afaire]', el).forEach(c => c.onchange = async () => {
+    if (c.checked) vibrer(12);
     await marquerFait(c.dataset.afaire, c.checked);
     c.closest('li').classList.toggle('fait', c.checked);
     const ici = () => location.hash.startsWith('#/afaire');   // pas de rafraîchissement si on a changé d'écran entre-temps

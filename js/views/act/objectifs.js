@@ -3,6 +3,7 @@ import { db, uid, getSettings } from '../../db.js';
 import { $, $$, esc, fmtDate, modal, toast, confirmer, today } from '../../ui.js';
 import { INDICATEURS, ENSEIGNES_LISTE, PRIORITES, SAISON } from '../../config.js';
 import { chargerTout, indicateurs, periode } from '../../services/activite.js';
+import { ic } from '../../icones.js';
 
 
 export async function render(el) {
@@ -21,7 +22,7 @@ export async function render(el) {
       const v = valeur(o), pct = o.cible ? Math.min(100, Math.round(v / o.cible * 100)) : 0, att = Math.round(avance(o) * 100);
       const etat = v >= o.cible ? 'ok' : pct + 5 < att && o.fin >= today() ? 'retard' : o.fin < today() ? 'fini' : '';
       return `<article class="obj ${etat}">
-        <header><strong>${esc(o.titre || INDICATEURS[o.indicateur] || o.indicateur)}</strong><button class="btn-icon" data-ed="${o.id}" aria-label="Modifier">✎</button></header>
+        <header><strong>${esc(o.titre || INDICATEURS[o.indicateur] || o.indicateur)}</strong><button class="btn-icon" data-ed="${o.id}" aria-label="Modifier">${ic('crayon')}</button></header>
         <p class="muted small">${esc(INDICATEURS[o.indicateur] || o.indicateur)}${o.enseigne ? ` · ${esc(o.enseigne)}` : ''}${o.priorite !== '' && o.priorite != null ? ` · ${esc(PRIORITES[o.priorite]?.label || '')}` : ''}${o.produitId ? ` · ${esc(d.produits.find(p => p.id === o.produitId)?.nom || '')}` : ''} · du ${fmtDate(o.debut)} au ${fmtDate(o.fin)}</p>
         <div class="bar" role="progressbar" aria-valuenow="${pct}" aria-valuemin="0" aria-valuemax="100"><span style="width:${pct}%"></span><i style="left:${att}%" title="Où tu devrais en être aujourd'hui"></i></div>
         <p class="obj-val"><span class="big">${v}</span> / ${o.cible} <span class="muted">(${pct} %)</span>

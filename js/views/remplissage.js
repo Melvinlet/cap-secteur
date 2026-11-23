@@ -5,6 +5,7 @@ import { esc } from '../ui.js';
 import { PRIORITES } from '../config.js';
 import { prioriteDe } from '../data.js';
 import { datalistMagasins, trouverMagasin, messageIntrouvable } from '../champ-magasin.js';
+import { ic } from '../icones.js';
 
 export const enseignesDe = all => [...new Set(all.map(m => m.enseigne).filter(Boolean))]
   .sort((a, b) => all.filter(m => m.enseigne === b).length - all.filter(m => m.enseigne === a).length);
@@ -26,7 +27,7 @@ export function brancherImposes(dlg, jours = null) {
     d.innerHTML = `<input name="impM:${i}" list="dlImposes" placeholder="Tape le nom ou la ville du magasin" aria-label="Magasin" autocomplete="off">
       ${jours ? `<select name="impJ:${i}" aria-label="Jour"><option value="auto">Le meilleur jour</option>${jours.map(j => `<option value="${j.v}">${esc(j.lib)}</option>`).join('')}</select>` : ''}
       <input type="time" name="impH:${i}" aria-label="Heure (facultatif)" title="Heure (facultatif)">
-      <button type="button" class="btn-icon" aria-label="Retirer">✕</button>`;
+      <button type="button" class="btn-icon" aria-label="Retirer">${ic('croix')}</button>`;
     d.querySelector('button').onclick = () => d.remove();
     dlg.querySelector('[data-imposes]').append(d); d.querySelector('input').focus();
   };

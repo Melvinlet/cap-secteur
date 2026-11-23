@@ -1,6 +1,7 @@
 // Carte (Leaflet). Fond OpenStreetMap par défaut, ou TomTom si choisi dans les réglages.
 import { getSettings } from './db.js';
 import { enseigneColor, esc } from './ui.js';
+import { ic } from './icones.js';
 
 let leafletLoading;
 function loadLeaflet() {
@@ -45,7 +46,7 @@ export function repere(m, numero, couleur) {
 }
 
 export function repereDepart(p, hotel = false) {
-  return L.marker([p.lat, p.lon], { title: 'Départ', icon: L.divIcon({ className: 'pin-wrap', html: `<span class="pin home">${hotel ? '☾' : '⌂'}</span>`, iconSize: [28, 28], iconAnchor: [14, 14] }) })
+  return L.marker([p.lat, p.lon], { title: 'Départ', icon: L.divIcon({ className: 'pin-wrap', html: `<span class="pin home">${hotel ? ic('lune') : ic('maison')}</span>`, iconSize: [28, 28], iconAnchor: [14, 14] }) })
     .bindPopup(esc(p.adresse || 'Départ'));
 }
 

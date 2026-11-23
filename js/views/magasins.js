@@ -1,7 +1,7 @@
 // Écran « Magasins » : liste filtrable + carte.
 import { getSettings } from '../db.js';
 import { magasinsEnrichis } from '../data.js';
-import { $, $$, esc, borne, enseigneColor, norm, fmtDate, prioTag, modal, toast } from '../ui.js';
+import { $, $$, esc, borne, enseigneColor, norm, fmtDate, prioTag, modal, toast, pastilleEnseigne } from '../ui.js';
 import { db } from '../db.js';
 import { PRIORITES, ORDRE_PRIORITES } from '../config.js';
 import { carte, repere } from '../carte.js';
@@ -62,7 +62,7 @@ export async function render(el) {
     $('#liste').innerHTML = list.map(m => `
       <a class="store" href="#/magasin/${encodeURIComponent(m.id)}">
         ${borne(m.departement)}
-        <span class="store-main"><span class="store-name"><i class="dot" style="--c:${enseigneColor(m.enseigne)}"></i>${esc(m.nom)} ${prioTag(m.prio)}</span>
+        <span class="store-main"><span class="store-name">${pastilleEnseigne(m.enseigne)}${esc(m.nom)} ${prioTag(m.prio)}</span>
           <span class="store-sub">${m.code ? `${esc(m.code)} · ` : ''}${esc(m.adresse || '')}${m.adresse ? ', ' : ''}${esc(m.cp)} ${esc(m.ville)}</span></span>
         <span class="store-meta">
           ${m.ventes2026 > 0 ? `<span class="tag ventes" title="Robots vendus en 2026">${m.ventes2026} robot${m.ventes2026 > 1 ? 's' : ''}</span>` : ''}
@@ -139,7 +139,7 @@ function statistiques(list, tous) {
   const top = [...vend].sort((a, b) => b.ventes2026 - a.ventes2026).slice(0, 15);
   const seuil = top.length ? top[Math.min(top.length, 15) - 1].ventes2026 : Infinity;
   const aVoir = vend.filter(m => m.ventes2026 >= seuil && (m.enRetard || !m.derniereVisite)).sort((a, b) => b.ventes2026 - a.ventes2026);
-  const ligneMag = (m, i) => `<li><a href="#/magasin/${encodeURIComponent(m.id)}"><span class="rang">${i + 1}</span><span class="t-nom"><i class="dot" style="--c:${enseigneColor(m.enseigne)}"></i>${esc(m.nom)} ${prioTag(m.prio)}<small>${esc(m.ville)} · ${m.derniereVisite ? `vu le ${fmtDate(m.derniereVisite)}` : 'jamais visité'}</small></span><b>${nb(m.ventes2026)}</b></a></li>`;
+  const ligneMag = (m, i) => `<li><a href="#/magasin/${encodeURIComponent(m.id)}"><span class="rang">${i + 1}</span><span class="t-nom">${pastilleEnseigne(m.enseigne)}${esc(m.nom)} ${prioTag(m.prio)}<small>${esc(m.ville)} · ${m.derniereVisite ? `vu le ${fmtDate(m.derniereVisite)}` : 'jamais visité'}</small></span><b>${nb(m.ventes2026)}</b></a></li>`;
   return `<div class="tour-sum stat-sum">
       <div><span class="big">${nb(total)}</span>robots vendus en 2026</div>
       <div><span class="big">${vend.length}</span>magasins vendeurs sur ${list.length}</div>
@@ -147,7 +147,7 @@ function statistiques(list, tous) {
       <div><span class="big">${top[0] ? nb(top[0].ventes2026) : '–'}</span>meilleur magasin</div></div>
     <p class="hint">Ventes en unités tirées du fichier de l'entreprise. Les filtres en haut (département, enseigne, priorité, recherche) s'appliquent aussi aux stats.</p>
     <div class="stat-grille">
-      ${barres('Par enseigne', groupe('enseigne'), l => `<i class="dot" style="--c:${enseigneColor(l.k)}"></i>${esc(l.k)}`)}
+      ${barres('Par enseigne', groupe('enseigne'), l => `${pastilleEnseigne(l.k)}${esc(l.k)}`)}
       ${barres('Par département', groupe('departement'), l => `${borne(l.k)}`)}
     </div>
     <section class="stat-bloc"><h2 class="h2">Top ${top.length} magasins</h2><ol class="top-mag">${top.map(ligneMag).join('')}</ol></section>

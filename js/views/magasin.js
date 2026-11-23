@@ -3,7 +3,7 @@
 import { civiliteDevinee } from '../services/civilite.js';
 import { db, uid, getSettings } from '../db.js';
 import { magasinComplet, dureeVisite, prioriteDe, frequenceDe, produitsPour, numeroVisite, offertsDejaDonnes, roleDe, trierContacts } from '../data.js';
-import { $, $$, esc, borne, prioTag, enseigneColor, fmtDate, toast, modal, confirmer, telLink, mailLink, today, downloadBlob } from '../ui.js';
+import { $, $$, esc, borne, prioTag, enseigneColor, fmtDate, toast, modal, confirmer, telLink, mailLink, today, downloadBlob, pastilleEnseigne } from '../ui.js';
 import { STATUTS_SAV, TYPES_NOTE, PRIORITES, STATUTS_VISITE, OBJETS_VISITE, SAISON, ORDRE_PRIORITES, ROLES_CONTACT, PROFIL } from '../config.js';
 import { lienGps } from '../services/routing.js';
 import { exporterCommande } from '../services/excel.js';
@@ -13,6 +13,7 @@ import { carte, repere } from '../carte.js';
 import { imageURL } from '../services/images.js';
 import { marquerVisite, annulerVisite, lienDetails, estVide } from '../services/visite.js';
 import { brancherCoches } from '../services/afaire.js';
+import { ic } from '../icones.js';
 
 const ONGLETS = [['infos', 'Infos'], ['suivi', 'Visites'], ['commandes', 'Commandes'], ['sav', 'SAV'], ['implantations', 'Implantations']];
 let map;
@@ -38,7 +39,7 @@ export async function render(el, { id, onglet = 'infos' }) {
     <a class="back" href="#/magasins">Magasins</a>
     <header class="store-head" style="--c:${enseigneColor(m.enseigne)}">
       ${borne(m.departement, 'big')}
-      <div><p class="store-ens">${esc(m.enseigne)}${m.code ? ` <span class="muted">· code ${esc(m.code)}</span>` : ''}${m.statut ? ` <span class="muted">· ${esc(m.statut)}</span>` : ''}</p>
+      <div><p class="store-ens">${pastilleEnseigne(m.enseigne)} ${esc(m.enseigne)}${m.code ? ` <span class="muted">· code ${esc(m.code)}</span>` : ''}${m.statut ? ` <span class="muted">· ${esc(m.statut)}</span>` : ''}</p>
         <h1>${esc(m.nom)} ${prioTag(prioriteDe(m))}</h1>
         <p class="muted">${esc(m.adresse || '')}${m.adresse ? ', ' : ''}${esc(m.cp)} ${esc(m.ville)}${m.telMagasin ? ` · ${telLink(m.telMagasin)}` : ''}</p></div>
     </header>
@@ -83,11 +84,11 @@ function infos(el, { m, contacts, rangVentes }, s) {
       <div>
         <h2 class="h2">Contacts <button class="btn small" id="addContact">Ajouter</button></h2>
         <ul class="contacts">${trierContacts(contacts).map(c => `<li>
-          <div><strong>${c.principal ? '<span class="star" title="Interlocuteur principal">★</span> ' : ''}${esc(c.nom || 'Contact magasin')}</strong>
+          <div><strong>${c.principal ? '<span class="star" title="Interlocuteur principal">' + ic('etoile') + '</span> ' : ''}${esc(c.nom || 'Contact magasin')}</strong>
           ${roleDe(c) ? `<span class="role">${esc(roleDe(c))}</span>` : ''}${c.fonction && c.fonction.toLowerCase() !== roleDe(c).toLowerCase() ? ` <span class="muted">${esc(c.fonction)}</span>` : ''}
           <div class="links">${telLink(c.tel)} ${telLink(c.tel2)} ${mailLink(c.email)}</div>
           ${c.note ? `<p class="note">${esc(c.note)}</p>` : ''}</div>
-          <button class="btn-icon" data-edit="${c.id}" aria-label="Modifier">✎</button></li>`).join('') || '<li class="muted">Aucun contact enregistré.</li>'}</ul>
+          <button class="btn-icon" data-edit="${c.id}" aria-label="Modifier">${ic('crayon')}</button></li>`).join('') || '<li class="muted">Aucun contact enregistré.</li>'}</ul>
         ${m.classement || m.remarqueReseau || m.notesReseau || m.meuble || m.ventes2026 != null ? `<h2 class="h2">Infos ${esc(PROFIL.reseau || 'réseau')}</h2><dl class="kv">
           ${m.ventes2026 != null ? kv('Ventes robots 2026', `${m.ventes2026} unité${m.ventes2026 > 1 ? 's' : ''}${rangVentes ? ` · ${rangVentes.rang}${rangVentes.rang === 1 ? "er" : "e"} sur ${rangVentes.sur} magasins vendeurs de ton secteur` : ''}`) : ''}
           ${kv('Classement', m.classement)}${kv('Meuble / PLV', m.meuble)}${kv('Remarque visite', m.remarqueReseau)}${kv('Notes', m.notesReseau)}</dl>` : ''}
@@ -102,7 +103,7 @@ function infos(el, { m, contacts, rangVentes }, s) {
           ${kv('Position', m.lat != null ? (m.positionManuelle ? 'Placée à la main' : m.precision === 'magasin' ? `Emplacement du magasin (${m.positionSource === 'tomtom' ? 'TomTom' : 'OpenStreetMap'})` : m.precision === 'ville' ? 'Centre de la ville (approximatif)' : m.precision === 'commune' ? 'Centre de la commune (affinée automatiquement dès que tu as du réseau)' : m.precision === 'rue' ? 'Milieu de la rue ou de la zone (approximatif : déplace le repère si besoin)' : 'Adresse trouvée') : 'Pas encore localisé')}
         </dl>
         <div id="miniMap" class="mini-map"></div>
-        <p class="hint">Mauvaise position ? Clique sur la carte à l'endroit exact du magasin, ou devant le magasin : <button type="button" class="btn small" id="ici">📍 Je suis devant le magasin</button></p>
+        <p class="hint">Mauvaise position ? Clique sur la carte à l'endroit exact du magasin, ou devant le magasin : <button type="button" class="btn small" id="ici">${ic('lieu')} Je suis devant le magasin</button></p>
       </div>
     </div>`;
   $('#addContact').onclick = () => editContact(m);
@@ -179,7 +180,7 @@ function suivi(el, d) {
     <ol class="timeline">${notes.map(n => `<li data-type="${esc(n.type)}" data-statut="${esc(n.statut || '')}">
       <div class="tl-head"><strong>${esc(n.type === 'Visite' ? `Visite ${n.numero || ''}` : n.type)}</strong> <time>${fmtDate(n.date)}</time>
       ${n.statut && n.statut !== 'Réalisée' ? `<span class="tag">${esc(n.statut)}</span>` : ''}${n.objet ? `<span class="muted">${esc(n.objet)}</span>` : ''}
-      ${n.contact ? `<span class="muted">· avec ${esc(n.contact)}</span>` : ''}<button class="btn-icon" data-id="${n.id}" aria-label="Modifier">✎</button></div>
+      ${n.contact ? `<span class="muted">· avec ${esc(n.contact)}</span>` : ''}<button class="btn-icon" data-id="${n.id}" aria-label="Modifier">${ic('crayon')}</button></div>
       ${n.texte ? `<p>${esc(n.texte).replace(/\n/g, '<br>')}</p>` : ''}
       ${n.actions?.length ? `<p class="acts">${n.actions.map(a => `<span class="tag">${esc(a)}</span>`).join(' ')}</p>` : ''}
       ${n.arrivee || n.depart ? `<p class="muted small">En magasin ${esc(n.arrivee || '?')} – ${esc(n.depart || '?')}</p>` : ''}
@@ -237,7 +238,7 @@ async function commandes(el, d, s) {
       const dum = c.lignes.reduce((a, l) => a + (Number(l.dummy) || 0), 0);
       return `<article class="cmd"><header><strong>${fmtDate(c.date)}</strong>${c.reference ? ` <span class="muted">${esc(c.reference)}</span>` : ''}
         <span class="tag">${tot} unité${tot > 1 ? 's' : ''}</span>${dum ? `<span class="tag">${dum} ${esc(dum > 1 ? SAISON.libelleOfferts : SAISON.libelleOffert)}</span>` : ''}${hors(c) ? '<span class="tag late">hors période</span>' : ''}
-        <span class="spacer"></span><button class="btn small" data-xls="${c.id}">Excel</button><button class="btn-icon" data-id="${c.id}" aria-label="Modifier">✎</button></header>
+        <span class="spacer"></span><button class="btn small" data-xls="${c.id}">Excel</button><button class="btn-icon" data-id="${c.id}" aria-label="Modifier">${ic('crayon')}</button></header>
         <table class="lines"><tbody>${c.lignes.map(l => { const p = produits.find(x => x.id === l.produitId); return `<tr><td>${esc(p?.ref || '')}</td><td>${esc(p?.nom || '')}</td><td class="num">${esc(l.qte)}</td><td class="muted num">${Number(l.dummy) ? `+${l.dummy} ${esc(SAISON.libelleOffert)}` : ''}</td></tr>`; }).join('')}</tbody></table>
         <p class="muted small">${[c.modeLivraison, c.livraison && `livraison souhaitée le ${fmtDate(c.livraison)}`, c.reliquats && `reliquats : ${c.reliquats}`, c.engagement && 'engagement signé'].filter(Boolean).map(esc).join(' · ')}</p>
         ${c.note ? `<p class="note">${esc(c.note)}</p>` : ''}</article>`;
@@ -335,7 +336,7 @@ function sav(el, { m, sav: list, produits }) {
       <div><strong>${esc(x.produit || 'Produit non précisé')}</strong> <span class="status">${esc(x.statut)}</span>
       <p>${esc(x.probleme)}</p><p class="muted">Ouvert le ${fmtDate(x.date)}${x.numero ? ` · n° ${esc(x.numero)}` : ''}${x.client ? ` · client ${esc(x.client)}` : ''}</p>
       ${x.suivi ? `<p class="note">${esc(x.suivi)}</p>` : ''}</div>
-      <button class="btn-icon" data-id="${x.id}" aria-label="Modifier">✎</button></li>`).join('') || '<li class="muted">Aucun retour SAV pour ce magasin.</li>'}</ul>`;
+      <button class="btn-icon" data-id="${x.id}" aria-label="Modifier">${ic('crayon')}</button></li>`).join('') || '<li class="muted">Aucun retour SAV pour ce magasin.</li>'}</ul>`;
   $('#addSav').onclick = () => editSav(m, {}, produits);
   $$('[data-id]', el).forEach(b => b.onclick = () => editSav(m, list.find(x => x.id === b.dataset.id), produits));
 }
@@ -359,7 +360,7 @@ function implantations(el, { m, implantations: list }) {
   el.innerHTML = `<h2 class="h2">Implantations <button class="btn small" id="addImp">Ajouter</button></h2>
     <table class="table"><thead><tr><th>Produit / meuble</th><th class="num">Qté</th><th>Infos</th><th></th></tr></thead><tbody>
     ${list.map(x => `<tr><td>${esc(x.produit)}</td><td class="num">${esc(x.qte)}</td><td class="muted">${esc([x.engagement && 'Engagement : ' + x.engagement, x.code && 'Code ' + x.code, x.divers].filter(Boolean).join(' · '))}</td>
-      <td><button class="btn-icon" data-id="${x.id}" aria-label="Modifier">✎</button></td></tr>`).join('') || '<tr><td colspan="4" class="muted">Aucun meuble ou PLV enregistré.</td></tr>'}</tbody></table>`;
+      <td><button class="btn-icon" data-id="${x.id}" aria-label="Modifier">${ic('crayon')}</button></td></tr>`).join('') || '<tr><td colspan="4" class="muted">Aucun meuble ou PLV enregistré.</td></tr>'}</tbody></table>`;
   const edit = async (x = {}) => {
     const r = await modal({ titre: 'Implantation', corps: `<label>Produit / meuble<input name="produit" value="${esc(x.produit)}" required></label>
       <label>Quantité<input type="number" name="qte" min="0" value="${esc(x.qte ?? 1)}"></label><label>Infos<input name="divers" value="${esc(x.divers)}"></label>` });

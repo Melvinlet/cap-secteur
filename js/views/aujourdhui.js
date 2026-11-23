@@ -1,13 +1,14 @@
 // Accueil : la journée en un coup d'œil.
 import { db, getSettings } from '../db.js';
 import { magasinsEnrichis } from '../data.js';
-import { esc, borne, fmtDateLong, fmtDate, today, fmtHeure, numSemaine } from '../ui.js';
+import { esc, borne, fmtDateLong, fmtDate, today, fmtHeure, numSemaine, lundiDe, decale } from '../ui.js';
 import { getTournee, planning } from './tournee.js';
 import { aRelancer, dateEnLettres, dateEffRdv, heureEffRdv } from '../services/rdv.js';
 import { lienGps } from '../services/routing.js';
 import { ferie } from '../services/feries.js';
 import { aFaireOuverts, listeAFaire, brancherCoches } from '../services/afaire.js';
 import { infosTerrain } from '../services/terrain.js';
+import { ic } from '../icones.js';
 const demain = () => { const d = new Date(today() + 'T12:00'); d.setDate(d.getDate() + 1); return d.toISOString().slice(0, 10); };
 
 export async function render(el) {
@@ -46,19 +47,34 @@ export async function render(el) {
     .filter(r => r.j && r.j >= today()).sort((a, b) => (a.j + a.h).localeCompare(b.j + b.h)).slice(0, 6);
 
   const terrain = await infosTerrain().catch(() => null);
+  // anneaux de la semaine : visites faites / prévues, P1 à jour, RDV confirmés parmi les magasins prévus
+  const lun = lundiDe(today()), dim = decale(lun, 6);
+  const toursSem = (await db.all('tournees')).filter(x => x.id >= lun && x.id <= dim);
+  const prevusSem = new Set(toursSem.flatMap(x => (x.etapes || []).map(e => `${x.id}|${e.magasinId}`)));
+  const notesToutes = await db.all('notes');
+  const visitesSem = notesToutes.filter(n => n.type === 'Visite' && n.statut === 'Réalisée' && n.date >= lun && n.date <= dim).length;
+  const p1 = mags.filter(m => m.prio === 1), p1Ok = p1.filter(m => m.derniereVisite && !m.enRetard).length;
+  const magsSem = new Set([...prevusSem].map(k => k.split('|')[1]));
+  const rdvSem = new Set(rdvs.filter(r => ['acceptee', 'autreDate'].includes(r.statut) && magsSem.has(r.magasinId) && (dateEffRdv(r) || '') >= lun && dateEffRdv(r) <= dim).map(r => r.magasinId)).size;
+  const anneau = (val, tot, lib, cl) => { const p = tot ? Math.min(1, val / tot) : 0;
+    return `<span class="anneau ${cl}"><svg viewBox="0 0 44 44" aria-hidden="true"><circle class="a-fond" cx="22" cy="22" r="18"/>${p > 0 ? `<circle class="a-val" cx="22" cy="22" r="18" pathLength="100" style="--p:${Math.round(p * 100)}"/>` : ''}</svg>
+      <span><b>${val}<small>/${tot || '–'}</small></b><small>${lib}</small></span></span>`; };
+  const anneaux = `<a class="anneaux" href="#/activite/rapport" aria-label="Ta semaine : ${visitesSem} visites sur ${Math.max(prevusSem.size, visitesSem)} prévues, ${p1Ok} P1 à jour sur ${p1.length}, ${rdvSem} RDV confirmés sur ${magsSem.size} magasins prévus. Ouvrir le rapport">
+      ${anneau(visitesSem, Math.max(prevusSem.size, visitesSem), 'visites', 'a1')}${anneau(p1Ok, p1.length, 'P1 à jour', 'a2')}${anneau(rdvSem, magsSem.size, 'RDV pris', 'a3')}</a>`;
   const faitsAuj = t.etapes.filter(e => e.fait).length;
   const rdvAuj = prochainsRdv.filter(r => r.j === today()).length;
   const resume = t.etapes.length
     ? `${t.etapes.length} magasin${t.etapes.length > 1 ? 's' : ''} aujourd'hui${faitsAuj ? ` · ${faitsAuj} visité${faitsAuj > 1 ? 's' : ''}` : ''}${t.calcul ? ` · fin vers ${fmtHeure(p.fin).replace(':', 'h')}` : ''}${rdvAuj ? ` · ${rdvAuj} RDV` : ''}`
     : 'Rien de prévu aujourd\'hui.';
   el.innerHTML = `<div class="page accueil">
-    <header class="hello hero"><a class="btn-icon settings-link" href="#/reglages" aria-label="Réglages" style="float:right">⚙</a>
+    <header class="hello hero"><a class="btn-icon settings-link" href="#/reglages" aria-label="Réglages" style="float:right">${ic('reglages')}</a>
       <p class="hero-date">${fmtDateLong(today())} · semaine ${numSemaine(today())}${ferie(today()) ? ` · <span class="tag ferie">Férié · ${esc(ferie(today()))}</span>` : ''}${!ferie(today()) && ferie(demain()) ? ` · demain férié (${esc(ferie(demain()))})` : ''}</p>
       <h1>${prenom ? `Bonjour ${esc(prenom)}` : 'Bonjour'}</h1>
       <p class="hero-resume">${resume}</p>
+      ${anneaux}
       ${mProchain ? `<div class="hero-actions"><a class="btn gps-prochain" href="${lienGps(s.gps, mProchain)}" target="_blank" rel="noopener">
         <span>Aller au prochain magasin</span><strong>${esc(mProchain.nom)}</strong><small>avec ${s.gps === 'google' ? 'Google Maps' : 'Waze'}</small></a>
-        <a class="btn mode-tournee" href="#/en-tournee"><span aria-hidden="true">▶</span> Mode tournée</a></div>` : ''}
+        <a class="btn mode-tournee" href="#/en-tournee">${ic('lecture')} Mode tournée</a></div>` : ''}
     </header>
     ${terrain ? `<a class="terrain-lien" href="#/terrain"><span class="terrain-ic" aria-hidden="true"></span><span><strong>Clasper Terrain</strong><small>version du ${fmtDate(terrain.importe)}</small></span><span class="chevron" aria-hidden="true">›</span></a>` : ''}
     ${aPlacer.length ? `<section class="alerte-retard" role="status">
@@ -75,7 +91,7 @@ export async function render(el) {
       <section><h2 class="h2">SAV en cours <span class="badge">${savs.length}</span></h2>
         <ul class="plain">${savs.slice(0, 8).map(x => { const m = byId.get(x.magasinId); return `<li><a href="#/magasin/${encodeURIComponent(x.magasinId)}/sav">${esc(x.produit || 'SAV')}</a> <span class="muted">${esc(m?.nom || '')} · ${fmtDate(x.date)} · ${esc(x.statut)}</span></li>`; }).join('') || '<li class="muted">Aucun dossier ouvert.</li>'}</ul></section>
       <section id="afaire"><h2 class="h2">À faire <span class="badge">${tousAF.length}</span> <a class="btn small" href="#/afaire">Tout voir</a></h2>
-        ${todos.length ? listeAFaire(todos, { magasin: id => `${duJour.has(id) ? '📍 aujourd\'hui · ' : ''}${byId.get(id)?.nom || ''}` })
+        ${todos.length ? listeAFaire(todos, { magasin: id => `${duJour.has(id) ? 'Aujourd\'hui · ' : ''}${byId.get(id)?.nom || ''}` })
           + (tousAF.length > todos.length ? `<p class="small muted"><a href="#/afaire">… et ${tousAF.length - todos.length} autre${tousAF.length - todos.length > 1 ? 's' : ''}</a></p>` : '')
           : '<p class="muted">Rien en attente. Les « prochaines étapes » notées pendant tes visites apparaissent ici, et reviennent quand le magasin est dans ta tournée.</p>'}</section>
     </div>

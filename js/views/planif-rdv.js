@@ -10,6 +10,7 @@ import { evenementRdv, proposerAgenda } from '../services/agenda.js';
 import { ferie } from '../services/feries.js';
 import { etiquetteMagasin, datalistMagasins, trouverMagasin, messageIntrouvable } from '../champ-magasin.js';
 import { getTournee, estimerJour, placerRendezVous, departPourRdv, chainer, recalerLendemain } from './tournee.js';
+import { ic } from '../icones.js';
 
 const hh = min => fmtHeure(min).replace(':', 'h');
 
@@ -113,7 +114,7 @@ export async function planifierRdv(pre = {}) {
     const { p, pe, alertes, infos, hors, ailleurs, departPropose } = res;
     box.innerHTML = `
       <p class="pr-titre"><strong>${esc(dateEnLettres(date))}</strong> · ${p.etapes.length} magasin${p.etapes.length > 1 ? 's' : ''} · fin vers ${hh(p.fin)}${p.estime ? ' <small class="muted">(estimation)</small>' : ''}</p>
-      ${alertes.length ? `<div class="banner warn pr-alertes">${alertes.map(a => `<p>⚠ ${a}</p>`).join('')}</div>` : '<p class="pr-ok">✓ Ça rentre dans ta journée sans empiéter sur un autre rendez-vous.</p>'}
+      ${alertes.length ? `<div class="banner warn pr-alertes">${alertes.map(a => `<p>${ic('alerte')} ${a}</p>`).join('')}</div>` : '<p class="pr-ok">✓ Ça rentre dans ta journée sans empiéter sur un autre rendez-vous.</p>'}
       ${infos.map(i => `<p class="small">${i}</p>`).join('')}
       <ol class="pr-jour">${p.etapes.map(x => { const mm = mags.get(x.magasinId) || {}; const moi = x === pe;
         return `<li class="${moi ? 'moi' : ''} ${x.retardRdv ? 'late' : ''} ${x.hors ? 'hors' : ''}"><span class="pr-h">${hh(x.arrivee)}</span> ${esc(mm.nom || '?')}${moi ? ' <span class="tag ok">nouveau RDV</span>' : x.rdvConfirme && x.rdvHeure ? ` <span class="tag ok">RDV ${esc(x.rdvHeure)}</span>` : ''}${x.retardRdv ? ` <span class="tag late">+${x.retardRdv} min</span>` : ''}${x.hors ? ' <span class="tag late">après l\'heure de fin</span>' : ''}</li>`; }).join('')}</ol>

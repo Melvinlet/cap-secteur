@@ -10,6 +10,7 @@ import { bonjourDe } from '../services/civilite.js';
 import { estOuvert, listeAFaire, brancherCoches } from '../services/afaire.js';
 import { lienGps } from '../services/routing.js';
 import { marquerVisite, lienDetails } from '../services/visite.js';
+import { ic } from '../icones.js';
 
 const bloc = (titre, corps, cls = '') => corps ? `<section class="fa-bloc ${cls}"><h3>${titre}</h3>${corps}</section>` : '';
 
@@ -61,7 +62,7 @@ export async function ouvrirFicheAvant(magasinId, date) {
   const futurJ = (date || today()) > today();   // jour à venir : on prépare, on ne marque pas « visité »
   const corps = `<div class="fiche-avant">
     <p class="fa-tete">${prioTag(prioriteDe(m))} <strong>${esc(m.nom)}</strong><br><span class="muted small">${esc(m.adresse && m.cp && m.adresse.includes(m.cp) ? m.adresse : [m.adresse, `${m.cp || ''} ${m.ville || ''}`.trim()].filter(Boolean).join(', '))}${j != null ? ` · dernière visite il y a ${j} jour${j > 1 ? 's' : ''}` : ''}</span></p>
-    <p class="fa-liens">${m.lat != null ? `<a class="btn small" href="${lienGps(s.gps, m)}" target="_blank" rel="noopener">GPS</a>` : ''}${m.telMagasin ? `<a class="btn small" href="tel:${esc(m.telMagasin.replace(/\s/g, ''))}">Appeler le magasin</a>` : ''}<a class="btn small ghost" href="#/magasin/${encodeURIComponent(m.id)}">Fiche complète</a>${!m.positionManuelle && !futurJ ? '<button type="button" class="btn small ghost" id="faIci" title="La position du téléphone devient celle du magasin : le GPS t\'y emmènera directement">📍 Je suis devant</button>' : ''}</p>
+    <p class="fa-liens">${m.lat != null ? `<a class="btn small" href="${lienGps(s.gps, m)}" target="_blank" rel="noopener">GPS</a>` : ''}${m.telMagasin ? `<a class="btn small" href="tel:${esc(m.telMagasin.replace(/\s/g, ''))}">Appeler le magasin</a>` : ''}<a class="btn small ghost" href="#/magasin/${encodeURIComponent(m.id)}">Fiche complète</a>${!m.positionManuelle && !futurJ ? '<button type="button" class="btn small ghost" id="faIci" title="La position du téléphone devient celle du magasin : le GPS t\'y emmènera directement">' + ic('lieu') + ' Je suis devant</button>' : ''}</p>
     ${bloc('À faire', af.length ? listeAFaire(af) : '', 'fa-afaire')}
     ${bloc('Ton contact', contact)}
     ${bloc('Rendez-vous', rdvTxt)}

@@ -3,7 +3,7 @@
 // IMPORTANT : à chaque mise en ligne d'une nouvelle version, change VERSION
 // (sinon les téléphones garderont l'ancienne version en cache).
 // ─────────────────────────────────────────────────────────────────────────────
-const VERSION = 'cap-secteur-1.17.0';
+const VERSION = 'cap-secteur-1.18.0';
 const TUILES = 'cap-secteur-tuiles';
 const IMAGES_WEB = 'cap-secteur-images-web';
 const MAX_TUILES = 3000;
@@ -22,6 +22,8 @@ const APP = [
   './index.html',
   './js/app.js',
   './js/nav-pastille.js',
+  './js/icones.js',
+  './js/barre-titre.js',
   './js/services/terrain.js',
   './js/views/terrain.js',
   './js/ouverture.js',

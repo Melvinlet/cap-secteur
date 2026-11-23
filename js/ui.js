@@ -1,5 +1,7 @@
 // Petits outils d'affichage partagés par tous les écrans.
 import { ENSEIGNES, ENSEIGNE_AUTRE } from './config.js';
+import { ic } from './icones.js';
+export { ic };
 
 export const $ = (sel, root = document) => root.querySelector(sel);
 export const $$ = (sel, root = document) => [...root.querySelectorAll(sel)];
@@ -7,6 +9,26 @@ export const $$ = (sel, root = document) => [...root.querySelectorAll(sel)];
 // Échappe le texte avant de l'insérer dans du HTML.
 export const esc = v => String(v ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 
+// Pastille d'enseigne : 2 lettres sur la couleur de l'enseigne (LM, CA, BM, MB, WE…), lisible d'un coup d'œil
+export const abrevEnseigne = e => {
+  const mots = (e || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').split(/[^A-Za-z]+/).filter(Boolean);
+  if (!mots.length) return '?';
+  if (mots.length > 1) return (mots[0][0] + mots[1][0]).toUpperCase();
+  const m = mots[0];
+  const b = m.match(/^brico(.)/i);   // Bricomarché → BM, Bricorama → BR, Briconautes → BN
+  return (b ? 'B' + b[1] : m.slice(0, 2)).toUpperCase();
+};
+export const pastilleEnseigne = e => `<span class="ens-pastille" style="--c:${enseigneColor(e)}" title="${esc(e || 'Sans enseigne')}">${abrevEnseigne(e)}</span>`;
+// Thème de l'appli sur cet appareil : 'auto' (suit le téléphone), 'light' ou 'dark'
+export const themeChoisi = () => { try { return localStorage.getItem('cap-theme') || 'auto'; } catch { return 'auto'; } };
+export function appliquerTheme(t) {
+  try { if (t === 'auto') localStorage.removeItem('cap-theme'); else localStorage.setItem('cap-theme', t); } catch { /* */ }
+  if (t === 'auto') delete document.documentElement.dataset.theme; else document.documentElement.dataset.theme = t;
+  const sombre = t === 'dark' || (t === 'auto' && matchMedia('(prefers-color-scheme: dark)').matches);
+  document.querySelectorAll('meta[name=theme-color]').forEach(m => { m.content = sombre ? '#0A111D' : '#0B5CAD'; });
+}
+// Petite vibration (Android) réservée aux moments qui comptent : visite faite, arrivée, à faire coché, fin de journée
+export const vibrer = (motif = 14) => { try { navigator.vibrate?.(motif); } catch { /* non géré */ } };
 export const enseigneColor = e => {
   for (const [k, c] of Object.entries(ENSEIGNES)) if ((e || '').startsWith(k)) return c;
   return ENSEIGNE_AUTRE;
@@ -106,7 +128,7 @@ export function modal({ titre, corps, valider = 'Enregistrer', danger = false, l
     const d = document.createElement('dialog');
     d.className = 'modal' + (large ? ' large' : '');
     d.innerHTML = `<form method="dialog">
-      <header><h2>${esc(titre)}</h2><button type="button" class="btn-icon" data-close aria-label="Fermer">✕</button></header>
+      <header><h2>${esc(titre)}</h2><button type="button" class="btn-icon" data-close aria-label="Fermer">${ic('croix')}</button></header>
       <div class="modal-body">${corps}</div>
       <footer><button type="button" class="btn ghost" data-close>Annuler</button>
       <button type="submit" class="btn ${danger ? 'danger' : 'primary'}" value="ok">${esc(valider)}</button></footer></form>`;
@@ -163,7 +185,7 @@ export function dictee(champ, bouton) {
       const txt = [...e.results].slice(e.resultIndex).map(r => r[0].transcript).join(' ').trim();
       if (txt) champ.value = (champ.value ? champ.value.replace(/\s*$/, ' ') : '') + txt.charAt(0).toUpperCase() + txt.slice(1);
     };
-    rec.onend = () => { rec = null; bouton.textContent = '🎤 Dicter'; bouton.classList.remove('rec'); };
+    rec.onend = () => { rec = null; bouton.innerHTML = ic('micro') + ' Dicter'; bouton.classList.remove('rec'); };
     rec.onerror = ev => { if (ev.error === 'not-allowed') toast('Autorise le micro pour dicter', 'warn'); };
     rec.start();
     bouton.textContent = '■ Arrêter'; bouton.classList.add('rec');

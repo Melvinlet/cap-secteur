@@ -1,7 +1,7 @@
 // « À faire » notés dans les comptes rendus (champ « À faire / prochaine étape ») :
 // ils restent ouverts jusqu'à ce qu'on les coche, et réapparaissent quand le magasin revient dans la tournée.
 import { db } from '../db.js';
-import { esc, fmtDate, today } from '../ui.js';
+import { esc, fmtDate, today, vibrer } from '../ui.js';
 
 export const estOuvert = n => !!(n.aFaire || '').trim() && !n.aFaireFait;
 
@@ -28,6 +28,7 @@ export const listeAFaire = (notes, { magasin } = {}) => `<ul class="plain afaire
 
 export function brancherCoches(racine, apres) {
   racine.querySelectorAll('[data-afaire]').forEach(c => c.onchange = async () => {
+    if (c.checked) vibrer(12);
     await marquerFait(c.dataset.afaire, c.checked);
     c.closest('li')?.classList.toggle('fait', c.checked);
     apres?.(c.dataset.afaire, c.checked);

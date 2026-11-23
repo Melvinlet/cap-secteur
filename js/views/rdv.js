@@ -3,12 +3,13 @@
 import { civiliteDevinee } from '../services/civilite.js';
 import { db, getSettings } from '../db.js';
 import { magasinsEnrichis, trierContacts, roleDe } from '../data.js';
-import { $, $$, esc, borne, prioTag, fmtDate, fmtHeure, toast, modal, norm, today, tagSemaine, numSemaine, lundiDe, decale } from '../ui.js';
+import { $, $$, esc, borne, prioTag, fmtDate, fmtHeure, toast, modal, norm, today, tagSemaine, numSemaine, lundiDe, decale, pastilleEnseigne } from '../ui.js';
 import { STATUTS_RDV, OBJETS_VISITE } from '../config.js';
 import { getRdv, tousLesRdv, genererMessage, lienMail, lienSms, estMobile, changerStatut, aRelancer, modeles, dateEnLettres, lienMailCci, separateurMails, dateEffRdv, heureEffRdv } from '../services/rdv.js';
 import { planning } from './tournee.js';
 import { evenementRdv, proposerAgenda } from '../services/agenda.js';
 import { ferie } from '../services/feries.js';
+import { ic } from '../icones.js';
 
 // « Mes RDV » par défaut : tous les rendez-vous (demandés, relancés, acceptés, refusés), sans période — filtre par dates en option
 let etat = { mode: 'mesRdv', du: null, au: null, q: '', dep: '', statut: '', parDates: false };
@@ -162,7 +163,7 @@ function ligneHTML(l, i) {
     <input type="checkbox" class="rdv-sel" data-i="${i}" aria-label="Sélectionner ${esc(m.nom)}">
     ${borne(m.departement)}
     <div class="rdv-main">
-      <span class="rdv-nom"><a href="#/magasin/${encodeURIComponent(m.id)}"><strong>${esc(m.nom)}</strong></a> ${prioTag(m.prio)}</span>
+      <span class="rdv-nom"><a href="#/magasin/${encodeURIComponent(m.id)}">${pastilleEnseigne(m.enseigne)}<strong>${esc(m.nom)}</strong></a> ${prioTag(m.prio)}</span>
       <small>${c ? `${l.trouve ? '<mark>' : ''}${esc(c.nom || 'Contact')}${l.trouve ? '</mark>' : ''}${l.trouve && l.trouve.id === r.contactId && r.dateEnvoi ? ' <span class="tag ok">destinataire</span>' : ''}${c.email ? ` · ${esc(c.email)}` : ''}${c.tel ? ` · ${esc(c.tel)}` : ''}` : m.telMagasin ? `Magasin · ${esc(m.telMagasin)}` : '<span class="late-txt">Aucun contact</span>'}</small>
       <small>${date ? `${r.statut === 'autreDate' ? 'Nouvelle date : ' : ''}${esc(dateEnLettres(date))}${heure ? ` · ${esc(heure)}` : ''}` : 'Date à proposer'}
         ${r.dateEnvoi ? ` · envoyée le ${fmtDate(r.dateEnvoi)}` : ''}${l.perime && l.jourTournee ? ` · <b class="wait-txt">prévu dans ta tournée le ${esc(dateEnLettres(l.jourTournee))}</b>` : ''}${r.relances ? ` · ${r.relances} relance${r.relances > 1 ? 's' : ''}` : ''}${l.relance ? ' · <b class="late-txt">à relancer</b>' : ''}</small>
@@ -221,7 +222,7 @@ function rediger(file, s, fin) {
     const type0 = perime ? 'demande' : l.relance || r.statut === 'envoyee' || r.statut === 'relancee' ? 'relance' : ['acceptee', 'autreDate'].includes(r.statut) ? 'confirmation' : 'demande';
     const mods = modeles(s);
     d.innerHTML = `<form method="dialog">
-      <header><h2>${esc(l.m.nom)}</h2>${file.length > 1 ? `<span class="muted">${i + 1} / ${file.length}</span>` : ''}<button type="button" class="btn-icon" data-close aria-label="Fermer">✕</button></header>
+      <header><h2>${esc(l.m.nom)}</h2>${file.length > 1 ? `<span class="muted">${i + 1} / ${file.length}</span>` : ''}<button type="button" class="btn-icon" data-close aria-label="Fermer">${ic('croix')}</button></header>
       <div class="modal-body">
         <div class="row">
           <label>Contact<select id="cCt">${l.contacts.map(c => `<option value="${c.id}" ${c.id === r.contactId ? 'selected' : ''}>${esc(c.nom || 'Contact')}${roleDe(c) ? ` (${esc(roleDe(c))})` : ''}${c.email ? ` — ${esc(c.email)}` : ''}${!c.email && c.tel ? ` — ${esc(c.tel)}` : ''}</option>`).join('') || '<option value="">Aucun contact enregistré</option>'}</select></label>

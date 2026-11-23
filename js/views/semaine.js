@@ -14,6 +14,7 @@ import { estimate, optimiserOrdre, trajet, calculerTrajets } from '../services/r
 import { carte, repere, repereDepart, animerTrace } from '../carte.js';
 import { marquerVisite, annulerVisite, lienDetails, estVide } from '../services/visite.js';
 import { ferie, tagFerie } from '../services/feries.js';
+import { ic } from '../icones.js';
 
 const COULEURS = ['#1E4FA0', '#C8371D', '#2E8540', '#6B4BA1', '#B25E09', '#0E7C86'];
 const JOURS = ['Lun.', 'Mar.', 'Mer.', 'Jeu.', 'Ven.', 'Sam.'];
@@ -237,7 +238,7 @@ function colonne(t, i, p, mags, s, dates, rdvs, vus = new Map()) {
     <div class="wdep"><label>Départ <input type="time" data-hdep="${i}" value="${esc(t.heureDebut || s.heureDebut)}" class="${t.heureDebut ? 'modifiee' : ''}"></label>${t.heureDebut ? `<button class="btn-link" data-hrdv="${i}:${esc(s.heureDebut)}" title="Revenir à l'heure habituelle">habituel ${esc(s.heureDebut.replace(':', 'h'))}</button>` : ''}
       ${(() => { const h = t.etapes.length ? departPourRdv(t, mags, s, rdvs) : null; return h && h !== (t.heureDebut || s.heureDebut) ? `<button class="btn small ${p.rdvRates ? 'primary' : 'ghost'}" data-hrdv="${i}:${h}" title="Pour arriver à l'heure au RDV">${h.replace(':', 'h')} pour le RDV</button>` : ''; })()}</div>
     ${t.etapes.length ? `<p class="wday-sum ${p.depasse ? 'over' : ''}">${p.estime ? '≈ ' : ''}${fmtKm(p.km)} · ${fmtDuree(p.conduite)} de route${p.estime ? '' : ' (TomTom)'} · fin ${p.estime ? 'vers ' : ''}${fmtHeure(p.fin)}${p.attente >= 20 ? ` · ${fmtDuree(p.attente)} d'attente avant RDV` : ''}${p.depasse ? ' — trop chargé' : ''}</p>` : ''}
-    ${t.depart?.lat != null ? `<p class="wday-night">☾ départ ${esc(t.depart.adresse.replace(/^Nuit/, 'après la nuit'))}</p>` : ''}
+    ${t.depart?.lat != null ? `<p class="wday-night">${ic('lune')} départ ${esc(t.depart.adresse.replace(/^Nuit/, 'après la nuit'))}</p>` : ''}
     <ol class="wstops">${t.etapes.map((e, k) => { const m = mags.get(e.magasinId); const pe = p.etapes[k]; return `${pe?.leg ? `<li class="wleg" aria-label="Trajet"><span>${k === 0 ? (t.depart?.lat != null ? 'depuis l\'hôtel' : 'depuis la maison') : ''}</span>${p.estime ? '≈ ' : ''}${fmtKm(pe.leg.km)} · ${fmtDuree(pe.leg.min)}</li>` : ''}<li class="${pe?.hors ? 'hors' : ''} ${e.fait ? 'done' : ''}" data-k="${k}">
       <button type="button" class="poignee" aria-label="Changer l'ordre de ${esc(m.nom)} : glisser, ou flèches haut et bas" title="Glisser pour changer l'ordre"><i></i></button>
       <span class="pin num" style="--c:${enseigneColor(m.enseigne)}">${k + 1}</span>
@@ -245,10 +246,10 @@ function colonne(t, i, p, mags, s, dates, rdvs, vus = new Map()) {
         ${pe ? `<span class="hrs">${p.estime ? '≈ ' : ''}${fmtHeure(pe.arrivee)} – ${fmtHeure(pe.depart)} <button type="button" class="btn-link vis${e.duree ? ' modifiee' : ''}" data-duree="${i}:${k}" title="Changer le temps sur place">(${fmtDuree(pe.duree)} sur place)</button>${rdvTxt(e, rdvs.get(e.magasinId), t.id)}${pe.retardRdv ? ` <b class="late-txt">· arrivée ${pe.retardRdv} min après le RDV</b>` : ''}</span>` : ''}
         <small>${esc(m.ville)}${e.motif ? ` · <i>${esc(e.motif)}</i>` : ''}${e.detour ? ' · <b class="late-txt">détour : en retard</b>' : e.comble ? ' · <span class="chemin">en attendant le RDV</span>' : e.surChemin != null ? ` · <span class="chemin">sur le chemin${e.surChemin >= 1 ? ` (+${e.surChemin} min)` : ""}</span>` : m.enRetard ? ' · en retard' : ''}</small>
         <span class="wact">${t.id <= auj ? (() => { const v = vus.get(`${t.id}|${m.id}`); return v && !estVide(v) ? `<a class="btn small btn-visite fait" href="${lienDetails(v)}">Visité ✓</a>` : `<button class="btn small btn-visite${e.fait ? ' fait' : ''}" data-vu="${i}:${k}"${e.fait ? ' aria-pressed="true" title="Appuyer pour retirer"' : ''}>${e.fait ? 'Visité ✓' : 'Visité'}</button>`; })() : ''}<select data-move="${i}:${k}" aria-label="Déplacer ${esc(m.nom)}"><option value="${i}">Déplacer…</option>${dates.map((d, j) => j === i ? '' : `<option value="${j}">${JOURS[j]} ${new Date(d + 'T12:00').getDate()}</option>`).join('')}</select>
-        <button class="btn-icon" data-del="${i}:${k}" aria-label="Retirer">✕</button></span></div></li>`; }).join('')}</ol>
+        <button class="btn-icon" data-del="${i}:${k}" aria-label="Retirer">${ic('croix')}</button></span></div></li>`; }).join('')}</ol>
     ${p.retour ? `<p class="wleg fin"><span>retour maison</span>${p.estime ? '≈ ' : ''}${fmtKm(p.retour.km)} · ${fmtDuree(p.retour.min)}</p>` : ''}
     ${p.versHotel ? `<p class="wleg fin"><span>jusqu'à l'hôtel</span>${p.estime ? '≈ ' : ''}${fmtKm(p.versHotel.km)} · ${fmtDuree(p.versHotel.min)}</p>` : ''}
-    ${t.etapes.length && !t.retour && last ? `<p class="wday-night">☾ ${esc((lieuNuit(t, mags)?.adresse || 'Nuit sur place').replace(/^Nuit/, 'nuit'))} <button type="button" class="btn-link" data-nuit="${i}">${t.hotel?.choisi ? 'changer' : 'choisir la ville'}</button></p>`
+    ${t.etapes.length && !t.retour && last ? `<p class="wday-night">${ic('lune')} ${esc((lieuNuit(t, mags)?.adresse || 'Nuit sur place').replace(/^Nuit/, 'nuit'))} <button type="button" class="btn-link" data-nuit="${i}">${t.hotel?.choisi ? 'changer' : 'choisir la ville'}</button></p>`
       : t.etapes.length ? `<p class="wday-night muted"><button type="button" class="btn-link" data-nuit="${i}">dormir sur place ?</button></p>` : ''}
     <button class="btn small ghost" data-add="${i}">Ajouter des magasins</button>
   </section>`;

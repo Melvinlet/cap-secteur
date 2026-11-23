@@ -6,6 +6,7 @@ import { periode, decaler, libellePeriode } from '../../services/activite.js';
 import { reduireImage, imageURL } from '../../services/images.js';
 import { loadExcelJS } from '../../services/excel.js';
 import { genererNdf, genererNdfPdf, nomFichierNdf, colonneNdf, estIkm, baremeProfil, estPdf } from '../../services/ndf.js';
+import { ic } from '../../icones.js';
 
 const euros = v => `${(Math.round((Number(v) || 0) * 100) / 100).toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} €`;
 let f = { type: 'mois', du: null, au: null, statut: '', cat: '', ouverts: new Set() };
@@ -16,11 +17,11 @@ const du = x => x.payeur === 'moi' && x.remboursable && !['remboursee', 'refusee
 const GROUPES = [['aDeclarer', 'À déclarer', 'Tout marquer « Déclarée »'], ['declaree', 'Déclarées · en attente de remboursement', 'Tout marquer « Remboursée »'],
   ['remboursee', 'Remboursées', ''], ['refusee', 'Refusées', '']];
 const ligne = x => `<tr class="${du(x) ? 'du' : ''}"><td>${fmtDate(x.date)}</td><td>${esc(x.categorie)}${x.km ? ` <small class="muted">${x.km} km</small>` : ''}</td>
-      <td>${esc(x.libelle || '')}${x.justificatif ? ' <span title="Justificatif joint">📎</span>' : ''}</td>
+      <td>${esc(x.libelle || '')}${x.justificatif ? ` <span title="Justificatif joint">${ic('trombone')}</span>` : ''}</td>
       <td>${x.payeur === 'moi' ? 'Moi' : 'Carte société'}${x.payeur === 'moi' && !x.remboursable ? ' <small class="muted">(non remb.)</small>' : ''}</td>
       <td class="num">${euros(x.montant)}</td>
       <td><select data-st="${x.id}" aria-label="Statut">${Object.entries(STATUTS_FRAIS).map(([k, v]) => `<option value="${k}" ${x.statut === k ? 'selected' : ''}>${v}</option>`).join('')}</select></td>
-      <td><button class="btn-icon" data-ed="${x.id}" aria-label="Modifier">✎</button></td></tr>`;
+      <td><button class="btn-icon" data-ed="${x.id}" aria-label="Modifier">${ic('crayon')}</button></td></tr>`;
 
 export async function render(el) {
   const s = await getSettings();
@@ -132,10 +133,10 @@ async function editer(x, s, base) {
     <div class="row"><label>Payé par<select name="payeur"><option value="moi" ${x.payeur !== 'societe' ? 'selected' : ''}>Moi (avance)</option><option value="societe" ${x.payeur === 'societe' ? 'selected' : ''}>Carte société</option></select></label>
     <label>Statut<select name="statut">${Object.entries(STATUTS_FRAIS).map(([k, v]) => `<option value="${k}" ${(x.statut || 'aDeclarer') === k ? 'selected' : ''}>${v}</option>`).join('')}</select></label></div>
     <label class="check"><input type="checkbox" name="remboursable" ${x.remboursable !== false ? 'checked' : ''}> Remboursable</label>
-    <fieldset><legend>Justificatif</legend>${just?.pdf ? `<p><a class="btn small" href="${just.pdf}" target="_blank" rel="noopener">📄 Ouvrir le justificatif PDF</a></p>` : just ? `<img src="${just}" class="just" alt="Justificatif">` : ''}
+    <fieldset><legend>Justificatif</legend>${just?.pdf ? `<p><a class="btn small" href="${just.pdf}" target="_blank" rel="noopener">${ic('document')} Ouvrir le justificatif PDF</a></p>` : just ? `<img src="${just}" class="just" alt="Justificatif">` : ''}
       <div class="choix-photo">
-        <label class="btn" for="justCam">📷 Prendre une photo</label>
-        <label class="btn" for="justGal">🖼️ Choisir une photo ou un PDF</label>
+        <label class="btn" for="justCam">${ic('photo')} Prendre une photo</label>
+        <label class="btn" for="justGal">${ic('image')} Choisir une photo ou un PDF</label>
         <span class="muted small" id="justNom"></span>
       </div>
       <input type="file" id="justCam" accept="image/*" capture="environment" hidden>
@@ -203,7 +204,7 @@ async function noteEntreprise(tous, s, format = 'xlsx') {
     <label>Date de la note<input type="date" name="date" value="${today()}" required></label>
     <p class="ndf-compte" id="ndfCompte" aria-live="polite"></p>
     <div class="ndf-list">${tri.map(x => `<label class="pick" data-date="${x.date}"><input type="checkbox" name="f:${x.id}" ${defaut(x) ? 'checked' : ''}>
-      <span class="pick-info"><strong>${esc(x.libelle || x.categorie)}</strong><small>${fmtDate(x.date)} · ${esc(estIkm(x) ? 'Indemnités km' : colonneNdf(x.categorie))}${x.justificatif ? ' · 📎 justificatif' : ' · <b class="late-txt">sans justificatif</b>'}${x.payeur === 'societe' ? ' · carte société' : ''}${x.payeur === 'moi' && x.remboursable === false ? ' · <b>non remboursable</b>' : ''}${x.statut === 'declaree' ? ' · déjà déclarée' : x.statut === 'remboursee' ? ' · déjà remboursée' : ''}</small></span>
+      <span class="pick-info"><strong>${esc(x.libelle || x.categorie)}</strong><small>${fmtDate(x.date)} · ${esc(estIkm(x) ? 'Indemnités km' : colonneNdf(x.categorie))}${x.justificatif ? ` · ${ic('trombone')} justificatif` : ' · <b class="late-txt">sans justificatif</b>'}${x.payeur === 'societe' ? ' · carte société' : ''}${x.payeur === 'moi' && x.remboursable === false ? ' · <b>non remboursable</b>' : ''}${x.statut === 'declaree' ? ' · déjà déclarée' : x.statut === 'remboursee' ? ' · déjà remboursée' : ''}</small></span>
       <span class="pick-det">${euros(x.montant)}</span></label>`).join('')}<p class="muted" id="ndfVide" hidden>Aucune dépense sur cette période.</p></div>
     <p class="hint">Cochées par défaut : les dépenses que tu as avancées, remboursables et pas encore remboursées. Dans le fichier, elles sont classées par date de la dépense (pas par date d'ajout).</p>
     <label class="check"><input type="checkbox" name="declarer" checked> Passer ces dépenses en « Déclarée »</label>` });
