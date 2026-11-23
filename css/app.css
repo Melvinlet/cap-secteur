@@ -1002,3 +1002,7 @@ h2 .tag-sem { font-size: .7em; }
 .af-item.fait .af-txt { text-decoration: line-through; color: var(--gris); font-weight: 500; }
 .af-tour { white-space: nowrap; }
 @media (max-width: 760px) { .nav a { font-size: .68rem; padding-left: 0; padding-right: 0; } }
+.exp-sortie { margin-top: .8rem; }
+.exp-sortie .check { align-items: flex-start; }
+.exp-motif { margin-left: 1.6rem; font-size: .88rem; color: var(--gris); }
+.exp-tsv { width: 100%; font: .78rem/1.4 ui-monospace, Consolas, monospace; white-space: pre; overflow: auto; }

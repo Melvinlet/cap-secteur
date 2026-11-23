@@ -242,7 +242,7 @@ export async function exporterPlanning(lignes, titre, colMotif = false) {
       const c = ws.getCell(L, C0 + i);
       c.value = v; c.font = { ...police, color: { argb: st.texte } }; c.border = cadre;
       c.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: st.fond } };
-      if (i === 0) c.numFmt = P.formatJour || 'ddd dd/mm/yy';
+      if (i === 0) c.numFmt = P.formatJour || 'yyyy-mm-dd';   // reconnu par Excel dans toutes les langues si la copie passe en texte
       if (i === 1) { c.numFmt = 'h:mm'; c.alignment = { horizontal: 'center' }; }
       if (i === 7) c.alignment = { horizontal: 'center' };
     });

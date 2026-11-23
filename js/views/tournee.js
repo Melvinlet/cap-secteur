@@ -525,7 +525,7 @@ export async function exporterVersPlanning(date, s, periode = null) {
   if (!lignes.length) return toast('Aucune visite prévue sur cette période', 'warn');
   lignes.sort((a, b) => a.jour.localeCompare(b.jour) || (a.heure || '99').localeCompare(b.heure || '99'));   // comme le planning : par jour puis par heure
   // vérification ligne par ligne : heure, objet et « pourquoi j'y vais »
-  const v = await modal({ titre: `Planning du ${fmtDate(r.du)} au ${fmtDate(r.au)}`, valider: 'Créer le fichier Excel', large: true, corps: `
+  const v = await modal({ titre: `Planning du ${fmtDate(r.du)} au ${fmtDate(r.au)}`, valider: 'Valider', large: true, corps: `
     ${s.commercial ? '' : '<p class="hint">Astuce : renseigne ton nom dans les Réglages pour remplir la colonne « Chef de secteur ».</p>'}
     <p class="hint">Heures au quart d'heure, comme dans ton planning. Statut et interlocuteur viennent de tes RDV (accepté → Confirmée, refusé → Annulée, autre date → Reportée le jour prévu). Tout est modifiable ici et gardé dans tes tournées.</p>
     <div class="exp-list">${lignes.map((l, i) => `<div class="exp-row ${i && lignes[i - 1].jour !== l.jour ? 'new-day' : ''}">
@@ -537,7 +537,10 @@ export async function exporterVersPlanning(date, s, periode = null) {
       <input name="i:${i}" value="${esc(l.interlocuteur)}" placeholder="Interlocuteur" aria-label="Interlocuteur" list="ctl-${i}">
       <datalist id="ctl-${i}">${contacts.filter(c => c.magasinId === l.t.etapes[l.k].magasinId && c.nom).map(c => `<option value="${esc(c.nom)}">`).join('')}</datalist>
       <input name="p:${i}" value="${esc(l.motif)}" placeholder="Pourquoi j'y vais (précision)" aria-label="Précision"></div>`).join('')}</div>
-    <label class="check"><input type="checkbox" name="colMotif" checked> Ajouter les précisions dans une colonne à part (à droite, hors zone à coller)</label>` });
+    <fieldset class="exp-sortie"><legend>Pour ton planning</legend>
+      <label class="check"><input type="radio" name="sortie" value="copier" checked> <span><strong>Copier les lignes</strong> (recommandé) : dans ton planning, clique la 1re case vide de la colonne Jour, puis Ctrl+V. Les couleurs, listes et formules de ton fichier sont gardées.</span></label>
+      <label class="check"><input type="radio" name="sortie" value="excel"> <span><strong>Fichier Excel</strong> à part</span></label>
+      <label class="check exp-motif"><input type="checkbox" name="colMotif" checked> Dans le fichier : ajouter les précisions dans une colonne à part (à droite, hors zone à coller)</label></fieldset>` });
   if (!v) return;
   const modifiees = new Set();
   lignes.forEach((l, i) => {
@@ -550,8 +553,28 @@ export async function exporterVersPlanning(date, s, periode = null) {
     Object.assign(l, { heure: h, objet: o, motif: pr, statut: stt, interlocuteur: it });
   });
   for (const t of modifiees) await db.put('tournees', t);
-  downloadBlob(await exporterPlanning(lignes, `Planning ${s.commercial || ''} du ${fmtDate(r.du)} au ${fmtDate(r.au)}`.replace('  ', ' '), v.colMotif === 'on'), `Planning ${r.du} au ${r.au}.xlsx`);
-  toast(`${lignes.length} visites exportées`);
+  if (v.sortie === 'excel') {
+    downloadBlob(await exporterPlanning(lignes, `Planning ${s.commercial || ''} du ${fmtDate(r.du)} au ${fmtDate(r.au)}`.replace('  ', ' '), v.colMotif === 'on'), `Planning ${r.du} au ${r.au}.xlsx`);
+    toast(`${lignes.length} visites exportées`);
+    return;
+  }
+  await copierPlanning(lignes);
+}
+
+// Lignes du planning en texte brut (une ligne par visite, colonnes séparées par des tabulations, de Jour à Interlocuteur).
+// Collé dans Excel, du texte brut ne remplace QUE les valeurs : la mise en forme conditionnelle (couleurs par enseigne),
+// les listes déroulantes et les formules du fichier restent. Date en AAAA-MM-JJ : Excel la reconnaît dans toutes les langues
+// et l'affiche ensuite au format de la colonne (ex. « Mon 23/11/26 »).
+async function copierPlanning(lignes) {
+  const net = x => String(x ?? '').replace(/[\t\r\n]+/g, ' ').trim();
+  const tsv = lignes.map(l => [l.jour, heurePlanning(l.heure) || '', l.chef, l.enseigne, l.magasin, l.statut, l.objet, l.numero, l.interlocuteur].map(net).join('\t')).join('\r\n');
+  const msg = `${lignes.length} visite${lignes.length > 1 ? 's' : ''} copiée${lignes.length > 1 ? 's' : ''}. Dans ton planning : clique la 1re case vide de la colonne Jour, puis Ctrl+V.`;
+  try { await navigator.clipboard.writeText(tsv); toast(msg); return; } catch { /* copie refusée : on montre le texte */ }
+  const p = modal({ titre: 'Copier les lignes', valider: 'Fermer', large: true, corps: `
+    <p>Le texte est sélectionné : fais <strong>Ctrl+C</strong>, puis dans ton planning clique la 1re case vide de la colonne Jour et fais <strong>Ctrl+V</strong>.</p>
+    <textarea class="exp-tsv" rows="10" readonly>${esc(tsv)}</textarea>` });
+  const ta = document.querySelector('dialog[open] .exp-tsv'); ta?.focus(); ta?.select();
+  await p;
 }
 
 export const lundiDe = date => { const d = new Date(date + 'T12:00'); d.setDate(d.getDate() - ((d.getDay() + 6) % 7)); return d.toISOString().slice(0, 10); };
