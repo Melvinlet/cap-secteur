@@ -88,7 +88,6 @@ if (!window.__retourMail && /^#?\/?$/.test(location.hash)) {
 initBarreTitre();
 await route();
 dispatchEvent(new Event('cap-pret'));   // l'écran de lancement peut s'effacer
-import('./services/terrain.js').then(async ({ infosTerrain }) => { if (await infosTerrain()) { $('.nav-terrain')?.removeAttribute('hidden'); placerPastille({ animer: false }); } }).catch(() => {});
 placerPastille({ animer: false });
 // synchronisation automatique entre appareils (si un compte est configuré)
 import('./services/synchro.js').then(({ demarrer }) => demarrer());

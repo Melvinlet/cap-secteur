@@ -6,7 +6,7 @@ const TITRES = '#main .page-head h1, #main .hello h1, #main .page > h1, #main .t
 function maj() {
   attente = false;
   const h1 = document.querySelector(TITRES);
-  const visible = !!h1 && document.body.dataset.view !== 'terrain' && h1.getBoundingClientRect().bottom < 4;
+  const visible = !!h1 && !document.body.classList.contains('terrain-plein') && h1.getBoundingClientRect().bottom < 4;
   if (visible) { const t = h1.textContent.replace(/\s+/g, ' ').trim(); if (barre.textContent !== t) barre.textContent = t; }
   barre.classList.toggle('visible', visible);
 }

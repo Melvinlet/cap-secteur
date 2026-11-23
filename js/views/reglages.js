@@ -275,7 +275,6 @@ export async function render(el) {
     $('#terrainEtat').textContent = i ? `« ${i.nom} » · version du ${fmtDate(i.importe)} · ${Math.round(i.taille / 1e5) / 10} Mo` : 'Aucun fichier importé.';
     $('#terrainImp').textContent = i ? 'Importer une nouvelle version' : 'Importer le fichier';
     $('#terrainOuvrir').hidden = $('#terrainSuppr').hidden = !i;
-    document.querySelector('.nav-terrain')?.toggleAttribute('hidden', !i);
   };
   terrainMaj();
   $('#terrainImp').onclick = async () => { const { importer } = await import('./terrain.js'); if (await importer()) terrainMaj(); };

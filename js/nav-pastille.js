@@ -12,13 +12,17 @@ export function placerPastille({ animer = true } = {}) {
     nav.prepend(pastille);
     animer = false;
     addEventListener('resize', () => placerPastille({ animer: false }));
+    // la barre change de taille (polices chargées, rotation, barre cachée puis réaffichée) : on replace la pastille
+    if ('ResizeObserver' in window) new ResizeObserver(() => placerPastille({ animer: false })).observe(nav);
+    document.fonts?.ready.then(() => placerPastille({ animer: false }));
   }
   const actif = nav.querySelector('a[aria-current]');
   if (!actif || !actif.offsetParent) { pastille.style.opacity = '0'; return; }
-  const n = nav.getBoundingClientRect(), a = actif.getBoundingClientRect();
+  // mesures de mise en page (offset*) : insensibles à l'effet d'appui (scale) et au zoom du navigateur
+  const x = actif.offsetLeft, y = actif.offsetTop;   // les liens sont des enfants directs de la barre (positionnée)
   pastille.classList.toggle('sans-anim', !animer);
   pastille.style.opacity = '1';
-  pastille.style.width = `${a.width}px`;
-  pastille.style.height = `${a.height}px`;
-  pastille.style.transform = `translate(${a.left - n.left - nav.clientLeft}px, ${a.top - n.top - nav.clientTop}px)`;
+  pastille.style.width = `${actif.offsetWidth}px`;
+  pastille.style.height = `${actif.offsetHeight}px`;
+  pastille.style.transform = `translate(${x}px, ${y}px)`;
 }
