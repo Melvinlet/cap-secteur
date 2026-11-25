@@ -5,7 +5,7 @@ import { vibrer } from './ui.js';
 const SEUIL = 72;
 let depY = null, dy = 0, ind = null, occupe = false;
 
-const exclu = el => !!el.closest('dialog, .leaflet-container, .terrain, .week, .chips-defile, .seg, .tabs, input, textarea, select, .barre-titre');
+const exclu = el => !!el.closest('dialog, .leaflet-container, .week, .chips-defile, .seg, .tabs, input, textarea, select, .barre-titre');
 
 function indicateur() {
   if (ind) return ind;

@@ -24,7 +24,6 @@ const ROUTES = [
   [/^\/magasins$/, 'magasins', () => import('./views/magasins.js')],
   [/^\/afaire$/, 'afaire', () => import('./views/afaire.js')],
   [/^\/magasin\/([^/]+)(?:\/(\w+))?$/, 'magasins', () => import('./views/magasin.js'), ['id', 'onglet']],
-  [/^\/terrain$/, 'terrain', () => import('./views/terrain.js')],
   [/^\/reglages$/, 'reglages', () => import('./views/reglages.js')],
   [/^\/compte$/, 'reglages', () => import('./views/compte.js')],
   [/^\/bienvenue$/, 'aujourdhui', () => import('./views/bienvenue.js')],
@@ -88,6 +87,8 @@ if (!window.__retourMail && /^#?\/?$/.test(location.hash)) {
   try { if (await (await import('./views/bienvenue.js')).aMontrer()) history.replaceState(null, '', location.pathname + '#/bienvenue'); } catch { /* accueil normal */ }
 }
 initBarreTitre();
+// l'outil Clasper Terrain a été retiré (v1.21) : on libère la place qu'il occupait sur l'appareil
+try { indexedDB.deleteDatabase('cap-terrain'); } catch { /* */ }
 initSegPastilles();
 initTirer(async () => { await chargerProfil(); await route(null, { garder: true }); });
 await route();
