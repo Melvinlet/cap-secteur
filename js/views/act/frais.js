@@ -136,13 +136,15 @@ async function editer(x, s, base) {
     <fieldset><legend>Justificatif</legend>${just?.pdf ? `<p><a class="btn small" href="${just.pdf}" target="_blank" rel="noopener">${ic('document')} Ouvrir le justificatif PDF</a></p>` : just ? `<img src="${just}" class="just" alt="Justificatif">` : ''}
       <div class="choix-photo">
         <label class="btn" for="justCam">${ic('photo')} Prendre une photo</label>
-        <label class="btn" for="justGal">${ic('image')} Choisir une photo ou un PDF</label>
+        <label class="btn" for="justGal">${ic('image')} Choisir dans la galerie</label>
+        <label class="btn" for="justPdf">${ic('document')} Ajouter un PDF</label>
         <span class="muted small" id="justNom"></span>
       </div>
       <input type="file" id="justCam" accept="image/*" capture="environment" hidden>
-      <input type="file" id="justGal" accept="image/*,application/pdf,.pdf" hidden></fieldset>
+      <input type="file" id="justGal" accept="image/*" hidden>
+      <input type="file" id="justPdf" accept="application/pdf,.pdf" hidden></fieldset>
     ${x.id ? '<button type="button" class="btn danger small" id="delF">Supprimer cette dépense</button>' : ''}` });
-  for (const id of ['#justCam', '#justGal']) $(id).onchange = e => {
+  for (const id of ['#justCam', '#justGal', '#justPdf']) $(id).onchange = e => {
     nouveauJust = e.target.files[0] || null;
     if (nouveauJust && pdfDe(nouveauJust) && nouveauJust.size > 4e6) { nouveauJust = null; e.target.value = ''; return toast('PDF trop lourd (plus de 4 Mo) : prends plutôt une photo du ticket', 'warn'); }
     $('#justNom').textContent = nouveauJust ? `✓ ${nouveauJust.name || 'photo'} (enregistré${pdfDe(nouveauJust) ? '' : 'e'} avec la dépense)` : '';
